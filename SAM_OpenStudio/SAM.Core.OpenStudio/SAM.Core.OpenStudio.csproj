@@ -54,7 +54,7 @@
     <PostBuildEvent>::Copy /Y "$(SolutionDir)references\*.dll" "$(SolutionDir)build\*.dll"</PostBuildEvent>
     <AssemblyTitle>SAM</AssemblyTitle>
     <Product>SAM</Product>
-    <Copyright>Copyright ©  2020</Copyright>
+    <Copyright>Copyright (c) 2020-2026 Michal Dengusiak &amp; Jakub Ziolkowski and contributors</Copyright>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
     <PlatformTarget>x64</PlatformTarget>
