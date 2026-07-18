@@ -7,20 +7,21 @@ completed milestone. See [SAM_OpenStudio_MVP_Implementation_Plan.md](SAM_OpenStu
 
 | Field | Value |
 | --- | --- |
-| Milestone completed | **M1 — conversion contracts and diagnostics** |
+| Milestone completed | **M2 — geometry primitive conversion** |
 | Branch | `feature/analytical-model-to-openstudio-mvp` (base `sow/2026-Q3` @ 94dfce9) |
 | Commit | the commit introducing this change (SHA backfilled in the table below at the next gate) |
 | SDK selected | OpenStudio NuGet **3.10.0** (bumped from 3.8.0 in all three library projects) |
 | CLI selected | **3.10.0+86d7e215a1** — `C:\Program Files\ladybug_tools\openstudio\bin\openstudio.exe` (discovery: explicit → PATH → direct installs → ladybug_tools) |
-| Tests executed | 14/14 passed — smoke (2) + naming (4) + object map (4) + diagnostics/context (4) |
-| Next milestone | **M2 — geometry primitive conversion** (`SAM.Geometry.OpenStudio`: point/polygon conversion, vertex cleaning, planarity/area validation, 9 test cases) |
+| Tests executed | 24/24 passed — smoke (2) + M1 contracts (12) + M2 geometry (10) |
+| Next milestone | **M3 — spaces, stories, zones, surfaces, apertures** (passes A/B/C over AdjacencyCluster; two-box fixture tests) |
 
 ## Milestone history
 
 | M | Commit | Tests | Notes |
 | --- | --- | --- | --- |
 | M0 | d3a4a17 | 2/2 | SDK 3.8.0→3.10.0; CLI verified; tests project created; weather fixture pinned; placeholder `Test.cs` removed |
-| M1 | (this commit) | 14/14 | Diagnostics (+codes/severity), conversion/run options, run result, object reference/map, context + result snapshot, SanitizeName/OpenStudioName/versions queries |
+| M1 | 2495b5c | 14/14 | Diagnostics (+codes/severity), conversion/run options, run result, object reference/map, context + result snapshot, SanitizeName/OpenStudioName/versions queries |
+| M2 | (this commit) | 24/24 | SAM.Geometry.OpenStudio: Point3d/Point3dVector/Face3D-polygon converters; CleanVertices, Normal (Newell), Area, IsPlanar, IsClockwise, ValidatePolygon; SAM.Core+Geometry refs added to csproj |
 
 ## Known limitations at this point
 
