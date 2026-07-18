@@ -1,10 +1,14 @@
-﻿using Grasshopper.Kernel;
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
+
+using Grasshopper.Kernel;
 using SAM.Core.Grasshopper;
 using System;
+using System.Collections.Generic;
 
 namespace SAM.Analytical.Grasshopper.OpenStudio
 {
-    public class OpenStudioCreateSpaceSimulationResultsBySQL : GH_SAMComponent
+    public class OpenStudioCreateSpaceSimulationResultsBySQL : GH_SAMVariableOutputParameterComponent
     {
         /// <summary>
         /// Gets the unique ID for this component. Do not change this ID after release.
@@ -14,7 +18,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.0.1";
+        public override string LatestComponentVersion => "1.0.2";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -34,17 +38,27 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// Registers all the input parameters for this component.
         /// </summary>
-        protected override void RegisterInputParams(GH_InputParamManager inputParamManager)
+        protected override GH_SAMParam[] Inputs
         {
-            inputParamManager.AddTextParameter("_sQLPath", "_sQLPath", "SQL File Path", GH_ParamAccess.item);
+            get
+            {
+                List<GH_SAMParam> result = new List<GH_SAMParam>();
+                result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_String() { Name = "_sQLPath", NickName = "_sQLPath", Description = "SQL File Path", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
+                return result.ToArray();
+            }
         }
 
         /// <summary>
         /// Registers all the output parameters for this component.
         /// </summary>
-        protected override void RegisterOutputParams(GH_OutputParamManager outputParamManager)
+        protected override GH_SAMParam[] Outputs
         {
-            outputParamManager.AddParameter(new GooResultParam(), "spaceSymulationResults", "spaceSymulationResults", "SAM Analytical SpaceSimulationResults", GH_ParamAccess.list);
+            get
+            {
+                List<GH_SAMParam> result = new List<GH_SAMParam>();
+                result.Add(new GH_SAMParam(new GooResultParam() { Name = "spaceSymulationResults", NickName = "spaceSymulationResults", Description = "SAM Analytical SpaceSimulationResults", Access = GH_ParamAccess.list }, ParamVisibility.Binding));
+                return result.ToArray();
+            }
         }
 
         /// <summary>
@@ -55,13 +69,18 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         {
             string path = null;
 
-            if (!dataAccess.GetData(0, ref path) || path == null)
+            int index = Params.IndexOfInputParam("_sQLPath");
+            if (index == -1 || !dataAccess.GetData(index, ref path) || path == null)
             {
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Invalid data");
                 return;
             }
 
-            dataAccess.SetDataList(0, Analytical.OpenStudio.Create.SpaceSimulationResults(path)?.ConvertAll(x => new GooResult(x)));
+            index = Params.IndexOfOutputParam("spaceSymulationResults");
+            if (index != -1)
+            {
+                dataAccess.SetDataList(index, Analytical.OpenStudio.Create.SpaceSimulationResults(path)?.ConvertAll(x => new GooResult(x)));
+            }
         }
     }
 }
