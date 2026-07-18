@@ -23,6 +23,37 @@ namespace SAM.Analytical.OpenStudio
         /// <returns>Conversion result with model, diagnostics and object map; null when input is null.</returns>
         public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null)
         {
+            OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions);
+            return context == null ? null : new OpenStudioConversionResult(context);
+        }
+
+        /// <summary>
+        /// Full MVP pipeline (plan §3): converts the model, assigns the EPW weather and MVP
+        /// simulation settings, saves the OSM, generates the OSW, runs the OpenStudio CLI and
+        /// extracts annual Ideal Loads energy. The returned result carries paths, run outcome,
+        /// loads and every diagnostic raised along the way.
+        /// </summary>
+        /// <param name="analyticalModel">Source SAM analytical model.</param>
+        /// <param name="epwPath">EPW weather file (explicit input; SAM weather is not consulted).</param>
+        /// <param name="outputDirectory">Directory for the OSM/OSW and the isolated run folder.</param>
+        /// <param name="openStudioConversionOptions">Conversion options; defaults when null.</param>
+        /// <param name="openStudioRunOptions">Run options (CLI path, timeout); defaults when null.</param>
+        /// <returns>Conversion result including RunResult and Loads; null when input is null.</returns>
+        public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null)
+        {
+            OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions);
+            if (context == null)
+            {
+                return null;
+            }
+
+            context.ToOpenStudio_Weather(epwPath);
+            context.ToOpenStudio_SimulationSettings();
+            return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions);
+        }
+
+        private static OpenStudioConversionContext ToOpenStudio_Context(AnalyticalModel analyticalModel, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions)
+        {
             if (analyticalModel == null)
             {
                 return null;
@@ -40,7 +71,7 @@ namespace SAM.Analytical.OpenStudio
             if (adjacencyCluster == null)
             {
                 context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "AnalyticalModel has no AdjacencyCluster; nothing to convert", analyticalModel);
-                return new OpenStudioConversionResult(context);
+                return context;
             }
 
             SortedList<double, global::OpenStudio.BuildingStory> buildingStories = context.ToOpenStudio_BuildingStories();
@@ -317,7 +348,41 @@ namespace SAM.Analytical.OpenStudio
                 context.ToOpenStudio_ShadingSurfaces();
             }
 
-            return new OpenStudioConversionResult(context);
+            // Pass E: thermostats and Ideal Loads for conditioned zones only (central
+            // Query.IsConditioned decision). Unconditioned/external spaces keep geometry
+            // and internal gains but receive no thermostat and no Ideal Loads system.
+            if (spaces != null)
+            {
+                foreach (Space space in spaces)
+                {
+                    if (space == null || !space.IsConditioned())
+                    {
+                        continue;
+                    }
+
+                    if (!context.TryGetModelObject(space.Guid, out global::OpenStudio.Space openStudioSpace))
+                    {
+                        continue;
+                    }
+
+                    global::OpenStudio.OptionalThermalZone optionalThermalZone = openStudioSpace.thermalZone();
+                    if (optionalThermalZone == null || optionalThermalZone.isNull())
+                    {
+                        context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Conditioned space has no thermal zone", space);
+                        continue;
+                    }
+
+                    global::OpenStudio.ThermalZone thermalZone = optionalThermalZone.get();
+
+                    global::OpenStudio.ThermostatSetpointDualSetpoint thermostat = space.ToOpenStudio_Thermostat(thermalZone, context);
+                    if (thermostat != null && options.AssignIdealLoads)
+                    {
+                        thermalZone.ToOpenStudio_IdealLoads(space, context);
+                    }
+                }
+            }
+
+            return context;
         }
     }
 }

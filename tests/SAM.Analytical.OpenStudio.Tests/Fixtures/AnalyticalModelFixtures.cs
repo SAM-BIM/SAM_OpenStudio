@@ -91,7 +91,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// Office-hours (08:00–17:59) fraction profiles, constant equipment/infiltration and
         /// 21/25 °C setpoint profiles backing the fixture internal condition.
         /// </summary>
-        public static ProfileLibrary CreateProfileLibrary()
+        public static ProfileLibrary CreateProfileLibrary(double heatingSetpoint = 21, double coolingSetpoint = 25)
         {
             double[] officeHours = new double[24];
             for (int i = 8; i <= 17; i++)
@@ -105,8 +105,8 @@ namespace SAM.Analytical.OpenStudio.Tests
             for (int i = 0; i < 24; i++)
             {
                 alwaysOn[i] = 1;
-                heating[i] = 21;
-                cooling[i] = 25;
+                heating[i] = heatingSetpoint;
+                cooling[i] = coolingSetpoint;
             }
 
             ProfileLibrary result = new ProfileLibrary("Fixture Profile Library");
@@ -213,7 +213,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// given construction (fixture default when null). Used by simulation and failure-policy
         /// tests.
         /// </summary>
-        public static AnalyticalModel SingleBox(Construction wallConstruction = null, bool includeWindow = true, bool withProfiles = true)
+        public static AnalyticalModel SingleBox(Construction wallConstruction = null, bool includeWindow = true, bool withProfiles = true, InternalCondition internalConditionOverride = null, ProfileLibrary profileLibraryOverride = null)
         {
             Construction construction = wallConstruction ?? WallConstruction;
 
@@ -223,7 +223,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             space.SetValue(SpaceParameter.Area, 20.0);
             space.SetValue(SpaceParameter.Volume, 60.0);
             space.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
-            space.InternalCondition = CreateOfficeInternalCondition();
+            space.InternalCondition = internalConditionOverride ?? CreateOfficeInternalCondition();
             adjacencyCluster.AddObject(space);
 
             List<Panel> panels = new List<Panel>
@@ -247,7 +247,7 @@ namespace SAM.Analytical.OpenStudio.Tests
                 adjacencyCluster.AddRelation(space, panel);
             }
 
-            return new AnalyticalModel("Single Box Model", "MVP one-zone box fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), withProfiles ? CreateProfileLibrary() : new ProfileLibrary("Empty Profile Library"));
+            return new AnalyticalModel("Single Box Model", "MVP one-zone box fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), withProfiles ? (profileLibraryOverride ?? CreateProfileLibrary()) : new ProfileLibrary("Empty Profile Library"));
         }
     }
 }

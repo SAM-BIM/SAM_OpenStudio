@@ -25,6 +25,9 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>Outcome of the simulation run, when one was executed.</summary>
         public Core.OpenStudio.OpenStudioRunResult RunResult { get; internal set; }
 
+        /// <summary>Annual Ideal Loads energy extracted from the run, when available.</summary>
+        public OpenStudioLoadSummary Loads { get; internal set; }
+
         /// <summary>Diagnostics recorded up to the moment this result was created.</summary>
         public IReadOnlyList<Core.OpenStudio.OpenStudioDiagnostic> Diagnostics { get; }
 
