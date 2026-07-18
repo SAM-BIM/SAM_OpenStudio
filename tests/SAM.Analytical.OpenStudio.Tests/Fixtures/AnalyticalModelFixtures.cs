@@ -144,11 +144,11 @@ namespace SAM.Analytical.OpenStudio.Tests
 
         /// <summary>
         /// Two adjacent boxes sharing one internal wall; box A has a window in its south wall.
-        /// 2 spaces (both conditioned offices sharing one InternalCondition), 11 panels
-        /// (12 OpenStudio surfaces once the shared wall is duplicated per side), 1 aperture,
-        /// full material and profile libraries.
+        /// 2 spaces (both conditioned offices sharing one InternalCondition, unless
+        /// <paramref name="spaceBUnconditioned"/>), 11 panels (12 OpenStudio surfaces once the
+        /// shared wall is duplicated per side), 1 aperture, full material and profile libraries.
         /// </summary>
-        public static AnalyticalModel TwoAdjacentBoxes()
+        public static AnalyticalModel TwoAdjacentBoxes(bool spaceBUnconditioned = false)
         {
             AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
 
@@ -164,7 +164,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             spaceB.SetValue(SpaceParameter.Area, 20.0);
             spaceB.SetValue(SpaceParameter.Volume, 60.0);
             spaceB.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
-            spaceB.InternalCondition = officeInternalCondition;
+            spaceB.InternalCondition = spaceBUnconditioned ? new InternalCondition("Office Unconditioned", officeInternalCondition) : officeInternalCondition;
 
             adjacencyCluster.AddObject(spaceA);
             adjacencyCluster.AddObject(spaceB);
@@ -248,6 +248,138 @@ namespace SAM.Analytical.OpenStudio.Tests
             }
 
             return new AnalyticalModel("Single Box Model", "MVP one-zone box fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), withProfiles ? (profileLibraryOverride ?? CreateProfileLibrary()) : new ProfileLibrary("Empty Profile Library"));
+        }
+
+        /// <summary>
+        /// Two vertically stacked boxes (A: z 0–3, C: z 3–6, both 5×4 m) sharing an internal
+        /// floor at z = 3. Exercises BuildingStory assignment and the floor/ceiling
+        /// surface-type rule on the shared panel. Both spaces are conditioned offices.
+        /// </summary>
+        public static AnalyticalModel TwoStackedBoxes()
+        {
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
+
+            InternalCondition officeInternalCondition = CreateOfficeInternalCondition();
+
+            Space spaceA = new Space(new Guid("aaaaaaaa-0000-0000-0000-000000000011"), "Space Lower", P(2.5, 2, 1.5));
+            spaceA.SetValue(SpaceParameter.Area, 20.0);
+            spaceA.SetValue(SpaceParameter.Volume, 60.0);
+            spaceA.InternalCondition = officeInternalCondition;
+
+            Space spaceC = new Space(new Guid("cccccccc-0000-0000-0000-000000000012"), "Space Upper", P(2.5, 2, 4.5));
+            spaceC.SetValue(SpaceParameter.Area, 20.0);
+            spaceC.SetValue(SpaceParameter.Volume, 60.0);
+            spaceC.InternalCondition = officeInternalCondition;
+
+            adjacencyCluster.AddObject(spaceA);
+            adjacencyCluster.AddObject(spaceC);
+
+            Panel sharedFloor = AnalyticalCreate.Panel(WallConstruction, PanelType.FloorInternal, F(P(0, 0, 3), P(5, 0, 3), P(5, 4, 3), P(0, 4, 3)));
+
+            List<Panel> panelsA = new List<Panel>
+            {
+                AnalyticalCreate.Panel(WallConstruction, PanelType.SlabOnGrade, F(P(0, 0, 0), P(5, 0, 0), P(5, 4, 0), P(0, 4, 0))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3))),
+                sharedFloor,
+            };
+
+            List<Panel> panelsC = new List<Panel>
+            {
+                AnalyticalCreate.Panel(WallConstruction, PanelType.Roof, F(P(0, 0, 6), P(5, 0, 6), P(5, 4, 6), P(0, 4, 6))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 3), P(5, 0, 3), P(5, 0, 6), P(0, 0, 6))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 3), P(0, 4, 3), P(0, 4, 6), P(0, 0, 6))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 4, 3), P(5, 4, 3), P(5, 4, 6), P(0, 4, 6))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 0, 3), P(5, 4, 3), P(5, 4, 6), P(5, 0, 6))),
+                sharedFloor,
+            };
+
+            foreach (Panel panel in panelsA)
+            {
+                adjacencyCluster.AddObject(panel);
+                adjacencyCluster.AddRelation(spaceA, panel);
+            }
+
+            foreach (Panel panel in panelsC)
+            {
+                if (panel != sharedFloor)
+                {
+                    adjacencyCluster.AddObject(panel);
+                }
+
+                adjacencyCluster.AddRelation(spaceC, panel);
+            }
+
+            return new AnalyticalModel("Two Stacked Box Model", "MVP two-level fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), CreateProfileLibrary());
+        }
+
+        /// <summary>
+        /// One-zone box whose floor polygon carries a collinear mid-edge vertex and a duplicate
+        /// closing vertex — exercises vertex cleaning (SAM-OS-GEO-002 warning, unchanged area).
+        /// </summary>
+        public static AnalyticalModel IrregularPlanarBox()
+        {
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
+
+            Space space = new Space(new Guid("dddddddd-0000-0000-0000-000000000001"), "Space Irregular", P(2.5, 2, 1.5));
+            space.SetValue(SpaceParameter.Area, 20.0);
+            space.SetValue(SpaceParameter.Volume, 60.0);
+            space.InternalCondition = CreateOfficeInternalCondition();
+            adjacencyCluster.AddObject(space);
+
+            List<Panel> panels = new List<Panel>
+            {
+                AnalyticalCreate.Panel(WallConstruction, PanelType.SlabOnGrade, F(P(0, 0, 0), P(2.5, 0, 0), P(5, 0, 0), P(5, 4, 0), P(0, 4, 0), P(0, 0, 0))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.Roof, F(P(0, 0, 3), P(5, 0, 3), P(5, 4, 3), P(0, 4, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3))),
+            };
+
+            foreach (Panel panel in panels)
+            {
+                adjacencyCluster.AddObject(panel);
+                adjacencyCluster.AddRelation(space, panel);
+            }
+
+            return new AnalyticalModel("Irregular Box Model", "MVP polygon-cleaning fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), CreateProfileLibrary());
+        }
+
+        /// <summary>
+        /// One-zone box with one degenerate (near-zero-area sliver) wall panel — exercises the
+        /// failure policy: SAM-OS-GEO-001 error, surface skipped, result invalid, no repair.
+        /// </summary>
+        public static AnalyticalModel DegeneratePanelBox()
+        {
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
+
+            Space space = new Space(new Guid("eeeeeeee-0000-0000-0000-000000000001"), "Space Degenerate", P(2.5, 2, 1.5));
+            space.SetValue(SpaceParameter.Area, 20.0);
+            space.SetValue(SpaceParameter.Volume, 60.0);
+            space.InternalCondition = CreateOfficeInternalCondition();
+            adjacencyCluster.AddObject(space);
+
+            List<Panel> panels = new List<Panel>
+            {
+                AnalyticalCreate.Panel(WallConstruction, PanelType.SlabOnGrade, F(P(0, 0, 0), P(5, 0, 0), P(5, 4, 0), P(0, 4, 0))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.Roof, F(P(0, 0, 3), P(5, 0, 3), P(5, 4, 3), P(0, 4, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3))),
+                // degenerate sliver: 5 m long, 0.00001 m tall — area 4e-5 m², below the 1e-4 m² minimum
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 0.00001), P(5, 0, 0.00001))),
+            };
+
+            foreach (Panel panel in panels)
+            {
+                adjacencyCluster.AddObject(panel);
+                adjacencyCluster.AddRelation(space, panel);
+            }
+
+            return new AnalyticalModel("Degenerate Box Model", "MVP failure-policy fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), CreateProfileLibrary());
         }
     }
 }

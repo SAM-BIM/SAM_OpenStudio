@@ -173,15 +173,25 @@ namespace SAM.Analytical.OpenStudio
                     {
                         foreach (Panel panel in panels)
                         {
-                            if (panel == null || !adjacencyCluster.ExposedToSun(panel))
+                            // Exception isolation: SAM's geometry kernel can throw on
+                            // pathological panels — skip them (they are diagnosed by the
+                            // no-silent-drop check) instead of crashing the conversion.
+                            try
+                            {
+                                if (panel == null || !adjacencyCluster.ExposedToSun(panel))
+                                {
+                                    continue;
+                                }
+
+                                double panelArea = panel.GetArea();
+                                if (!double.IsNaN(panelArea))
+                                {
+                                    exteriorArea += panelArea;
+                                }
+                            }
+                            catch (System.Exception)
                             {
                                 continue;
-                            }
-
-                            double panelArea = panel.GetArea();
-                            if (!double.IsNaN(panelArea))
-                            {
-                                exteriorArea += panelArea;
                             }
                         }
                     }

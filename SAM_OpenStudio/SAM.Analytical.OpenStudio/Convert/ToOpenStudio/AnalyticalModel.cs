@@ -102,7 +102,16 @@ namespace SAM.Analytical.OpenStudio
 
                     if (buildingStories.Count > 0)
                     {
-                        double elevation = space.MinElevation(adjacencyCluster);
+                        double elevation;
+                        try
+                        {
+                            elevation = space.MinElevation(adjacencyCluster);
+                        }
+                        catch (System.Exception)
+                        {
+                            elevation = double.NaN;
+                        }
+
                         if (!double.IsNaN(elevation))
                         {
                             double difference_Min = double.MaxValue;
@@ -143,7 +152,17 @@ namespace SAM.Analytical.OpenStudio
                     }
 
                     int index = adjacencyCluster.GetIndex(space);
-                    List<IPanel> panels = adjacencyCluster.UpdateNormals(space, false, true, false, Core.Tolerance.MacroDistance, options.DistanceTolerance);
+                    List<IPanel> panels;
+                    try
+                    {
+                        panels = adjacencyCluster.UpdateNormals(space, false, true, false, Core.Tolerance.MacroDistance, options.DistanceTolerance);
+                    }
+                    catch (System.Exception exception)
+                    {
+                        context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("The space shell could not be computed ({0}); no surfaces were created for the space", exception.GetType().Name), space);
+                        continue;
+                    }
+
                     if (panels == null || panels.Count == 0)
                     {
                         context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Space has no related panels; no surfaces were created", space);
@@ -164,7 +183,17 @@ namespace SAM.Analytical.OpenStudio
                             continue;
                         }
 
-                        global::OpenStudio.Surface surface = panel.ToOpenStudio(openStudioSpace, index, context, subSurfacesByAperture);
+                        global::OpenStudio.Surface surface;
+                        try
+                        {
+                            surface = panel.ToOpenStudio(openStudioSpace, index, context, subSurfacesByAperture);
+                        }
+                        catch (System.Exception exception)
+                        {
+                            context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Panel geometry could not be converted ({0}); the panel was skipped, never repaired", exception.GetType().Name), panel);
+                            continue;
+                        }
+
                         if (surface == null)
                         {
                             continue;
@@ -179,6 +208,40 @@ namespace SAM.Analytical.OpenStudio
 
                         surfaces.Add(surface);
                         panelByGuid[panel.Guid] = panel;
+                    }
+                }
+            }
+
+            // No silent drops: any panel related to a space that never became a surface
+            // (excluded from the computed space shell — degenerate or disconnected geometry,
+            // or rejected by validation) is reported explicitly.
+            if (spaces != null)
+            {
+                HashSet<Guid> reportedPanels = new HashSet<Guid>();
+                foreach (Space space in spaces)
+                {
+                    if (space == null)
+                    {
+                        continue;
+                    }
+
+                    List<Panel> relatedPanels = adjacencyCluster.GetPanels(space);
+                    if (relatedPanels == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (Panel relatedPanel in relatedPanels)
+                    {
+                        if (relatedPanel == null || relatedPanel.PanelType == PanelType.Shade)
+                        {
+                            continue;
+                        }
+
+                        if (!surfacesByPanel.ContainsKey(relatedPanel.Guid) && reportedPanels.Add(relatedPanel.Guid))
+                        {
+                            context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Panel related to a space produced no surface (excluded from the space shell — degenerate or disconnected geometry); it was skipped, never repaired", relatedPanel);
+                        }
                     }
                 }
             }

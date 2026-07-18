@@ -32,14 +32,49 @@ namespace SAM.Analytical.OpenStudio
                 return result;
             }
 
-            Dictionary<double, List<IPanel>> dictionary = Analytical.Query.MinElevationDictionary(panels.ConvertAll(x => (IPanel)x), true);
-            if (dictionary == null || dictionary.Count == 0)
+            // Per-panel elevation with exception isolation: SAM's geometry kernel can throw on
+            // pathological panels (e.g. degenerate slivers) — such panels are skipped here and
+            // surfaced later by the no-silent-drop check, never allowed to crash the conversion.
+            List<double> rawElevations = new List<double>();
+            foreach (Panel panel in panels)
+            {
+                // Stories derive from floor-group panels only (matching SAM's
+                // MinElevationDictionary filtering) — walls and roofs do not define levels.
+                if (panel == null || panel.PanelType.PanelGroup() != PanelGroup.Floor)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    double panelElevation = Analytical.Query.MinElevation(panel);
+                    if (!double.IsNaN(panelElevation))
+                    {
+                        rawElevations.Add(panelElevation);
+                    }
+                }
+                catch (System.Exception exception)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Panel elevation could not be computed ({0}); panel ignored for story grouping", exception.GetType().Name), panel);
+                }
+            }
+
+            if (rawElevations.Count == 0)
             {
                 return result;
             }
 
-            List<double> elevations = new List<double>(dictionary.Keys);
-            elevations.Sort();
+            rawElevations.Sort();
+
+            double elevationTolerance = openStudioConversionContext.Options.ElevationTolerance;
+            List<double> elevations = new List<double>();
+            foreach (double rawElevation in rawElevations)
+            {
+                if (elevations.Count == 0 || rawElevation - elevations[elevations.Count - 1] > elevationTolerance)
+                {
+                    elevations.Add(rawElevation);
+                }
+            }
 
             for (int i = 0; i < elevations.Count; i++)
             {
