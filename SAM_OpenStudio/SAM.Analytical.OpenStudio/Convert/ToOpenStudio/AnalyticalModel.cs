@@ -38,8 +38,9 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="outputDirectory">Directory for the OSM/OSW and the isolated run folder.</param>
         /// <param name="openStudioConversionOptions">Conversion options; defaults when null.</param>
         /// <param name="openStudioRunOptions">Run options (CLI path, timeout); defaults when null.</param>
+        /// <param name="run">False converts and saves OSM/OSW without executing the CLI.</param>
         /// <returns>Conversion result including RunResult and Loads; null when input is null.</returns>
-        public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null)
+        public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true)
         {
             OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions);
             if (context == null)
@@ -49,7 +50,7 @@ namespace SAM.Analytical.OpenStudio
 
             context.ToOpenStudio_Weather(epwPath);
             context.ToOpenStudio_SimulationSettings();
-            return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions);
+            return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions, run);
         }
 
         private static OpenStudioConversionContext ToOpenStudio_Context(AnalyticalModel analyticalModel, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions)
