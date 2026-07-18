@@ -93,6 +93,24 @@ namespace SAM.Analytical.OpenStudio
                         }
                     }
 
+                    InternalCondition internalCondition = space.InternalCondition;
+                    if (internalCondition != null)
+                    {
+                        global::OpenStudio.SpaceType spaceType = internalCondition.ToOpenStudio(space, context);
+                        if (spaceType != null)
+                        {
+                            openStudioSpace.setSpaceType(spaceType);
+                        }
+                    }
+
+                    if (space.TryGetValue(SpaceParameter.OutsideSupplyAirFlow, out double outsideSupplyAirFlow) && !double.IsNaN(outsideSupplyAirFlow) && outsideSupplyAirFlow > 0)
+                    {
+                        global::OpenStudio.DesignSpecificationOutdoorAir designSpecificationOutdoorAir = new global::OpenStudio.DesignSpecificationOutdoorAir(context.Target);
+                        designSpecificationOutdoorAir.setName(Core.OpenStudio.Query.OpenStudioName("DesignSpecificationOutdoorAir", space.Name, space.Guid));
+                        designSpecificationOutdoorAir.setOutdoorAirFlowRate(outsideSupplyAirFlow);
+                        openStudioSpace.setDesignSpecificationOutdoorAir(designSpecificationOutdoorAir);
+                    }
+
                     int index = adjacencyCluster.GetIndex(space);
                     List<IPanel> panels = adjacencyCluster.UpdateNormals(space, false, true, false, Core.Tolerance.MacroDistance, options.DistanceTolerance);
                     if (panels == null || panels.Count == 0)

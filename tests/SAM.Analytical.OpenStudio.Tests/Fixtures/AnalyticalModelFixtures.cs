@@ -88,32 +88,100 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         /// <summary>
+        /// Office-hours (08:00–17:59) fraction profiles, constant equipment/infiltration and
+        /// 21/25 °C setpoint profiles backing the fixture internal condition.
+        /// </summary>
+        public static ProfileLibrary CreateProfileLibrary()
+        {
+            double[] officeHours = new double[24];
+            for (int i = 8; i <= 17; i++)
+            {
+                officeHours[i] = 1;
+            }
+
+            double[] alwaysOn = new double[24];
+            double[] heating = new double[24];
+            double[] cooling = new double[24];
+            for (int i = 0; i < 24; i++)
+            {
+                alwaysOn[i] = 1;
+                heating[i] = 21;
+                cooling[i] = 25;
+            }
+
+            ProfileLibrary result = new ProfileLibrary("Fixture Profile Library");
+            result.Add(new Profile("Office Occupancy", ProfileType.Occupancy, officeHours));
+            result.Add(new Profile("Office Lighting", ProfileType.Lighting, officeHours));
+            result.Add(new Profile("Office Equipment", ProfileType.EquipmentSensible, alwaysOn));
+            result.Add(new Profile("Office Infiltration", ProfileType.Infiltration, alwaysOn));
+            result.Add(new Profile("Office Heating", ProfileType.Heating, heating));
+            result.Add(new Profile("Office Cooling", ProfileType.Cooling, cooling));
+            return result;
+        }
+
+        /// <summary>
+        /// Conditioned office internal condition: 10 m²/person, 75/55 W sensible/latent per
+        /// person, 8 W/m² lighting, 12 W/m² equipment, 0.5 ACH infiltration, 0.02 m³/s outdoor
+        /// air, 21/25 °C setpoints; profile references into <see cref="CreateProfileLibrary"/>.
+        /// </summary>
+        public static InternalCondition CreateOfficeInternalCondition()
+        {
+            InternalCondition result = new InternalCondition(new Guid("44444444-0000-0000-0000-000000000001"), "Office");
+            result.SetValue(InternalConditionParameter.AreaPerPerson, 10.0);
+            result.SetValue(InternalConditionParameter.OccupancySensibleGainPerPerson, 75.0);
+            result.SetValue(InternalConditionParameter.OccupancyLatentGainPerPerson, 55.0);
+            result.SetValue(InternalConditionParameter.LightingGainPerArea, 8.0);
+            result.SetValue(InternalConditionParameter.EquipmentSensibleGainPerArea, 12.0);
+            result.SetValue(InternalConditionParameter.InfiltrationAirChangesPerHour, 0.5);
+            result.SetValue(InternalConditionParameter.OccupancyProfileName, "Office Occupancy");
+            result.SetValue(InternalConditionParameter.LightingProfileName, "Office Lighting");
+            result.SetValue(InternalConditionParameter.EquipmentSensibleProfileName, "Office Equipment");
+            result.SetValue(InternalConditionParameter.InfiltrationProfileName, "Office Infiltration");
+            result.SetValue(InternalConditionParameter.HeatingProfileName, "Office Heating");
+            result.SetValue(InternalConditionParameter.CoolingProfileName, "Office Cooling");
+            return result;
+        }
+
+        /// <summary>
         /// Two adjacent boxes sharing one internal wall; box A has a window in its south wall.
-        /// 2 spaces, 11 panels (12 OpenStudio surfaces once the shared wall is duplicated per
-        /// side), 1 aperture, full material library.
+        /// 2 spaces (both conditioned offices sharing one InternalCondition), 11 panels
+        /// (12 OpenStudio surfaces once the shared wall is duplicated per side), 1 aperture,
+        /// full material and profile libraries.
         /// </summary>
         public static AnalyticalModel TwoAdjacentBoxes()
         {
             AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
 
+            InternalCondition officeInternalCondition = CreateOfficeInternalCondition();
+
             Space spaceA = new Space(new Guid("aaaaaaaa-0000-0000-0000-000000000001"), "Space A", P(2.5, 2, 1.5));
+            spaceA.SetValue(SpaceParameter.Area, 20.0);
+            spaceA.SetValue(SpaceParameter.Volume, 60.0);
+            spaceA.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
+            spaceA.InternalCondition = officeInternalCondition;
+
             Space spaceB = new Space(new Guid("bbbbbbbb-0000-0000-0000-000000000002"), "Space B", P(7.5, 2, 1.5));
+            spaceB.SetValue(SpaceParameter.Area, 20.0);
+            spaceB.SetValue(SpaceParameter.Volume, 60.0);
+            spaceB.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
+            spaceB.InternalCondition = officeInternalCondition;
+
             adjacencyCluster.AddObject(spaceA);
             adjacencyCluster.AddObject(spaceB);
 
             Panel floorA = AnalyticalCreate.Panel(WallConstruction, PanelType.SlabOnGrade, F(P(0, 0, 0), P(5, 0, 0), P(5, 4, 0), P(0, 4, 0)));
             Panel roofA = AnalyticalCreate.Panel(WallConstruction, PanelType.Roof, F(P(0, 0, 3), P(5, 0, 3), P(5, 4, 3), P(0, 4, 3)));
-            Panel wallSouthA = AnalyticalCreate.Panel(WallConstruction, PanelType.Wall, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3)));
-            Panel wallWestA = AnalyticalCreate.Panel(WallConstruction, PanelType.Wall, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3)));
-            Panel wallNorthA = AnalyticalCreate.Panel(WallConstruction, PanelType.Wall, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3)));
+            Panel wallSouthA = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3)));
+            Panel wallWestA = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3)));
+            Panel wallNorthA = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3)));
 
             Panel wallShared = AnalyticalCreate.Panel(WallConstruction, PanelType.WallInternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3)));
 
             Panel floorB = AnalyticalCreate.Panel(WallConstruction, PanelType.SlabOnGrade, F(P(5, 0, 0), P(10, 0, 0), P(10, 4, 0), P(5, 4, 0)));
             Panel roofB = AnalyticalCreate.Panel(WallConstruction, PanelType.Roof, F(P(5, 0, 3), P(10, 0, 3), P(10, 4, 3), P(5, 4, 3)));
-            Panel wallSouthB = AnalyticalCreate.Panel(WallConstruction, PanelType.Wall, F(P(5, 0, 0), P(10, 0, 0), P(10, 0, 3), P(5, 0, 3)));
-            Panel wallEastB = AnalyticalCreate.Panel(WallConstruction, PanelType.Wall, F(P(10, 0, 0), P(10, 4, 0), P(10, 4, 3), P(10, 0, 3)));
-            Panel wallNorthB = AnalyticalCreate.Panel(WallConstruction, PanelType.Wall, F(P(5, 4, 0), P(10, 4, 0), P(10, 4, 3), P(5, 4, 3)));
+            Panel wallSouthB = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 0, 0), P(10, 0, 0), P(10, 0, 3), P(5, 0, 3)));
+            Panel wallEastB = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(10, 0, 0), P(10, 4, 0), P(10, 4, 3), P(10, 0, 3)));
+            Panel wallNorthB = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 4, 0), P(10, 4, 0), P(10, 4, 3), P(5, 4, 3)));
 
             Aperture window = AnalyticalCreate.Aperture(WindowConstruction, F(P(1, 0, 0.8), P(3, 0, 0.8), P(3, 0, 2.2), P(1, 0, 2.2)));
             wallSouthA.AddAperture(window);
@@ -137,7 +205,7 @@ namespace SAM.Analytical.OpenStudio.Tests
                 adjacencyCluster.AddRelation(spaceB, panel);
             }
 
-            return new AnalyticalModel("Two Box Model", "MVP two adjacent boxes fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), null);
+            return new AnalyticalModel("Two Box Model", "MVP two adjacent boxes fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), CreateProfileLibrary());
         }
 
         /// <summary>
@@ -145,23 +213,27 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// given construction (fixture default when null). Used by simulation and failure-policy
         /// tests.
         /// </summary>
-        public static AnalyticalModel SingleBox(Construction wallConstruction = null, bool includeWindow = true)
+        public static AnalyticalModel SingleBox(Construction wallConstruction = null, bool includeWindow = true, bool withProfiles = true)
         {
             Construction construction = wallConstruction ?? WallConstruction;
 
             AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
 
             Space space = new Space(new Guid("cccccccc-0000-0000-0000-000000000001"), "Space Single", P(2.5, 2, 1.5));
+            space.SetValue(SpaceParameter.Area, 20.0);
+            space.SetValue(SpaceParameter.Volume, 60.0);
+            space.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
+            space.InternalCondition = CreateOfficeInternalCondition();
             adjacencyCluster.AddObject(space);
 
             List<Panel> panels = new List<Panel>
             {
                 AnalyticalCreate.Panel(construction, PanelType.SlabOnGrade, F(P(0, 0, 0), P(5, 0, 0), P(5, 4, 0), P(0, 4, 0))),
                 AnalyticalCreate.Panel(construction, PanelType.Roof, F(P(0, 0, 3), P(5, 0, 3), P(5, 4, 3), P(0, 4, 3))),
-                AnalyticalCreate.Panel(construction, PanelType.Wall, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3))),
-                AnalyticalCreate.Panel(construction, PanelType.Wall, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3))),
-                AnalyticalCreate.Panel(construction, PanelType.Wall, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3))),
-                AnalyticalCreate.Panel(construction, PanelType.Wall, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3))),
+                AnalyticalCreate.Panel(construction, PanelType.WallExternal, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(construction, PanelType.WallExternal, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(construction, PanelType.WallExternal, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3))),
+                AnalyticalCreate.Panel(construction, PanelType.WallExternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3))),
             };
 
             if (includeWindow)
@@ -175,7 +247,7 @@ namespace SAM.Analytical.OpenStudio.Tests
                 adjacencyCluster.AddRelation(space, panel);
             }
 
-            return new AnalyticalModel("Single Box Model", "MVP one-zone box fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), null);
+            return new AnalyticalModel("Single Box Model", "MVP one-zone box fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), withProfiles ? CreateProfileLibrary() : new ProfileLibrary("Empty Profile Library"));
         }
     }
 }
