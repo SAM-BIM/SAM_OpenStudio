@@ -7,19 +7,20 @@ completed milestone. See [SAM_OpenStudio_MVP_Implementation_Plan.md](SAM_OpenStu
 
 | Field | Value |
 | --- | --- |
-| Milestone completed | **M0 — toolchain gate + audit** |
+| Milestone completed | **M1 — conversion contracts and diagnostics** |
 | Branch | `feature/analytical-model-to-openstudio-mvp` (base `sow/2026-Q3` @ 94dfce9) |
-| Commit | the commit introducing this file (SHA backfilled in the table below at the next gate) |
+| Commit | the commit introducing this change (SHA backfilled in the table below at the next gate) |
 | SDK selected | OpenStudio NuGet **3.10.0** (bumped from 3.8.0 in all three library projects) |
 | CLI selected | **3.10.0+86d7e215a1** — `C:\Program Files\ladybug_tools\openstudio\bin\openstudio.exe` (discovery: explicit → PATH → direct installs → ladybug_tools) |
-| Tests executed | 2/2 passed — `OpenStudioSmokeTests` (SDK round-trip; CLI opens generated OSM) |
-| Next milestone | **M1 — conversion contracts and diagnostics** (options, diagnostics, object map, context, result, deterministic naming + tests) |
+| Tests executed | 14/14 passed — smoke (2) + naming (4) + object map (4) + diagnostics/context (4) |
+| Next milestone | **M2 — geometry primitive conversion** (`SAM.Geometry.OpenStudio`: point/polygon conversion, vertex cleaning, planarity/area validation, 9 test cases) |
 
 ## Milestone history
 
 | M | Commit | Tests | Notes |
 | --- | --- | --- | --- |
-| M0 | (this commit) | 2/2 | SDK 3.8.0→3.10.0; CLI verified; tests project created; weather fixture pinned; placeholder `Test.cs` removed |
+| M0 | d3a4a17 | 2/2 | SDK 3.8.0→3.10.0; CLI verified; tests project created; weather fixture pinned; placeholder `Test.cs` removed |
+| M1 | (this commit) | 14/14 | Diagnostics (+codes/severity), conversion/run options, run result, object reference/map, context + result snapshot, SanitizeName/OpenStudioName/versions queries |
 
 ## Known limitations at this point
 

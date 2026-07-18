@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace SAM.Core.OpenStudio
+{
+    /// <summary>
+    /// Stable diagnostic codes used across the SAM → OpenStudio conversion, defined by the
+    /// MVP implementation plan (docs/SAM_OpenStudio_MVP_Implementation_Plan.md, section 6).
+    /// </summary>
+    public static class OpenStudioDiagnosticCodes
+    {
+        /// <summary>Invalid or non-planar boundary.</summary>
+        public const string GeometryInvalidBoundary = "SAM-OS-GEO-001";
+
+        /// <summary>Duplicate or collinear vertices removed.</summary>
+        public const string GeometryVerticesCleaned = "SAM-OS-GEO-002";
+
+        /// <summary>Missing adjacent surface.</summary>
+        public const string AdjacencyMissingSurface = "SAM-OS-ADJ-001";
+
+        /// <summary>Unsupported material.</summary>
+        public const string MaterialUnsupported = "SAM-OS-MAT-001";
+
+        /// <summary>Missing construction layer.</summary>
+        public const string ConstructionMissingLayer = "SAM-OS-CON-001";
+
+        /// <summary>Missing profile.</summary>
+        public const string ScheduleMissingProfile = "SAM-OS-SCH-001";
+
+        /// <summary>Unsupported internal-condition parameter.</summary>
+        public const string InternalConditionUnsupportedParameter = "SAM-OS-IC-001";
+
+        /// <summary>Conditioned zone missing setpoints.</summary>
+        public const string HvacMissingSetpoints = "SAM-OS-HVAC-001";
+
+        /// <summary>OpenStudio CLI failed.</summary>
+        public const string RunCliFailed = "SAM-OS-RUN-001";
+
+        /// <summary>EnergyPlus severe error.</summary>
+        public const string EnergyPlusSevereError = "SAM-OS-EPLUS-001";
+    }
+}
