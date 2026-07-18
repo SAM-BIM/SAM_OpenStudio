@@ -66,5 +66,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SAM.Core.OpenStudio\SAM.Core.OpenStudio.csproj" />
+    <ProjectReference Include="..\SAM.Geometry.OpenStudio\SAM.Geometry.OpenStudio.csproj" />
   </ItemGroup>
 </Project>
