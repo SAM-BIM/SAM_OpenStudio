@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: LGPL-3.0-only
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
 
 using System;
 using System.Collections.Generic;
@@ -188,6 +189,107 @@ namespace SAM.Analytical.OpenStudio
                     if (!subSurfaces[0].setAdjacentSubSurface(subSurfaces[1]))
                     {
                         context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "OpenStudio rejected the adjacent-subsurface pairing for an internal aperture", null, subSurfaces[0].nameString());
+                    }
+                }
+            }
+
+            // Pass D: constructions — forward (outside-first, EnergyPlus order) for every
+            // single-sided surface and the primary side of internal pairs; reverse for the
+            // paired secondary side; a shared air-boundary construction for Air panels.
+            global::OpenStudio.ConstructionAirBoundary constructionAirBoundary = null;
+            foreach (KeyValuePair<Guid, List<global::OpenStudio.Surface>> keyValuePair in surfacesByPanel)
+            {
+                Panel panel = panelByGuid[keyValuePair.Key];
+                List<global::OpenStudio.Surface> surfaces = keyValuePair.Value;
+
+                if (panel.PanelType == PanelType.Air)
+                {
+                    if (constructionAirBoundary == null)
+                    {
+                        constructionAirBoundary = new global::OpenStudio.ConstructionAirBoundary(context.Target);
+                        constructionAirBoundary.setName("SAM_Construction_AirBoundary");
+                    }
+
+                    foreach (global::OpenStudio.Surface surface in surfaces)
+                    {
+                        surface.setConstruction(constructionAirBoundary);
+                    }
+
+                    continue;
+                }
+
+                Construction construction = panel.Construction;
+                if (construction == null)
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionMissingLayer, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Panel has no construction", panel);
+                    continue;
+                }
+
+                global::OpenStudio.Construction forwardConstruction = construction.ToOpenStudio(true, context);
+                if (forwardConstruction == null)
+                {
+                    continue;
+                }
+
+                surfaces[0].setConstruction(forwardConstruction);
+
+                if (surfaces.Count >= 2)
+                {
+                    global::OpenStudio.Construction reverseConstruction = construction.ToOpenStudio(false, context);
+                    if (reverseConstruction != null)
+                    {
+                        surfaces[1].setConstruction(reverseConstruction);
+                    }
+                }
+            }
+
+            Dictionary<Guid, Aperture> apertureByGuid = new Dictionary<Guid, Aperture>();
+            foreach (Panel panel in panelByGuid.Values)
+            {
+                List<Aperture> apertures = panel.Apertures;
+                if (apertures == null)
+                {
+                    continue;
+                }
+
+                foreach (Aperture aperture in apertures)
+                {
+                    if (aperture != null && !apertureByGuid.ContainsKey(aperture.Guid))
+                    {
+                        apertureByGuid[aperture.Guid] = aperture;
+                    }
+                }
+            }
+
+            foreach (KeyValuePair<Guid, List<global::OpenStudio.SubSurface>> keyValuePair in subSurfacesByAperture)
+            {
+                Aperture aperture;
+                if (!apertureByGuid.TryGetValue(keyValuePair.Key, out aperture))
+                {
+                    continue;
+                }
+
+                ApertureConstruction apertureConstruction = aperture.ApertureConstruction;
+                if (apertureConstruction == null)
+                {
+                    continue;
+                }
+
+                List<global::OpenStudio.SubSurface> subSurfaces = keyValuePair.Value;
+                global::OpenStudio.Construction forwardConstruction = apertureConstruction.ToOpenStudio(true, context);
+                if (forwardConstruction == null)
+                {
+                    continue;
+                }
+
+                subSurfaces[0].setConstruction(forwardConstruction);
+
+                if (subSurfaces.Count >= 2)
+                {
+                    global::OpenStudio.Construction reverseConstruction = apertureConstruction.ToOpenStudio(false, context);
+                    if (reverseConstruction != null)
+                    {
+                        subSurfaces[1].setConstruction(reverseConstruction);
                     }
                 }
             }
