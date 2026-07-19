@@ -92,15 +92,30 @@ namespace SAM.Analytical.OpenStudio
             List<string> fatalErrors = new List<string>();
             if (File.Exists(errorFilePath))
             {
-                foreach (string line in File.ReadAllLines(errorFilePath))
+                string[] errorLines;
+                try
                 {
-                    if (line.Contains("** Severe"))
+                    // After a timeout kill the err file can still be locked by the dying
+                    // process or be partially written — parsing is best effort.
+                    errorLines = File.ReadAllLines(errorFilePath);
+                }
+                catch (System.Exception)
+                {
+                    errorLines = null;
+                }
+
+                if (errorLines != null)
+                {
+                    foreach (string line in errorLines)
                     {
-                        severeErrors.Add(line.Trim());
-                    }
-                    else if (line.Contains("**  Fatal") || line.Contains("** Fatal"))
-                    {
-                        fatalErrors.Add(line.Trim());
+                        if (line.Contains("** Severe"))
+                        {
+                            severeErrors.Add(line.Trim());
+                        }
+                        else if (line.Contains("**  Fatal") || line.Contains("** Fatal"))
+                        {
+                            fatalErrors.Add(line.Trim());
+                        }
                     }
                 }
             }
@@ -214,15 +229,28 @@ namespace SAM.Analytical.OpenStudio
             List<string> fatalErrors = new List<string>();
             if (File.Exists(errorFilePath))
             {
-                foreach (string line in File.ReadAllLines(errorFilePath))
+                string[] errorLines;
+                try
                 {
-                    if (line.Contains("** Severe"))
+                    errorLines = File.ReadAllLines(errorFilePath);
+                }
+                catch (System.Exception)
+                {
+                    errorLines = null;
+                }
+
+                if (errorLines != null)
+                {
+                    foreach (string line in errorLines)
                     {
-                        severeErrors.Add(line.Trim());
-                    }
-                    else if (line.Contains("**  Fatal") || line.Contains("** Fatal"))
-                    {
-                        fatalErrors.Add(line.Trim());
+                        if (line.Contains("** Severe"))
+                        {
+                            severeErrors.Add(line.Trim());
+                        }
+                        else if (line.Contains("**  Fatal") || line.Contains("** Fatal"))
+                        {
+                            fatalErrors.Add(line.Trim());
+                        }
                     }
                 }
             }
@@ -261,27 +289,76 @@ namespace SAM.Analytical.OpenStudio
                 CreateNoWindow = true,
             };
 
+            System.Text.StringBuilder standardOutput = new System.Text.StringBuilder();
+            System.Text.StringBuilder standardError = new System.Text.StringBuilder();
+            object sync = new object();
+
             using (Process process = Process.Start(processStartInfo))
             {
-                string standardOutput = process.StandardOutput.ReadToEnd();
-                string standardError = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit(timeoutSeconds <= 0 ? 3600000 : timeoutSeconds * 1000))
+                if (process == null)
                 {
-                    try
-                    {
-                        process.Kill();
-                    }
-                    catch (System.Exception)
-                    {
-                        // the process may have exited between the timeout and the kill
-                    }
-
                     exitCode = -1;
-                    return "TIMEOUT after " + timeoutSeconds + " s\n" + standardOutput + standardError;
+                    return "The CLI process could not be started";
                 }
 
-                exitCode = process.ExitCode;
-                return standardOutput + standardError;
+                // Job object first (best effort): on timeout the whole tree — the CLI and any
+                // EnergyPlus child it spawned — is terminated when the job handle closes.
+                System.IntPtr jobHandle = ProcessJobObject.CreateKillOnCloseJob();
+                ProcessJobObject.TryAssign(jobHandle, process);
+
+                try
+                {
+                    // Asynchronous reads: synchronous ReadToEnd on both pipes can deadlock
+                    // (child blocks writing to a full stderr pipe while the parent blocks on
+                    // stdout) and blocks the timeout from ever being evaluated.
+                    process.OutputDataReceived += (sender, e) => { if (e.Data != null) { lock (sync) { standardOutput.AppendLine(e.Data); } } };
+                    process.ErrorDataReceived += (sender, e) => { if (e.Data != null) { lock (sync) { standardError.AppendLine(e.Data); } } };
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+
+                    int timeoutMilliseconds = timeoutSeconds <= 0 ? 3600000 : timeoutSeconds * 1000;
+                    if (!process.WaitForExit(timeoutMilliseconds))
+                    {
+                        // Terminate the tree first (children keep spawning while the root dies),
+                        // then kill the root as the fallback for a failed job assignment.
+                        ProcessJobObject.Terminate(jobHandle);
+
+                        try
+                        {
+                            process.Kill();
+                        }
+                        catch (System.Exception)
+                        {
+                            // the process may have exited between the timeout and the kill
+                        }
+
+                        try
+                        {
+                            process.WaitForExit(5000);
+                        }
+                        catch (System.Exception)
+                        {
+                            // best effort
+                        }
+
+                        exitCode = -1;
+                        lock (sync)
+                        {
+                            return "TIMEOUT after " + timeoutSeconds + " s\n" + standardOutput + standardError.ToString();
+                        }
+                    }
+
+                    process.WaitForExit(); // let the asynchronous output handlers flush
+                    exitCode = process.ExitCode;
+                    lock (sync)
+                    {
+                        return standardOutput.ToString() + standardError;
+                    }
+                }
+                finally
+                {
+                    ProcessJobObject.Close(jobHandle);
+                }
             }
         }
 
