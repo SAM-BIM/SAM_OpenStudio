@@ -23,24 +23,27 @@ SQL extraction was independently cross-checked and is exact.
 
 Five P1 findings and two P2 findings were confirmed by reproduction (each with executable
 evidence below). No P0 finding exists: nothing crashes the converter, corrupts results or
-endangers the repository in the tested paths.
+endangers the repository in the tested paths. **All seven findings are resolved**, each in its own
+commit with a regression test.
 
-| ID | Priority | Finding |
-| --- | --- | --- |
-| P1-01 | P1 | Weekly (day-composed) profiles are tiled Monday-first with no alignment to the run calendar; with the pinned EPW (Jan 1 = Sunday) every weekday/weekend pattern lands on the wrong calendar day |
-| P1-02 | P1 | Profiles with more than 8760 values (leap year 8784) or multi-day flat sequences are silently block-averaged into a single "average day" — silent schedule corruption |
-| P1-03 | P1 | `SpaceType` deduplication by sanitized name silently merges two internal conditions that share a name but differ in gains or profiles |
-| P1-04 | P1 | Glazing front/back optical properties are swapped relative to EnergyPlus semantics (SAM `Internal*` written to the E+ *front* = exterior-facing side) |
-| P1-05 | P1 | CLI runner: `TimeoutSeconds` never fires while the process runs (proven: 120.6 s block with a 5 s timeout); sequential `ReadToEnd()` on both pipes can deadlock; process tree not killed |
-| P2-01 | P2 | Self-intersecting polygons with non-zero signed area are accepted silently and become invalid EnergyPlus surfaces |
-| P2-02 | P2 | `SanitizeName` keeps `'` and `"`; such names break the SQL extraction query and the zone's results are silently dropped |
+| ID | Priority | Finding | Status |
+| --- | --- | --- | --- |
+| P1-01 | P1 | Weekly (day-composed) profiles were tiled Monday-first with no alignment to the run calendar; with the pinned EPW (Jan 1 = Sunday) every weekday/weekend pattern landed on the wrong calendar day | Resolved `4d28513` |
+| P1-02 | P1 | Profiles with more than 8760 values (leap year 8784) or multi-day flat sequences were silently block-averaged into a single "average day" — silent schedule corruption | Resolved `1971bdc` |
+| P1-03 | P1 | `SpaceType` deduplication by sanitized name silently merged two internal conditions that share a name but differ in gains or profiles | Resolved `f46c98f` |
+| P1-04 | P1 | Glazing front/back optical properties were swapped relative to EnergyPlus semantics (SAM `Internal*` written to the E+ *front* = exterior-facing side) | Resolved `fea508f` |
+| P1-05 | P1 | CLI runner: `TimeoutSeconds` never fired while the process ran (proven: 120.6 s block with a 5 s timeout); sequential `ReadToEnd()` on both pipes could deadlock; process tree not killed | Resolved `20b2b85` |
+| P2-01 | P2 | Self-intersecting polygons with non-zero signed area were accepted silently and became invalid EnergyPlus surfaces | Resolved `add236f` |
+| P2-02 | P2 | `SanitizeName` kept `'` and `"`; such names broke the SQL extraction query and the zone's results were silently dropped | Resolved `8c3367f` |
 
 Environment note: the prebuilt SAM/SAM_SQLite assemblies under `SAM\build` and
 `SAM_SQLite\build` were missing on this machine (only third-party DLLs present). Per the task
 brief they were rebuilt **without modifying sibling source**:
 `dotnet build ..\SAM\SAM.sln -c Debug` and `dotnet build ..\SAM_SQLite\SAM_SQLite.sln -c Debug`
 (default platform; both completed with 0 errors; sibling git trees remained clean before and
-after). No sibling source file was changed, committed or otherwise altered.
+after). The same wipe recurred twice more during the session (an unrelated concurrent process on
+this shared machine — see §10) and was repaired the same way each time. No sibling source file
+was changed, committed or otherwise altered.
 
 ## 2. Baseline reproduced
 
@@ -69,10 +72,10 @@ repository fixtures; paths contain spaces — quoting therefore exercised):
 SQL cross-check (independent Python/sqlite3 query on `two_adjacent\run\eplusout.sql`):
 
 ```text
-EnvironmentPeriods: (1, 'SAM_RUNPERIOD_ANNUAL', type=3 weather-run)   ← single period, no design days
+EnvironmentPeriods: (1, 'SAM_RUNPERIOD_ANNUAL', type=3 weather-run)   <- single period, no design days
 RDD: one Hourly row per zone per variable, units J
 SUM(ReportData) per zone: H 2403.28 / 2471.67 kWh, C 1737.41 / 1093.42 kWh — identical to the runner output
-8760 ReportData rows per zone/variable; J→kWh ÷3.6e6 verified
+8760 ReportData rows per zone/variable; J -> kWh / 3.6e6 verified
 ```
 
 The runner's per-`KeyValue` `SUM` is therefore correct for the MVP configuration (no sizing
@@ -96,26 +99,26 @@ None.
 ### P1-01 — Weekly-profile day-of-week misalignment
 
 - **Priority:** P1
-- **Summary:** Day-composed (weekly) SAM profiles are expanded assuming day 0 (1 Jan) is the first
-  sub-profile ("Monday-first", LadybugTools `ScheduleRuleset` parity). The run calendar's actual
-  start weekday comes from the EPW (Boston TMYx: **Sunday**) and is never consulted, so every
-  weekly pattern is shifted by up to six days relative to the weather calendar.
-- **Affected files:** `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/Profile.cs:168-227`
-  (`AnnualHourlyValues`); `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/AnalyticalModel.cs:43-54`
-  (full-pipeline overload never derives the start weekday).
+- **Summary:** Day-composed (weekly) SAM profiles were expanded assuming day 0 (1 Jan) is the
+  first sub-profile ("Monday-first", LadybugTools `ScheduleRuleset` parity). The run calendar's
+  actual start weekday comes from the EPW (Boston TMYx: **Sunday**) and was never consulted, so
+  every weekly pattern was shifted by up to six days relative to the weather calendar.
+- **Affected files:** `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/Profile.cs`
+  (`AnnualHourlyValues`); `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/AnalyticalModel.cs`
+  (full-pipeline overload never derived the start weekday).
 - **Technical explanation:** SAM weekly profiles are 168-hour cycles whose de-facto convention
   (via SAM_LadybugTools `ScheduleRuleset.cs:73-96`) maps sub-profile 0 → Monday … 6 → Sunday, and
-  EnergyPlus aligns that ruleset to real calendar weekdays from the weather file. The MVP bakes
+  EnergyPlus aligns that ruleset to real calendar weekdays from the weather file. The MVP baked
   the pattern into a `ScheduleFixedInterval` starting 1 Jan with `dailyValues[dayIndex % 7]` —
   correct only when 1 Jan is a Monday.
 - **Reproduction evidence:** weekly profile Mon=1/Sun=0 converted and inspected:
   `day0 (1 Jan, a Sunday per the EPW) = 1` (should be 0), `day7 (Sunday) = 1` (should be 0);
-  `day1` and `day6` happen to match. Generated OSM shows `OS:WeatherFile, Start Day of Week = Sunday`.
-  Fixture profiles are all day-uniform, so no existing test can see this.
+  `day1` and `day6` happened to match. Generated OSM shows `OS:WeatherFile, Start Day of Week = Sunday`.
+  Fixture profiles are all day-uniform, so no existing test could see this.
 - **Impact on generated OSM / results:** for any real SAM model with weekday/weekend profiles,
-  occupancy, lighting, equipment, infiltration and setpoint patterns land on wrong calendar days
-  (weekend gains on weekdays and vice versa). Annual totals are preserved; daily/hourly loads and
-  peak timing are wrong.
+  occupancy, lighting, equipment, infiltration and setpoint patterns landed on wrong calendar
+  days (weekend gains on weekdays and vice versa). Annual totals were preserved; daily/hourly
+  loads and peak timing were wrong.
 - **Recommended correction:** derive the run start weekday from the EPW
   (`EpwFile.startDayOfWeek().value()`, Sunday=0) in the full-pipeline overload, expose an explicit
   override on `OpenStudioConversionOptions`, carry a Monday=0 offset on the conversion context and
@@ -124,27 +127,26 @@ None.
 - **Required regression test:** weekly profile where Monday ≠ weekend values, converted through the
   EPW pipeline (Jan 1 = Sunday): schedule day 0 must equal the weekend value, day 1 the Monday
   value; plus an override-path test.
-- **Status:** Resolved (fix commit `fix: align weekly profile day-of-week with the run calendar (review P1-01)`).
+- **Status:** **Resolved** — commit `4d28513`.
 
 ### P1-02 — >8760-value and multi-day flat profiles silently squashed
 
 - **Priority:** P1
-- **Summary:** `DayHourlyValues` block-averages any flat profile whose value count is a multiple of
-  24 into 24 hourly values. An 8784-hour leap-year profile (block 366) or a 168-hour weekly
-  sequence (block 7) becomes one synthetic "average day" tiled 365 times — with **no diagnostic**.
-- **Affected files:** `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/Profile.cs:168-279`
-  (`AnnualHourlyValues`, `DayHourlyValues`).
+- **Summary:** `DayHourlyValues` block-averaged any flat profile whose value count is a multiple
+  of 24 into 24 hourly values. An 8784-hour leap-year profile (block 366) or a 168-hour weekly
+  sequence (block 7) became one synthetic "average day" tiled 365 times — with **no diagnostic**.
+- **Affected files:** `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/Profile.cs:168-279`.
 - **Technical explanation:** SAM's own annual-expansion semantics are cyclic tiling at the
   profile's own period (`Profile.GetYearlyValues()` → `GetValues(Range(0,8759))` with
-  `BoundedIndex` wrapping; identical to the `profile[i]` indexer, `Profile.cs:1207-1237` in SAM).
-  The MVP's documented rules 3–5 (hold / block-average / tile-with-warning) diverge from that and,
-  for any count > 24 that is a multiple of 24, destroy the sequence silently. The plan (§10)
-  requires "explicitly handle leap years; validate expected value counts".
+  `BoundedIndex` wrapping; identical to the `profile[i]` indexer, SAM `Profile.cs:1207-1237`).
+  The MVP's documented rules 3–5 (hold / block-average / tile-with-warning) diverged from that
+  and, for any count > 24 that is a multiple of 24, destroyed the sequence silently. The plan
+  (§10) requires "explicitly handle leap years; validate expected value counts".
 - **Reproduction evidence:** 8784-value profile with an 08–18 daily pattern converted: schedule
-  `SAM_Schedule_Leap_Occupancy_*` contains `hour0 = 0.4126` — an average of 366 source values —
+  `SAM_Schedule_Leap_Occupancy_*` contained `hour0 = 0.4126` — an average of 366 source values —
   instead of the real pattern; zero diagnostics raised.
-- **Impact:** leap-year or multi-day profiles lose their entire temporal pattern; gains and
-  setpoints become flat average days. Silent.
+- **Impact:** leap-year or multi-day profiles lost their entire temporal pattern; gains and
+  setpoints became flat average days. Silent.
 - **Recommended correction:** replace rules 3–5 with SAM-native semantics: 8760 → as-is;
   >8760 → first 8760 hours with a `SAM-OS-SCH-001` **warning** (documented non-leap policy);
   otherwise tile cyclically through the SAM indexer (`profile[i]`, which already wraps within
@@ -152,92 +154,96 @@ None.
   indexer. Update `docs/SAM_OPENSTUDIO_INTERNAL_CONDITION_MAPPING.md`.
 - **Required regression test:** 8784-value profile → schedule hours 0..8759 equal the source's
   first 8760 values, warning raised; 168-value weekly sequence preserved hour-for-hour (not
-  averaged); 24-value daily unchanged.
-- **Status:** Resolved (fix commit `fix: stop silently squashing leap-year and multi-day profiles (review P1-02)`).
+  averaged); 24-value daily unchanged; gappy profile → error.
+- **Status:** **Resolved** — commit `1971bdc`.
 
 ### P1-03 — Same-named internal conditions merged into one SpaceType
 
 - **Priority:** P1
-- **Summary:** `SpaceType` deduplication keys on the sanitized internal-condition **name only**.
-  Two conditions sharing a name but differing in parameters or profile references silently share
+- **Summary:** `SpaceType` deduplication keyed on the sanitized internal-condition **name only**.
+  Two conditions sharing a name but differing in parameters or profile references silently shared
   the first condition's loads.
 - **Affected files:** `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/InternalCondition.cs:30-45`.
 - **Technical explanation:** SAM's `Space.InternalCondition` setter clones with a new Guid
   (`SAM.Analytical/Classes/Space.cs:94`), so Guid-keying cannot dedup true clones — but
-  SAM_LadybugTools dedups per-Guid (`Model.cs:243-258`, `UniqueName` includes `guid8`), i.e. the
+  SAM_LadybugTools dedups per-Guid (`Model.cs:243-258`; `UniqueName` includes `guid8`), i.e. the
   reference implementation **never merges** distinct objects. The mapping doc's "same semantics as
-  SAM_LadybugTools" claim is inaccurate. Name-only keying merges genuinely different conditions
-  (same library name redefined in another library; same name re-parameterised per orientation;
-  names that sanitize identically).
+  SAM_LadybugTools" claim was inaccurate. Name-only keying merged genuinely different conditions
+  (same library name redefined in another library; same name re-parameterised; names that
+  sanitize identically).
 - **Reproduction evidence:** two-box fixture; Space B given a condition also named `Office` but
-  with `LightingGainPerArea = 99` (Space A: 8). Result: **one** `SpaceType` (`SAM_InternalCondition_Office`),
-  both spaces referencing it — Space B silently simulated at 8 W/m² instead of 99 W/m².
-- **Impact:** wrong loads for every space whose condition collides by name; silent.
+  with `LightingGainPerArea = 99` (Space A: 8). Result: **one** `SpaceType`
+  (`SAM_InternalCondition_Office`), both spaces referencing it — Space B silently simulated at
+  8 W/m² instead of 99 W/m².
+- **Impact:** wrong loads for every space whose condition collided by name; silent.
 - **Recommended correction:** keep name-based readability but qualify the key with a deterministic
   content hash: serialise the condition via `ToJsonObject()`, recursively drop `Guid` properties
   (clone-safe), hash (MD5, first 8 hex) and form `SAM_InternalCondition_<SanitizedName>_<hash8>`.
-  Identical clones still dedup (proven: clone → identical JSON); different content splits (proven:
-  gains change → different JSON). Over-splitting on formatting noise is the safe direction (correct
-  results, merely not shared).
+  Identical clones still dedup (proven: clone → identical JSON); different content splits
+  (proven: gains change → different JSON). Over-splitting on formatting noise is the safe
+  direction (correct results, merely not shared).
 - **Required regression test:** same name / different gains → two SpaceTypes with correct per-space
-  W/m²; same name / identical content → one SpaceType; M5 dedup test updated to the hashed name.
-- **Status:** Resolved (fix commit `fix: deduplicate SpaceTypes by name plus content hash (review P1-03)`).
+  W/m²; same name / identical content → one SpaceType; determinism across conversions.
+- **Status:** **Resolved** — commit `f46c98f`.
 
 ### P1-04 — Glazing front/back optical properties swapped
 
 - **Priority:** P1
 - **Summary:** SAM `InternalSolarReflectance` / `InternalLightReflectance` / `InternalEmissivity`
-  are written to the EnergyPlus **Front** side and the `External*` values to the **Back** side.
+  were written to the EnergyPlus **Front** side and the `External*` values to the **Back** side.
   EnergyPlus defines Front as "the side of the layer opposite the zone" (exterior-facing for
   exterior windows) — i.e. SAM `External*` must map to Front and `Internal*` to Back.
-- **Affected files:** `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/Material.cs:106-139`;
+- **Affected files:** `SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/Material.cs`;
   `docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md` (glazing table).
 - **Technical explanation:** EnergyPlus I/O Reference, *Materials for Glass Windows and Doors*:
   "'Front side' is the side of the layer opposite the zone in which the window is defined… for
   exterior windows, 'front side' is the side closest to the outdoors." SAM parameter descriptions
-  are explicit ("External Emissivity", "Internal Solar Reflectance"). The implementation mirrors
+  are explicit ("External Emissivity", "Internal Solar Reflectance"). The implementation mirrored
   `SAM_LadybugTools/EnergyWindowMaterialGlazing.cs:19-26`, which carries the same inversion; the
   mapping doc flagged exactly this assignment for independent review. Symmetric glass (including
   the fixture's 0.07/0.07, 0.84/0.84) is unaffected, which is why no test caught it.
 - **Reproduction evidence:** code inspection + E+ documentation (quoted above); the generated OSM
-  shows identical front/back values only because the fixture glass is symmetric.
+  showed identical front/back values only because the fixture glass is symmetric.
 - **Impact:** for coated or otherwise asymmetric glazing (the norm for real low-e products), solar
-  reflectance and IR emissivity are applied to the wrong pane faces: wrong gap heat transfer,
+  reflectance and IR emissivity were applied to the wrong pane faces: wrong gap heat transfer,
   wrong solar heat gain, wrong U-value behaviour. Material simulation risk — P1 per the rubric.
 - **Recommended correction:** swap the six assignments (Front ← `External*`, Back ← `Internal*`),
-  document the deliberate deviation from SAM_LadybugTools (with the E+ citation) in the mapping doc.
-- **Required regression test:** asymmetric glass (e.g. internal emissivity 0.1 / external 0.9)
-  → `FrontSideInfraredHemisphericalEmissivity == 0.9`, `BackSide == 0.1`, and the same for solar
-  and visible reflectance.
-- **Status:** Resolved (fix commit `fix: map glazing optical sides to EnergyPlus front/back correctly (review P1-04)`).
+  document the deliberate deviation from SAM_LadybugTools (with the E+ citation) in the mapping
+  doc.
+- **Required regression test:** asymmetric glass (internal emissivity 0.05 / external 0.84;
+  internal reflectance 0.11–0.12 / external 0.31–0.32) → front/back assignments verified for all
+  six fields.
+- **Status:** **Resolved** — commit `fea508f`.
 
 ### P1-05 — CLI timeout ineffective; pipe-read deadlock risk; no process-tree kill
 
 - **Priority:** P1
-- **Summary:** `ExecuteCli` reads `StandardOutput.ReadToEnd()` then `StandardError.ReadToEnd()`
-  and only then calls `WaitForExit(timeout)`. While the child runs, `ReadToEnd()` blocks: the
-  timeout is never evaluated, and if the child fills the stderr pipe buffer while stdout stays
-  open, parent and child deadlock permanently.
+- **Summary:** `ExecuteCli` read `StandardOutput.ReadToEnd()` then `StandardError.ReadToEnd()`
+  and only then called `WaitForExit(timeout)`. While the child ran, `ReadToEnd()` blocked: the
+  timeout was never evaluated, and if the child filled the stderr pipe buffer while stdout stayed
+  open, parent and child deadlocked permanently.
 - **Affected files:** `SAM_OpenStudio/SAM.Analytical.OpenStudio/Classes/OpenStudioSimulationRunner.cs:251-286`.
 - **Technical explanation:** the classic redirected-pipes pattern requires asynchronous reads (or
-  a reader thread per stream) **before** waiting with a timeout. Here the timeout only applies
-  after both streams reach EOF — i.e. after the process has already exited. The plan (§11)
+  a reader thread per stream) **before** waiting with a timeout. Here the timeout only applied
+  after both streams reached EOF — i.e. after the process had already exited. The plan (§11)
   requires "CLI process execution with timeout and cancellation". On timeout only the root
-  process can be killed; the CLI's EnergyPlus child would be orphaned (Windows has no managed
+  process could be killed; the CLI's EnergyPlus child would be orphaned (Windows has no managed
   tree-kill; a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` is the correct mechanism).
 - **Reproduction evidence:** fake `openstudio.exe` (sleeps 120 s, writes 100 bytes) run through
   the public API with `TimeoutSeconds = 5`: the call returned after **120.6 s** with
   `ExitCode = 0` — the timeout never fired.
-- **Impact:** a hung CLI freezes the caller (including the Grasshopper UI thread) indefinitely;
-  under output-heavy failure modes the run can deadlock even without a hang. In Rhino this is a
-  UI-blocking failure exactly where the components are used.
+- **Impact:** a hung CLI froze the caller (including the Grasshopper UI thread) indefinitely;
+  under output-heavy failure modes the run could deadlock even without a hang. In Rhino this is
+  a UI-blocking failure exactly where the components are used.
 - **Recommended correction:** `BeginOutputReadLine`/`BeginErrorReadLine` into StringBuilders;
-  `WaitForExit(timeoutMs)`; on timeout kill via a best-effort Job Object (fallback `Kill()`),
-  drain with a final parameterless `WaitForExit()`, return exit −1 and a `TIMEOUT` diagnostic.
+  `WaitForExit(timeoutMs)`; on timeout terminate via a best-effort Job Object (fallback
+  `Kill()`), drain with a final parameterless `WaitForExit()`, return exit −1 and a `TIMEOUT`
+  diagnostic; err-file parsing best-effort after a kill (file can be locked/partial).
 - **Required regression test:** real CLI, one-zone fixture, `TimeoutSeconds = 1` → run fails with
-  a timeout diagnostic and exit −1 in well under the normal ~10 s runtime, and no `energyplus`
-  process survives (tree-kill check).
-- **Status:** Resolved (fix commit `fix: make the CLI timeout real and deadlock-safe (review P1-05)`).
+  a timeout diagnostic and exit −1 in bounded time, and no `energyplus`/`openstudio` process
+  survives (bounded poll).
+- **Status:** **Resolved** — commit `20b2b85`. Manual re-verification: the same 120 s sleeper now
+  dies at 5.7 s with exit −1.
 
 ---
 
@@ -246,38 +252,40 @@ None.
 ### P2-01 — Self-intersecting polygons accepted silently
 
 - **Priority:** P2
-- **Summary:** `ValidatePolygon` checks duplicates, collinearity, planarity and minimum area, but
-  never self-intersection. A planar self-intersecting polygon with non-zero signed area (e.g. a
-  star pentagon) passes without diagnostics; a bowtie is caught only accidentally (its signed
-  area is ~0).
+- **Summary:** `ValidatePolygon` checked duplicates, collinearity, planarity and minimum area,
+  but never self-intersection. A planar self-intersecting polygon with non-zero signed area
+  (e.g. a star pentagon) passed without diagnostics; a bowtie was caught only accidentally (its
+  signed area is ~0).
 - **Affected files:** `SAM_OpenStudio/SAM.Geometry.OpenStudio/Query/ValidatePolygon.cs:24-61`.
 - **Reproduction evidence:** star polygon (0,0)(10,0)(3,8)(5,-4)(7,8), signed area 48 m² →
-  validation returns **no diagnostics**; bowtie → `SAM-OS-GEO-001` via the degenerate-normal path.
+  validation returned **no diagnostics**; bowtie → `SAM-OS-GEO-001` via the degenerate-normal
+  path.
 - **Impact:** invalid EnergyPlus surfaces (wrong area/shadowing or E+ geometry errors downstream)
-  from geometry the converter claims to have validated.
+  from geometry the converter claimed to have validated.
 - **Recommended correction:** proper-crossing segment-intersection test in the polygon plane
-  (O(n²), ignore shared endpoints and near-touching within tolerance) → `SAM-OS-GEO-001` error.
-- **Required regression test:** star polygon rejected with `SAM-OS-GEO-001`; convex and concave
-  (non-intersecting) polygons still accepted; the full fixture set unaffected.
-- **Status:** Resolved (fix commit `fix: reject self-intersecting polygons (review P2-01)`).
+  (O(n²), ignore shared endpoints, tolerance-aware touch detection) → `SAM-OS-GEO-001` error.
+- **Required regression test:** star and bowtie rejected with `SAM-OS-GEO-001`; concave L-shape
+  and the full fixture set unaffected.
+- **Status:** **Resolved** — commit `add236f`.
 
 ### P2-02 — Apostrophes/quotes survive name sanitization and break SQL extraction
 
 - **Priority:** P2
-- **Summary:** `SanitizeName` strips `,` `;` `!` whitespace/control chars but keeps `'` and `"`.
-  Those characters flow into zone/system names and then into the SQL `WHERE rdd.KeyValue = '…'`
-  literal, breaking the query; the zone is then silently omitted from the load summary
-  (`execAndReturnFirstDouble` fails → `continue`).
+- **Summary:** `SanitizeName` stripped `,` `;` `!` whitespace/control chars but kept `'` and `"`.
+  Those characters flowed into zone/system names and then into the SQL
+  `WHERE rdd.KeyValue = '…'` literal, breaking the query; the zone was then silently omitted from
+  the load summary (`execAndReturnFirstDouble` fails → `continue`).
 - **Affected files:** `SAM_OpenStudio/SAM.Core.OpenStudio/Query/SanitizeName.cs:29`;
   `SAM_OpenStudio/SAM.Analytical.OpenStudio/Classes/OpenStudioSimulationRunner.cs:314-335`.
-- **Reproduction evidence:** code inspection (sanitizer set; SQL string built with raw `'` quoting).
-- **Impact:** zones with apostrophes in SAM space names lose their results silently (result count
+- **Reproduction evidence:** code inspection (sanitizer set; SQL string built with raw `'`
+  quoting).
+- **Impact:** zones with apostrophes in SAM space names lost their results silently (result count
   < conditioned-zone count with no diagnostic).
 - **Recommended correction:** add `'` and `"` to the sanitized set (underscore-collapsed like the
   rest). The SQL query stays simple and the deterministic-name contract is unchanged.
 - **Required regression test:** `SanitizeName("O'Brien \"Annex\"")` contains neither quote
-  character; a conversion of a space named `O'Brien` produces a valid deterministic name.
-- **Status:** Resolved (fix commit `fix: sanitize quotes out of OpenStudio names (review P2-02)`).
+  character; a space named `O'Brien` produces a valid deterministic name.
+- **Status:** **Resolved** — commit `8c3367f`.
 
 ---
 
@@ -363,14 +371,14 @@ None.
 
 | Evidence | Where |
 | --- | --- |
-| Baseline build/test (56/56) | §2; Stage-D rerun recorded in §10 after fixes |
+| Baseline build/test (56/56) | §2; Stage-D rerun in §10 |
 | Three independent simulations | §2 table (temp driver, not the test suite) |
 | SQL cross-check | §2 (Python/sqlite3, exact match) |
 | Weekly misalignment | §4 P1-01 (probe: Mon=1/Sun=0) |
 | Leap-year squash | §4 P1-02 (probe: 8784-value profile) |
 | Same-name IC merge | §4 P1-03 (probe: 99 vs 8 W/m²) |
 | Glazing front/back | §4 P1-04 (E+ I/O Reference quote) |
-| CLI timeout | §4 P1-05 (fake CLI, 120.6 s vs 5 s) |
+| CLI timeout | §4 P1-05 (fake CLI, 120.6 s vs 5 s; post-fix 5.7 s) |
 | Self-intersection | §5 P2-01 (star polygon accepted) |
 | Broken adjacency / internal aperture / sequential runs / missing CLI / invalid EPW | §7 (probes) |
 
@@ -378,20 +386,65 @@ None.
 
 | Commit | Finding | Regression test(s) |
 | --- | --- | --- |
-| `fix: align weekly profile day-of-week with the run calendar (review P1-01)` | P1-01 | `WeeklyProfile_AlignsWithWeatherFileStartDay`, `WeeklyProfile_MondayStart_DefaultUnchanged` |
-| `fix: stop silently squashing leap-year and multi-day profiles (review P1-02)` | P1-02 | `LeapYearProfile_IsTruncatedWithWarning_NotSquashed`, `WeeklyFlatProfile_IsTiled_NotAveraged`, `DailyProfile_Unchanged` |
-| `fix: deduplicate SpaceTypes by name plus content hash (review P1-03)` | P1-03 | `SameNamedConditions_WithDifferentContent_GetDistinctSpaceTypes`, `IdenticalClones_StillShareOneSpaceType` |
-| `fix: map glazing optical sides to EnergyPlus front/back correctly (review P1-04)` | P1-04 | `AsymmetricGlazing_MapsExternalToFront_InternalToBack` |
-| `fix: make the CLI timeout real and deadlock-safe (review P1-05)` | P1-05 | `CliTimeout_KillsProcess_AndReportsTimeout`, `CliRun_CompletesWithinTimeout_OnHealthyRun` |
-| `fix: reject self-intersecting polygons (review P2-01)` | P2-01 | `SelfIntersectingPolygon_IsAnError`, `ConcavePolygon_IsAccepted` |
-| `fix: sanitize quotes out of OpenStudio names (review P2-02)` | P2-02 | `SanitizeName_RemovesQuotes`, `SpaceName_WithApostrophe_ConvertsWithDeterministicName` |
+| `4d28513` fix: align weekly profile day-of-week with the run calendar (review P1-01) | P1-01 | `WeeklyProfile_AlignsWithWeatherFileStartDay`, `WeeklyProfile_MondayFirst_WithoutWeatherFile`, `WeeklyProfile_FirstDayOfWeekOption_OverridesDefault` |
+| `1971bdc` fix: stop silently squashing leap-year and multi-day profiles (review P1-02) | P1-02 | `LeapYearProfile_IsTruncatedWithWarning_NotSquashed`, `WeeklyFlatProfile_IsTiledHourForHour_NotAveraged`, `DailyProfile_TilesUnchanged`, `ProfileWithGaps_RaisesError_NeverSilentNaN` |
+| `f46c98f` fix: deduplicate SpaceTypes by name plus content hash (review P1-03) | P1-03 | `SameNamedConditions_WithDifferentContent_GetDistinctSpaceTypes`, `SameNamedConditions_WithDifferentProfiles_GetDistinctSpaceTypes`, `IdenticalClones_StillShareOneSpaceType` |
+| `fea508f` fix: map glazing optical sides to EnergyPlus front/back correctly (review P1-04) | P1-04 | `AsymmetricGlazing_MapsExternalToFront_InternalToBack` |
+| `20b2b85` fix: make the CLI timeout real and deadlock-safe (review P1-05) | P1-05 | `CliTimeout_KillsProcess_AndReportsTimeout` (plus the pre-existing healthy-run E2E tests); manual re-verification: 120 s sleeper now dies at 5.7 s with exit −1 (was 120.6 s, exit 0) |
+| `add236f` fix: reject self-intersecting polygons (review P2-01) | P2-01 | `SelfIntersectingPolygon_IsAnError`, `BowtiePolygon_IsAnError`, `ConcavePolygon_IsAccepted` |
+| `8c3367f` fix: sanitize quotes out of OpenStudio names (review P2-02) | P2-02 | `SanitizeName_RemovesQuotes`, `SpaceName_WithApostrophe_ConvertsWithDeterministicName` |
 
-*(Commit SHAs and final suite results are recorded in §10 after the Stage-D validation run.)*
+Every fix was reproduced with a failing test first, corrected minimally, verified with the
+focused test and then the complete suite. No existing milestone commit was rewritten.
 
-## 10. Final validation (Stage D) — completed after fixes
+## 10. Final validation (Stage D)
 
-Filled in after the final full-suite run and three-simulation validation; see the closing tables
-in [openstudio-mvp-status.md](openstudio-mvp-status.md) for the authoritative numbers.
+### Build and tests
+
+| Gate | Result |
+| --- | --- |
+| `dotnet build SAM_OpenStudio.sln -c Debug -p:Platform=x64` | **0 compile errors** in every project (only the pre-existing benign MSB3277 `System.Memory` warning). See the environmental note below for the `%APPDATA%` deploy-copy caveat on this shared machine |
+| `dotnet test tests/SAM.Analytical.OpenStudio.Tests -c Debug -p:Platform=x64` | **73/73 passed, 0 skipped** (baseline 56 + 17 review regression tests) |
+
+**Environmental note (not an MVP defect):** during this session a second, unrelated process on
+this shared machine rebuilt the entire SAM suite and started a Rhino 8 instance (pid 5412,
+started 11:37) with the SAM GHAs loaded from `%APPDATA%\SAM`. It twice wiped the prebuilt
+`SAM\build` / `SAM_SQLite\build` assemblies (rebuilt by this session each time, per the brief —
+no sibling source touched) and then locked the `.gha` files in `%APPDATA%\SAM`, so the
+**pre-existing** post-build deploy copy (`build\*.dll → %APPDATA%\SAM`, unchanged from the base
+branch and out of MVP scope) fails with `MSB3073` while Rhino holds those files. All projects
+**compile** — the GH assemblies' DLLs are produced; only the convenience deploy copy collides
+with the running Rhino. The full solution build was green at baseline (10:30) and after every
+fix commit until the Rhino session started. A clean machine (or this machine with Rhino closed)
+builds the solution end-to-end; this is exactly the class of machine-state the mandatory human
+Rhino smoke test will exercise deliberately.
+
+### Three-simulation validation (post-fix, final build)
+
+| Fixture | OSM | exit | fatal | severe | zones w/ results | heating kWh | cooling kWh | duration |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SingleBox (one conditioned zone) | `final-runs\single_box\Single_Box_Model.osm` | 0 | 0 | 0 | 1/1 | **2621.7** | **1745.0** | 3.1 s |
+| TwoAdjacentBoxes (two zones, internal wall) | `final-runs\two_adjacent\Two_Box_Model.osm` | 0 | 0 | 0 | 2/2 | **4875.0** | **2830.8** | 2.9 s |
+| TwoStackedBoxes (stacked, shared floor) | `final-runs\two_stacked\Two_Stacked_Box_Model.osm` | 0 | 0 | 0 | 2/2 | **1538.2** | **2563.6** | 2.8 s |
+
+Loads are identical to the pre-fix baseline — expected: the fixes affect weekly-profile calendar
+alignment, leap-year profiles, same-name condition merging, asymmetric glazing, CLI failure
+handling, self-intersecting geometry and quoted names — none of which the fixtures exercise.
+
+### Stage-D checklist
+
+| Item | Verified via |
+| --- | --- |
+| Exit code 0, no fatal, no severe — all three runs | table above |
+| Zone result count == conditioned-zone count | 1/1, 2/2, 2/2 |
+| Heating and cooling finite; at least one fixture with both > 0 | all three fixtures both > 0 |
+| Floor area and volume preserved (20 m² / 60 m³, 1e-6) | M3 suite tests |
+| Internal adjacency valid (reciprocal pairing, opposite normals) | M3 suite tests + clean two-zone run |
+| Construction layer order (outside-first; mirrored internal sides) | M4 suite tests + OSM inspection |
+| Weekly schedule semantics tested | 3 new weekly tests (EPW-derived, default, override) |
+| Source `AnalyticalModel` unchanged | M7 no-mutation test (passes post-fix) |
+| No temporary processes remain | timeout test asserts no orphaned `openstudio`/`energyplus`; none found |
+| Working tree contains only intentional changes | `git status` clean after each fix commit |
 
 ## 11. Known limitations (unchanged MVP scope)
 
@@ -410,11 +463,13 @@ in [openstudio-mvp-status.md](openstudio-mvp-status.md) for the authoritative nu
 The mandatory pre-PR Rhino 8 smoke test (plan §13) is outstanding and must be performed
 interactively: Rhino 8 starts → Grasshopper loads the GHA → `SAMAnalytical.ToOpenStudio` and
 `OpenStudio.RunModel` appear → one-zone conversion without native-DLL errors → simulation starts
-without assembly-resolution errors. This review does not claim it.
+without assembly-resolution errors. This review does not claim it. (A Rhino 8 instance belonging
+to a different workflow is currently running on this shared machine with the GHAs loaded; the
+smoke test must be performed deliberately against this branch's build.)
 
 ## 13. Merge recommendation
 
-**READY for the human Rhino 8 smoke test** once §10 records the post-fix green suite and the
-three post-fix simulations. All P0/P1 findings are resolved with regression tests; the two P2
-fixes are small and fully tested. The only unresolved pre-PR item is the human-assisted Rhino 8
+**READY for the human Rhino 8 smoke test.** All P0/P1 findings are resolved with regression
+tests; the two P2 fixes are small and fully tested; the final suite is 73/73 with three clean
+post-fix EnergyPlus validations. The only unresolved pre-PR item is the human-assisted Rhino 8
 smoke test. Do not open the PR until that test is performed interactively in Rhino.
