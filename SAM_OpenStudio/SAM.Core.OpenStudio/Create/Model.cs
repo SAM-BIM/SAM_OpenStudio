@@ -3,7 +3,9 @@
     public static partial class Create
     {
         /// <summary>
-        /// Reads model from give path (*.osm)
+        /// Reads model from give path (*.osm). The OpenStudio VersionTranslator is used so OSM
+        /// files written by older OpenStudio versions are upgraded on load instead of being
+        /// rejected.
         /// </summary>
         /// <param name="path">OSM file path example: C:\MyModels\model.osm</param>
         /// <returns>Model</returns>
@@ -16,7 +18,8 @@
             if (openStudioPath == null)
                 return null;
 
-            global::OpenStudio.OptionalModel optionalModel = global::OpenStudio.Model.load(openStudioPath);
+            global::OpenStudio.VersionTranslator versionTranslator = new global::OpenStudio.VersionTranslator();
+            global::OpenStudio.OptionalModel optionalModel = versionTranslator.loadModel(openStudioPath);
             if(optionalModel == null || optionalModel.isNull())
             {
                 return null;

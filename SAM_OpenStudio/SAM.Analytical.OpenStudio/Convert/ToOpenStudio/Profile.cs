@@ -14,7 +14,10 @@ namespace SAM.Analytical.OpenStudio
         /// pass through; daily sub-profiles are cycled to a Monday-first week (SAM_LadybugTools
         /// parity) and tiled across 365 days; shorter sequences are held/averaged to hourly.
         /// Type limits follow the profile type (fractional, temperature or activity level);
-        /// fraction values outside [0,1] raise warnings and are never clamped. Cached per Guid.
+        /// fraction values outside [0,1] raise warnings and are never clamped. Cached per
+        /// (Guid, ProfileType): the same profile reused under a different type (e.g. a fraction
+        /// profile used for both equipment and infiltration) yields a separate schedule with the
+        /// correct type limits and a per-type name.
         /// </summary>
         /// <param name="profile">SAM profile.</param>
         /// <param name="profileType">Semantic usage, selects schedule type limits.</param>
@@ -27,8 +30,10 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
+            string cacheKey = string.Format("{0}:{1}", profile.Guid, profileType);
+
             global::OpenStudio.Schedule cached;
-            if (openStudioConversionContext.ScheduleMap.TryGetValue(profile.Guid, out cached))
+            if (openStudioConversionContext.ScheduleMap.TryGetValue(cacheKey, out cached))
             {
                 return cached;
             }
@@ -73,7 +78,7 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
-            openStudioConversionContext.ScheduleMap[profile.Guid] = result;
+            openStudioConversionContext.ScheduleMap[cacheKey] = result;
             if (!openStudioConversionContext.References.Contains(profile.Guid))
             {
                 openStudioConversionContext.RegisterModelObject(profile, result);

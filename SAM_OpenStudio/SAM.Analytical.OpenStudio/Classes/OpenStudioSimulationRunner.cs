@@ -71,6 +71,18 @@ namespace SAM.Analytical.OpenStudio
                 return result;
             }
 
+            if (openStudioConversionContext.HasErrors)
+            {
+                // Never simulate a model whose conversion already failed — the CLI would burn
+                // minutes on a model known to be invalid (review P3-08). The OSM/OSW stay on
+                // disk for inspection.
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Simulation not executed: the conversion reported errors; the OSM/OSW were saved for inspection");
+                result = new OpenStudioConversionResult(openStudioConversionContext);
+                result.OsmPath = osmPath;
+                result.OswPath = oswPath;
+                return result;
+            }
+
             string cliPath = Core.OpenStudio.Query.OpenStudioCliPath(runOptions.CliPath);
             if (cliPath == null)
             {
@@ -364,13 +376,10 @@ namespace SAM.Analytical.OpenStudio
 
         private static OpenStudioLoadSummary ExtractLoads(string sqlPath)
         {
-            global::OpenStudio.SqlFile sqlFile = null;
             try
             {
-                sqlFile = new global::OpenStudio.SqlFile(global::OpenStudio.OpenStudioUtilitiesCore.toPath(sqlPath));
-
-                Dictionary<string, double> zoneHeating = ReadAnnualEnergy(sqlFile, "Zone Ideal Loads Supply Air Total Heating Energy");
-                Dictionary<string, double> zoneCooling = ReadAnnualEnergy(sqlFile, "Zone Ideal Loads Supply Air Total Cooling Energy");
+                Dictionary<string, double> zoneHeating = ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Supply Air Total Heating Energy");
+                Dictionary<string, double> zoneCooling = ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Supply Air Total Cooling Energy");
                 if (zoneHeating == null || zoneCooling == null)
                 {
                     return null;
@@ -382,33 +391,75 @@ namespace SAM.Analytical.OpenStudio
             {
                 return null;
             }
-            finally
-            {
-                sqlFile?.Dispose();
-            }
         }
 
-        private static Dictionary<string, double> ReadAnnualEnergy(global::OpenStudio.SqlFile sqlFile, string variableName)
+        /// <summary>
+        /// Reads the annual (summed) energy per key for one report variable from the EnergyPlus
+        /// SQLite output, converted J → kWh. All queries are parameterised
+        /// (System.Data.SQLite) — zone/key names are never string-concatenated into SQL, so
+        /// names containing quotes or SQL syntax cannot break or inject a query.
+        /// </summary>
+        /// <param name="sqlPath">Path to eplusout.sql.</param>
+        /// <param name="variableName">ReportDataDictionary variable name.</param>
+        /// <returns>KeyValue → annual energy [kWh]; null when the file cannot be read.</returns>
+        internal static Dictionary<string, double> ReadAnnualEnergy(string sqlPath, string variableName)
         {
-            global::OpenStudio.OptionalStringVector optionalKeys = sqlFile.execAndReturnVectorOfString(string.Format("SELECT DISTINCT rdd.KeyValue FROM ReportDataDictionary rdd WHERE rdd.Name = '{0}'", variableName));
-            if (optionalKeys == null || optionalKeys.isNull())
+            if (string.IsNullOrWhiteSpace(sqlPath) || !File.Exists(sqlPath) || string.IsNullOrWhiteSpace(variableName))
             {
                 return null;
             }
 
-            Dictionary<string, double> result = new Dictionary<string, double>();
-            foreach (string key in optionalKeys.get())
+            System.Data.SQLite.SQLiteConnectionStringBuilder connectionStringBuilder = new System.Data.SQLite.SQLiteConnectionStringBuilder
             {
-                global::OpenStudio.OptionalDouble joules = sqlFile.execAndReturnFirstDouble(string.Format("SELECT SUM(rd.Value) FROM ReportData rd JOIN ReportDataDictionary rdd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex WHERE rdd.Name = '{0}' AND rdd.KeyValue = '{1}'", variableName, key));
-                if (joules == null || joules.isNull())
+                DataSource = sqlPath,
+                ReadOnly = true,
+                FailIfMissing = true,
+            };
+
+            using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection(connectionStringBuilder.ConnectionString))
+            {
+                connection.Open();
+
+                List<string> keys = new List<string>();
+                using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
                 {
-                    continue;
+                    command.CommandText = "SELECT DISTINCT rdd.KeyValue FROM ReportDataDictionary rdd WHERE rdd.Name = @name";
+                    command.Parameters.AddWithValue("@name", variableName);
+                    using (System.Data.SQLite.SQLiteDataReader reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            keys.Add(reader.IsDBNull(0) ? null : reader.GetString(0));
+                        }
+                    }
                 }
 
-                result[key] = joules.get() / 3600000.0;
-            }
+                Dictionary<string, double> result = new Dictionary<string, double>();
+                foreach (string key in keys)
+                {
+                    if (key == null)
+                    {
+                        continue;
+                    }
 
-            return result;
+                    using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT SUM(rd.Value) FROM ReportData rd JOIN ReportDataDictionary rdd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex WHERE rdd.Name = @name AND rdd.KeyValue = @key";
+                        command.Parameters.AddWithValue("@name", variableName);
+                        command.Parameters.AddWithValue("@key", key);
+
+                        object value = command.ExecuteScalar();
+                        if (value == null || value == System.DBNull.Value)
+                        {
+                            continue;
+                        }
+
+                        result[key] = System.Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture) / 3600000.0;
+                    }
+                }
+
+                return result;
+            }
         }
 
         private static string Tail(string value, int length)

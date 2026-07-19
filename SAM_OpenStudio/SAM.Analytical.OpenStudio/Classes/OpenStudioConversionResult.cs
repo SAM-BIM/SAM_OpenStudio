@@ -8,12 +8,15 @@ namespace SAM.Analytical.OpenStudio
 {
     /// <summary>
     /// Immutable snapshot of a completed SAM → OpenStudio conversion: the produced model, file
-    /// paths, run outcome, diagnostics and the SAM Guid → OpenStudio name map. Snapshotting means
-    /// later mutation of the conversion context does not affect an already created result.
+    /// paths, run outcome, diagnostics, translation statistics and the SAM Guid → OpenStudio
+    /// name map. Snapshotting means later mutation of the conversion context does not affect an
+    /// already created result. The result OWNS the OpenStudio model: dispose the result when the
+    /// model is no longer needed (native SWIG resources are released); do not use the model
+    /// afterwards.
     /// </summary>
-    public sealed class OpenStudioConversionResult
+    public sealed class OpenStudioConversionResult : IDisposable
     {
-        /// <summary>The produced OpenStudio model (null when conversion could not start).</summary>
+        /// <summary>The produced OpenStudio model (null when conversion could not start). Owned by this result — disposed with it.</summary>
         public global::OpenStudio.Model Model { get; }
 
         /// <summary>Path of the saved OSM file, when saved.</summary>
@@ -31,6 +34,9 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>Diagnostics recorded up to the moment this result was created.</summary>
         public IReadOnlyList<Core.OpenStudio.OpenStudioDiagnostic> Diagnostics { get; }
 
+        /// <summary>Translation statistics snapshot (source/created/skipped/unsupported counts).</summary>
+        public Core.OpenStudio.OpenStudioConversionStatistics Statistics { get; }
+
         /// <summary>SAM Guid → deterministic OpenStudio object name.</summary>
         public IReadOnlyDictionary<Guid, string> ObjectMap { get; }
 
@@ -45,7 +51,14 @@ namespace SAM.Analytical.OpenStudio
 
             Model = openStudioConversionContext.Target;
             Diagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>(openStudioConversionContext.Diagnostics);
+            Statistics = openStudioConversionContext.Statistics.Snapshot();
             ObjectMap = openStudioConversionContext.References.ToNameDictionary();
+        }
+
+        /// <summary>Releases the owned OpenStudio model's native resources. Idempotent.</summary>
+        public void Dispose()
+        {
+            Model?.Dispose();
         }
 
         /// <summary>

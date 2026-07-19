@@ -110,11 +110,27 @@ namespace SAM.Analytical.OpenStudio
 
             SortedList<double, global::OpenStudio.BuildingStory> buildingStories = context.ToOpenStudio_BuildingStories();
 
+            List<Panel> sourcePanels = adjacencyCluster.GetPanels();
+            int sourceApertureCount = 0;
+            if (sourcePanels != null)
+            {
+                foreach (Panel sourcePanel in sourcePanels)
+                {
+                    List<Aperture> sourceApertures = sourcePanel?.Apertures;
+                    if (sourceApertures != null)
+                    {
+                        sourceApertureCount += sourceApertures.Count;
+                    }
+                }
+            }
+
             Dictionary<Guid, List<global::OpenStudio.Surface>> surfacesByPanel = new Dictionary<Guid, List<global::OpenStudio.Surface>>();
             Dictionary<Guid, Panel> panelByGuid = new Dictionary<Guid, Panel>();
             Dictionary<Guid, List<global::OpenStudio.SubSurface>> subSurfacesByAperture = new Dictionary<Guid, List<global::OpenStudio.SubSurface>>();
+            HashSet<Guid> spacesWithSurfaces = new HashSet<Guid>();
 
             List<Space> spaces = adjacencyCluster.GetSpaces();
+            context.Statistics.SourceObjects = (spaces?.Count ?? 0) + (sourcePanels?.Count ?? 0) + sourceApertureCount;
             if (spaces == null || spaces.Count == 0)
             {
                 context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "AnalyticalModel contains no spaces", analyticalModel);
@@ -194,12 +210,14 @@ namespace SAM.Analytical.OpenStudio
                     catch (System.Exception exception)
                     {
                         context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("The space shell could not be computed ({0}); no surfaces were created for the space", exception.GetType().Name), space);
+                        context.RegisterSkip();
                         continue;
                     }
 
                     if (panels == null || panels.Count == 0)
                     {
                         context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Space has no related panels; no surfaces were created", space);
+                        context.RegisterSkip();
                         continue;
                     }
 
@@ -209,6 +227,7 @@ namespace SAM.Analytical.OpenStudio
                         if (panel == null)
                         {
                             context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Unsupported panel kind {0}; skipped", iPanel?.GetType()?.Name), space);
+                            context.RegisterSkip();
                             continue;
                         }
 
@@ -225,6 +244,7 @@ namespace SAM.Analytical.OpenStudio
                         catch (System.Exception exception)
                         {
                             context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Panel geometry could not be converted ({0}); the panel was skipped, never repaired", exception.GetType().Name), panel);
+                            context.RegisterSkip();
                             continue;
                         }
 
@@ -242,6 +262,7 @@ namespace SAM.Analytical.OpenStudio
 
                         surfaces.Add(surface);
                         panelByGuid[panel.Guid] = panel;
+                        spacesWithSurfaces.Add(space.Guid);
                     }
                 }
             }
@@ -275,6 +296,7 @@ namespace SAM.Analytical.OpenStudio
                         if (!surfacesByPanel.ContainsKey(relatedPanel.Guid) && reportedPanels.Add(relatedPanel.Guid))
                         {
                             context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Panel related to a space produced no surface (excluded from the space shell — degenerate or disconnected geometry); it was skipped, never repaired", relatedPanel);
+                            context.RegisterSkip();
                         }
                     }
                 }
@@ -454,6 +476,16 @@ namespace SAM.Analytical.OpenStudio
                 {
                     if (space == null || !space.IsConditioned())
                     {
+                        continue;
+                    }
+
+                    if (!spacesWithSurfaces.Contains(space.Guid))
+                    {
+                        // A conditioned zone without surfaces cannot be simulated (EnergyPlus
+                        // fatals on a conditioned zone with no envelope) — reject it explicitly
+                        // instead of attaching a thermostat and Ideal Loads to an empty zone.
+                        context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Conditioned space has no valid surfaces; thermostat and Ideal Loads were not assigned", space);
+                        context.RegisterSkip();
                         continue;
                     }
 

@@ -8,7 +8,9 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>
         /// Central conditioned-space decision (plan §12): a space is conditioned when it has an
         /// InternalCondition whose name does not contain "unconditioned" or "external"
-        /// (case-insensitive) — matching the established SAM_LadybugTools behaviour. Conditioned
+        /// (culture-independent, ordinal case-insensitive — never culture-sensitive ToLower,
+        /// which misclassifies under e.g. the Turkish casing rules) — matching the established
+        /// SAM_LadybugTools behaviour. Conditioned
         /// spaces receive a dual-setpoint thermostat and an Ideal Loads air system; unconditioned
         /// spaces keep their geometry and internal gains only.
         /// </summary>
@@ -28,8 +30,8 @@ namespace SAM.Analytical.OpenStudio
                 return true;
             }
 
-            string lower = name.ToLower();
-            return !lower.Contains("unconditioned") && !lower.Contains("external");
+            return name.IndexOf("unconditioned", System.StringComparison.OrdinalIgnoreCase) < 0
+                && name.IndexOf("external", System.StringComparison.OrdinalIgnoreCase) < 0;
         }
     }
 }

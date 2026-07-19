@@ -35,10 +35,24 @@ namespace SAM.Analytical.OpenStudio
             // SAM's Space.InternalCondition setter clones the condition with a NEW Guid
             // (SAM.Analytical\Classes\Space.cs), so per-space Guids differ by design and cannot
             // identify shared conditions. Deduplication is by sanitized name PLUS a deterministic
-            // content hash (parameters and profile-name references, Guids excluded): identical
-            // clones share one SpaceType, while same-named conditions with different content
-            // never merge silently.
-            string name = "SAM_InternalCondition_" + Core.OpenStudio.Query.SanitizeName(internalCondition.Name) + "_" + ContentHash(internalCondition);
+            // content hash (parameters and profile-name references, Guids excluded) PLUS the
+            // per-space computed load densities: identical clones evaluated for equivalent spaces
+            // share one SpaceType, while same-named conditions with different content — or a
+            // shared condition evaluated for spaces with different densities — never merge
+            // silently (the first space's values are never imposed on another space).
+            AdjacencyCluster adjacencyCluster = openStudioConversionContext.Source?.AdjacencyCluster;
+
+            double area = double.NaN;
+            space.TryGetValue(SpaceParameter.Area, out area);
+
+            double peoplePerArea = Analytical.Query.CalculatedPeoplePerArea(space);
+            double occupancyGain = Analytical.Query.OccupancyGain(space);
+            double occupancy = Analytical.Query.CalculatedOccupancy(space);
+            double lightingGain = Analytical.Query.CalculatedLightingGain(space);
+            double equipmentGain = Analytical.Query.CalculatedEquipmentSensibleGain(space);
+            double infiltrationAirFlow = Analytical.Query.CalculatedInfiltrationAirFlow(space);
+
+            string name = "SAM_InternalCondition_" + Core.OpenStudio.Query.SanitizeName(internalCondition.Name) + "_" + ContentHash(internalCondition, peoplePerArea, occupancyGain, occupancy, lightingGain, equipmentGain, infiltrationAirFlow, area);
 
             global::OpenStudio.OptionalSpaceType existing = openStudioConversionContext.Target.getSpaceTypeByName(name);
             if (existing != null && !existing.isNull())
@@ -54,10 +68,7 @@ namespace SAM.Analytical.OpenStudio
             ProfileLibrary profileLibrary = openStudioConversionContext.Source?.ProfileLibrary;
             Dictionary<ProfileType, Profile> profileDictionary = profileLibrary == null ? new Dictionary<ProfileType, Profile>() : internalCondition.GetProfileDictionary(profileLibrary);
 
-            AdjacencyCluster adjacencyCluster = openStudioConversionContext.Source?.AdjacencyCluster;
-
             // People
-            double peoplePerArea = Analytical.Query.CalculatedPeoplePerArea(space);
             if (!double.IsNaN(peoplePerArea) && peoplePerArea > 0)
             {
                 global::OpenStudio.Schedule occupancySchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Occupancy, name, openStudioConversionContext);
@@ -81,8 +92,6 @@ namespace SAM.Analytical.OpenStudio
                         peopleDefinition.setSensibleHeatFraction(sensibleGain / (sensibleGain + latentGain));
                     }
 
-                    double occupancyGain = Analytical.Query.OccupancyGain(space);
-                    double occupancy = Analytical.Query.CalculatedOccupancy(space);
                     double activityLevel = 0;
                     if (!double.IsNaN(occupancyGain) && !double.IsNaN(occupancy) && occupancy > 0)
                     {
@@ -104,10 +113,6 @@ namespace SAM.Analytical.OpenStudio
             }
 
             // Lights
-            double area = double.NaN;
-            space.TryGetValue(SpaceParameter.Area, out area);
-
-            double lightingGain = Analytical.Query.CalculatedLightingGain(space);
             if (!double.IsNaN(lightingGain) && lightingGain > 0 && !double.IsNaN(area) && area > 0)
             {
                 global::OpenStudio.Schedule lightingSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Lighting, name, openStudioConversionContext);
@@ -138,7 +143,6 @@ namespace SAM.Analytical.OpenStudio
             }
 
             // Electric equipment (sensible)
-            double equipmentGain = Analytical.Query.CalculatedEquipmentSensibleGain(space);
             if (!double.IsNaN(equipmentGain) && equipmentGain > 0 && !double.IsNaN(area) && area > 0)
             {
                 global::OpenStudio.Schedule equipmentSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.EquipmentSensible, name, openStudioConversionContext);
@@ -165,10 +169,10 @@ namespace SAM.Analytical.OpenStudio
             if (internalCondition.GetProfileName(ProfileType.EquipmentLatent) != null)
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Latent equipment gains are not converted in the MVP", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
             }
 
             // Infiltration
-            double infiltrationAirFlow = Analytical.Query.CalculatedInfiltrationAirFlow(space);
             if (!double.IsNaN(infiltrationAirFlow) && infiltrationAirFlow > 0 && adjacencyCluster != null)
             {
                 global::OpenStudio.Schedule infiltrationSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Infiltration, name, openStudioConversionContext);
@@ -214,6 +218,7 @@ namespace SAM.Analytical.OpenStudio
                     else
                     {
                         openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Space has no sun-exposed panels; infiltration skipped", internalCondition, name);
+                        openStudioConversionContext.RegisterSkip();
                     }
                 }
             }
@@ -230,6 +235,7 @@ namespace SAM.Analytical.OpenStudio
             if (!profileDictionary.TryGetValue(profileType, out profile) || profile == null)
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("{0} gains are defined but the {0} profile '{1}' was not found; the load is skipped (never AlwaysOn)", profileType, internalCondition.GetProfileName(profileType)), internalCondition, openStudioObjectName);
+                openStudioConversionContext.RegisterSkip();
                 return null;
             }
 
@@ -239,14 +245,24 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>
         /// Deterministic content hash (8 hex chars) of an internal condition's full parameter
         /// content — parameters, profile-name references and nested parameter sets — with every
-        /// Guid excluded so clones hash identically regardless of their SAM Guids. Two conditions
-        /// with equal names and equal content share a hash; any content difference changes it.
+        /// Guid excluded so clones hash identically regardless of their SAM Guids, extended with
+        /// the per-space computed load densities so spaces with different evaluated densities
+        /// never share one SpaceType. Two conditions with equal names, equal content and equal
+        /// evaluated densities share a hash; any difference changes it.
         /// </summary>
-        private static string ContentHash(InternalCondition internalCondition)
+        private static string ContentHash(InternalCondition internalCondition, params double[] spaceDensities)
         {
             JsonObject jsonObject = internalCondition.ToJsonObject();
             StringBuilder stringBuilder = new StringBuilder();
             AppendContent(jsonObject, stringBuilder);
+
+            if (spaceDensities != null)
+            {
+                foreach (double density in spaceDensities)
+                {
+                    stringBuilder.Append("density=").Append(density.ToString("R", System.Globalization.CultureInfo.InvariantCulture)).Append(';');
+                }
+            }
 
             using (MD5 mD5 = MD5.Create())
             {

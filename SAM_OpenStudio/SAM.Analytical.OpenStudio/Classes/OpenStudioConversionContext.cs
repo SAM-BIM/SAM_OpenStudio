@@ -38,11 +38,14 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>Cache key (construction Guid + ":Forward"/":Reverse") → OpenStudio construction.</summary>
         public IDictionary<string, global::OpenStudio.Construction> ConstructionMap { get; } = new Dictionary<string, global::OpenStudio.Construction>();
 
-        /// <summary>SAM Profile Guid → OpenStudio schedule cache.</summary>
-        public IDictionary<Guid, global::OpenStudio.Schedule> ScheduleMap { get; } = new Dictionary<Guid, global::OpenStudio.Schedule>();
+        /// <summary>Cache key (profile Guid + ":" + ProfileType) → OpenStudio schedule cache. The same SAM profile reused under a different ProfileType produces a separate schedule with its own type limits and name.</summary>
+        public IDictionary<string, global::OpenStudio.Schedule> ScheduleMap { get; } = new Dictionary<string, global::OpenStudio.Schedule>();
 
         /// <summary>Diagnostics accumulated during the conversion.</summary>
         public IList<Core.OpenStudio.OpenStudioDiagnostic> Diagnostics { get; } = new List<Core.OpenStudio.OpenStudioDiagnostic>();
+
+        /// <summary>Translation statistics (source/created/skipped/unsupported counts); snapshotted onto the result.</summary>
+        public Core.OpenStudio.OpenStudioConversionStatistics Statistics { get; } = new Core.OpenStudio.OpenStudioConversionStatistics();
 
         /// <summary>
         /// Day-of-week offset of 1 Jan of the run calendar with Monday = 0 … Sunday = 6.
@@ -94,6 +97,32 @@ namespace SAM.Analytical.OpenStudio
         public void AddDiagnostic(string code, Core.OpenStudio.OpenStudioDiagnosticSeverity severity, string message, Core.SAMObject sAMObject = null, string openStudioObjectName = null)
         {
             Diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(code, severity, message, sAMObject?.Guid, sAMObject?.GetType().Name, openStudioObjectName));
+
+            switch (severity)
+            {
+                case Core.OpenStudio.OpenStudioDiagnosticSeverity.Information:
+                    Statistics.InformationCount++;
+                    break;
+
+                case Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning:
+                    Statistics.WarningCount++;
+                    break;
+
+                case Core.OpenStudio.OpenStudioDiagnosticSeverity.Error:
+                    Statistics.ErrorCount++;
+                    break;
+            }
+
+            if (code == Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter)
+            {
+                Statistics.UnsupportedObjects++;
+            }
+        }
+
+        /// <summary>Records an explicitly skipped source object or load in the statistics.</summary>
+        public void RegisterSkip()
+        {
+            Statistics.SkippedObjects++;
         }
 
         /// <summary>
@@ -115,6 +144,7 @@ namespace SAM.Analytical.OpenStudio
             if (result)
             {
                 ModelObjectMap[sAMObject.Guid] = modelObject;
+                Statistics.CreatedObjects++;
             }
 
             return result;

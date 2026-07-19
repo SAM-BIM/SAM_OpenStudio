@@ -165,7 +165,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// <paramref name="spaceBUnconditioned"/>), 11 panels (12 OpenStudio surfaces once the
         /// shared wall is duplicated per side), 1 aperture, full material and profile libraries.
         /// </summary>
-        public static AnalyticalModel TwoAdjacentBoxes(bool spaceBUnconditioned = false)
+        public static AnalyticalModel TwoAdjacentBoxes(bool spaceBUnconditioned = false, double? spaceBVolume = null)
         {
             AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
 
@@ -179,7 +179,7 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             Space spaceB = new Space(new Guid("bbbbbbbb-0000-0000-0000-000000000002"), "Space B", P(7.5, 2, 1.5));
             spaceB.SetValue(SpaceParameter.Area, 20.0);
-            spaceB.SetValue(SpaceParameter.Volume, 60.0);
+            spaceB.SetValue(SpaceParameter.Volume, spaceBVolume ?? 60.0);
             spaceB.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
             spaceB.InternalCondition = spaceBUnconditioned ? new InternalCondition("Office Unconditioned", officeInternalCondition) : officeInternalCondition;
 
