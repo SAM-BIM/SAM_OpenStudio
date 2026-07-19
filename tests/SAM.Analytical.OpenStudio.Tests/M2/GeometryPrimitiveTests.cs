@@ -192,5 +192,57 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             Assert.That(diagnostics.Any(d => d.Code == "SAM-OS-GEO-001" && d.Message.Contains("below the minimum")), Is.True);
         }
+
+        [Test]
+        public void SelfIntersectingPolygon_IsAnError()
+        {
+            // Planar star (self-intersecting) with non-zero signed area — area and planarity
+            // checks alone accept it; the self-intersection check must reject it (review P2-01).
+            List<Point3D> star = new List<Point3D>
+            {
+                new Point3D(0, 0, 0),
+                new Point3D(10, 0, 0),
+                new Point3D(3, 8, 0),
+                new Point3D(5, -4, 0),
+                new Point3D(7, 8, 0),
+            };
+
+            Assert.That(Geometry.OpenStudio.Query.IsSelfIntersecting(star, DistanceTolerance), Is.True);
+
+            List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Geometry.OpenStudio.Query.ValidatePolygon(star, DistanceTolerance, AngleTolerance, MinimumArea);
+            Assert.That(diagnostics.Any(d => d.Code == "SAM-OS-GEO-001" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error && d.Message.Contains("self-intersect")), Is.True, "A self-intersecting polygon must be rejected, never converted");
+        }
+
+        [Test]
+        public void BowtiePolygon_IsAnError()
+        {
+            List<Point3D> bowtie = new List<Point3D>
+            {
+                new Point3D(0, 0, 0),
+                new Point3D(10, 10, 0),
+                new Point3D(10, 0, 0),
+                new Point3D(0, 10, 0),
+            };
+
+            Assert.That(Geometry.OpenStudio.Query.IsSelfIntersecting(bowtie, DistanceTolerance), Is.True);
+        }
+
+        [Test]
+        public void ConcavePolygon_IsAccepted()
+        {
+            // L-shaped (concave but non-intersecting) polygon must remain valid.
+            List<Point3D> lShape = new List<Point3D>
+            {
+                new Point3D(0, 0, 0),
+                new Point3D(10, 0, 0),
+                new Point3D(10, 5, 0),
+                new Point3D(5, 5, 0),
+                new Point3D(5, 10, 0),
+                new Point3D(0, 10, 0),
+            };
+
+            Assert.That(Geometry.OpenStudio.Query.IsSelfIntersecting(lShape, DistanceTolerance), Is.False);
+            Assert.That(Geometry.OpenStudio.Query.ValidatePolygon(lShape, DistanceTolerance, AngleTolerance, MinimumArea), Is.Empty);
+        }
     }
 }

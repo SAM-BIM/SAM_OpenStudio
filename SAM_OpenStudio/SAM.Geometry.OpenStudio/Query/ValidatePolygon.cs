@@ -51,6 +51,12 @@ namespace SAM.Geometry.OpenStudio
                 return result;
             }
 
+            if (IsSelfIntersecting(cleaned, distanceTolerance))
+            {
+                result.Add(new Core.OpenStudio.OpenStudioDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Polygon is self-intersecting; automatic repair is not performed"));
+                return result;
+            }
+
             double area = Area(cleaned);
             if (double.IsNaN(area) || area < minimumArea)
             {
