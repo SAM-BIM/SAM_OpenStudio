@@ -81,6 +81,11 @@ Components are thin wrappers — every conversion rule lives in the tested
 - Glazing optical sides follow the EnergyPlus definition (Front = side opposite the zone):
   SAM `External*` → Front, `Internal*` → Back — deliberately different from the SAM_LadybugTools
   exporter (see `SAM_OPENSTUDIO_MATERIAL_MAPPING.md`).
+- Gas cavities are usage-dependent (see `SAM_OPENSTUDIO_MATERIAL_MAPPING.md`): a SAM
+  `GasMaterial` in an **opaque** `Construction` becomes an `OS:Material:AirGap` resistive layer
+  with R = 1/h from SAM's `Heat Transfer Coefficient` [W/m²K] (missing/invalid conductance is a
+  SAM-OS-MAT-001 error, never a zero-resistance layer); in an `ApertureConstruction` pane it
+  remains `OS:WindowMaterial:Gas` (gas type + thickness).
 - Self-intersecting polygons are rejected with a diagnostic (never auto-repaired).
 - Building north/rotation not applied (site comes from the EPW).
 - SpaceType names embed a deterministic content hash (`SAM_InternalCondition_<Name>_<hash8>`):

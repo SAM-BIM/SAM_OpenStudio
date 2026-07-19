@@ -112,5 +112,50 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             TestContext.Out.WriteLine(string.Format("Annual heating {0:0.0} kWh, cooling {1:0.0} kWh", loads.TotalHeating, loads.TotalCooling));
         }
+
+        [Test]
+        [Category("Simulation")]
+        public void AirGapConstruction_EndToEnd_EnergyPlusRun_MeetsResultGate()
+        {
+            // Review P1-06: an opaque construction with a SAM GasMaterial cavity must simulate
+            // cleanly (the real Rhino model failed fatally on WindowMaterial:Gas in opaque
+            // constructions — now converted to OS:Material:AirGap).
+            string epwPath = WeatherPath(".epw");
+            Assert.That(File.Exists(epwPath), Is.True, $"Pinned weather fixture missing: {epwPath}");
+
+            string outputDirectory = Path.Combine(TestContext.CurrentContext.WorkDirectory, "e2e_airgap_box");
+            if (Directory.Exists(outputDirectory))
+            {
+                Directory.Delete(outputDirectory, true);
+            }
+
+            OpenStudioConversionResult result = AnalyticalModelFixtures.OpaqueAirGapBox().ToOpenStudio(epwPath, outputDirectory);
+
+            foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
+            {
+                TestContext.Out.WriteLine(diagnostic.ToString());
+            }
+
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Model.getAirGaps().Count, Is.EqualTo(1), "One AirGap object for the opaque cavity");
+            Assert.That(result.Model.getAirGaps()[0].thermalResistance(), Is.EqualTo(0.8).Within(1e-9));
+
+            Core.OpenStudio.OpenStudioRunResult runResult = result.RunResult;
+            Assert.That(runResult, Is.Not.Null, "A run result must be produced");
+            Assert.That(runResult.ExitCode, Is.EqualTo(0), "OpenStudio CLI must exit 0");
+            Assert.That(runResult.FatalErrors, Is.Empty, "EnergyPlus must report no fatal errors — no R-value error may appear");
+            Assert.That(runResult.SevereErrors, Is.Empty, "EnergyPlus must report no severe errors");
+            Assert.That(runResult.SqlPath, Is.Not.Null, "SQLite results must exist");
+            Assert.That(File.Exists(runResult.SqlPath), Is.True);
+            Assert.That(runResult.Success, Is.True);
+
+            OpenStudioLoadSummary loads = result.Loads;
+            Assert.That(loads, Is.Not.Null, "Loads must be extracted");
+            Assert.That(loads.IsFinite, Is.True, "Loads must be finite and non-negative");
+            Assert.That(loads.TotalHeating + loads.TotalCooling, Is.GreaterThan(0), "Zeros-only results fail the gate");
+            Assert.That(loads.ZoneHeating.Count, Is.EqualTo(1));
+
+            TestContext.Out.WriteLine(string.Format("Annual heating {0:0.0} kWh, cooling {1:0.0} kWh", loads.TotalHeating, loads.TotalCooling));
+        }
     }
 }

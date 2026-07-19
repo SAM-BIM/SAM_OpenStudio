@@ -28,7 +28,7 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
-            return ToOpenStudio_Construction(construction, construction.ConstructionLayers, forward, null, openStudioConversionContext);
+            return ToOpenStudio_Construction(construction, construction.ConstructionLayers, forward, null, OpenStudioMaterialUsage.OpaqueConstruction, openStudioConversionContext);
         }
 
         /// <summary>
@@ -47,10 +47,10 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
-            return ToOpenStudio_Construction(apertureConstruction, apertureConstruction.PaneConstructionLayers, forward, "Pane", openStudioConversionContext);
+            return ToOpenStudio_Construction(apertureConstruction, apertureConstruction.PaneConstructionLayers, forward, "Pane", OpenStudioMaterialUsage.FenestrationConstruction, openStudioConversionContext);
         }
 
-        private static global::OpenStudio.Construction ToOpenStudio_Construction(SAMObject sAMObject, List<ConstructionLayer> constructionLayers, bool forward, string variant, OpenStudioConversionContext openStudioConversionContext)
+        private static global::OpenStudio.Construction ToOpenStudio_Construction(SAMObject sAMObject, List<ConstructionLayer> constructionLayers, bool forward, string variant, OpenStudioMaterialUsage openStudioMaterialUsage, OpenStudioConversionContext openStudioConversionContext)
         {
             string direction = forward ? "Forward" : "Reverse";
             string cacheKey = string.Format("{0:N}:{1}{2}", sAMObject.Guid, variant == null ? string.Empty : variant + ":", direction);
@@ -114,9 +114,15 @@ namespace SAM.Analytical.OpenStudio
                     }
                 }
 
-                global::OpenStudio.Material openStudioMaterial = material.ToOpenStudio(thickness, openStudioConversionContext);
+                global::OpenStudio.Material openStudioMaterial = material.ToOpenStudio(thickness, openStudioConversionContext, openStudioMaterialUsage);
                 if (openStudioMaterial == null)
                 {
+                    return null;
+                }
+
+                if (!IsValidMaterialFamily(openStudioMaterial, openStudioMaterialUsage))
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionMissingLayer, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Material '{0}' ({1}) is not valid in a {2} layer set — mixed opaque/fenestration material families are rejected", constructionLayer.Name, openStudioMaterial.iddObjectType().valueName(), openStudioMaterialUsage), sAMObject, name);
                     return null;
                 }
 
@@ -139,6 +145,31 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Material-family guard (review P1-06): opaque constructions accept only mass-full or
+        /// massless opaque materials and air cavities (AirGap); fenestration pane constructions
+        /// accept glazing, window gas and opaque (door) materials. An OpenStudio Gas is never
+        /// valid in an opaque layer set, and an OpenStudio AirGap is never valid in a pane set.
+        /// </summary>
+        private static bool IsValidMaterialFamily(global::OpenStudio.Material material, OpenStudioMaterialUsage openStudioMaterialUsage)
+        {
+            if (material == null)
+            {
+                return false;
+            }
+
+            if (openStudioMaterialUsage == OpenStudioMaterialUsage.FenestrationConstruction)
+            {
+                return !material.to_StandardGlazing().isNull()
+                    || !material.to_Gas().isNull()
+                    || !material.to_StandardOpaqueMaterial().isNull();
+            }
+
+            return !material.to_StandardOpaqueMaterial().isNull()
+                || !material.to_AirGap().isNull()
+                || !material.to_MasslessOpaqueMaterial().isNull();
         }
     }
 }

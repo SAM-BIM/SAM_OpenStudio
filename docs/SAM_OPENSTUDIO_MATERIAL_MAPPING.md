@@ -76,12 +76,58 @@ definition above; this converter deliberately deviates from the LadybugTools ref
 | — | — | Dirt Correction Factor | fixed 1 |
 | — | — | Solar Diffusing | fixed No |
 
-## GasMaterial → OS:WindowMaterial:Gas (Gas)
+## GasMaterial — usage-dependent (review P1-06)
+
+A SAM `GasMaterial` has **two different OpenStudio targets**, selected by an explicit
+construction-usage context (`OpenStudioMaterialUsage`), never inferred from the material name:
+
+| Context | OpenStudio object | EnergyPlus object |
+| --- | --- | --- |
+| Layer of an opaque `Construction` (wall/floor/roof) | `OpenStudio.AirGap` | `OS:Material:AirGap` |
+| Pane layer of an `ApertureConstruction` | `OpenStudio.Gas` | `OS:WindowMaterial:Gas` |
+
+`OS:WindowMaterial:Gas` inside an opaque construction makes EnergyPlus fail in
+`InitConductionTransferFunctions` ("R Value below lowest allowed value", R = 0.000) — the exact
+fatal failure observed in the first Rhino 8 smoke-test model (AR90UP 50 mm cavities).
+
+### Opaque cavity → OS:Material:AirGap
+
+| SAM source | Unit | OpenStudio field | Conversion | Missing-value policy |
+| --- | --- | --- | --- | --- |
+| `GasMaterialParameter.HeatTransferCoefficient` h | W/m²K | Thermal Resistance R [m²K/W] | **R = 1 / h** | **error** SAM-OS-MAT-001 when missing, NaN, infinite or ≤ 0; **error** when R < 0.001 m²K/W (EnergyPlus per-layer minimum from `InitConductionTransferFunctions`) |
+
+Authority for the property and units: SAM `Query.HeatTransferCoefficient` documents the value as
+"Heat Transfer Coefficient (Thermal Conductance) [W/m2K]" (EDSL reference), and SAM's
+`Query.UpdateHeatTransferCoefficients` computes it from gas type, thickness and tilt
+(`AirspaceConvectiveHeatTransferCoefficient(tilt, thickness)` for opaque air cavities) and stores
+it on the material via `GasMaterialParameter.HeatTransferCoefficient`. The companion SAM query
+`Query.AirspaceThermalResistance` ("Thermal Resistance of airspace in Opaque Construction
+according to BS EN ISO 6946:2017 [m2K/W]") confirms the opaque-cavity model is a resistive
+layer — thickness alone is *not* a valid resistance model.
+
+(Reference note: SAM_LadybugTools' legacy opaque path computes R via
+`AirspaceThermalResistance(angle, thickness)`; its `New` path feeds the parameter to Honeybee's
+`rValue` directly. Neither is copied: the parameter is a conductance, so R = 1/h.)
+
+### Pane gas → OS:WindowMaterial:Gas (unchanged)
 
 | SAM source | Unit | OpenStudio field | Policy |
 | --- | --- | --- | --- |
 | `Analytical.Query.DefaultGasType(gasMaterial)` (parameter `GasMaterialParameter.DefaultGasType`, else name matching) | enum | Gas Type | Air/Argon/Krypton/Xenon direct; any other value (incl. Undefined, SulfurHexaFluoride) → **error** SAM-OS-MAT-001 |
 | `ConstructionLayer.Thickness` | m | Thickness | as opaque rule |
+
+### Material-family validation
+
+* Opaque constructions accept only `StandardOpaqueMaterial`, `MasslessOpaqueMaterial` and
+  `AirGap` — an `OpenStudio.Gas` or a glazing material in an opaque layer set is rejected with
+  SAM-OS-CON-001/SAM-OS-MAT-001 before any CLI execution.
+* Fenestration pane constructions accept `StandardGlazing`, `Gas` and `StandardOpaqueMaterial`
+  (opaque doors) — an `AirGap` in a pane set is rejected.
+* A failed gas layer is never silently omitted: material conversion failure fails the whole
+  construction with an error diagnostic.
+* Material cache keys include the usage: `<Guid>:OpaqueAirGap:<R>` and `<Guid>:WindowGas:<thickness>`
+  (other materials remain `<Guid>:<thickness>`). One SAM GasMaterial used in both contexts
+  produces two distinct OpenStudio objects — never shared.
 
 ## Constructions
 
@@ -98,8 +144,9 @@ definition above; this converter deliberately deviates from the LadybugTools ref
 
 ## Deduplication
 
-* Materials: cached per `(material Guid, thickness)`; the SAM Guid is registered once in the
-  object map (first variant).
+* Materials: cached per `(material Guid, thickness)`; gas materials additionally per usage
+  (`<Guid>:OpaqueAirGap:<R>` / `<Guid>:WindowGas:<thickness>`). The SAM Guid is registered once
+  in the object map (first variant).
 * Constructions: cached per `(construction Guid, direction)`; Guid registered once
   (Forward variant).
 * Deduplication is by Guid, never by name alone.

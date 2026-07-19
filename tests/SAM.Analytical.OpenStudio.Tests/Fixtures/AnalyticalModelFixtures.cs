@@ -34,6 +34,23 @@ namespace SAM.Analytical.OpenStudio.Tests
             new ConstructionLayer("Glass", 0.006),
         });
 
+        /// <summary>Opaque wall construction with a gas cavity, layers inside → outside: Plasterboard 12.5 mm, Air Cavity 50 mm (h = 1.25 W/m²K → R = 0.8 m²K/W), Brick 100 mm.</summary>
+        public static readonly Construction CavityWallConstruction = new Construction(new Guid("11111111-2222-2222-2222-222222222222"), "Fixture Cavity Wall", new List<ConstructionLayer>
+        {
+            new ConstructionLayer("Plasterboard", 0.0125),
+            new ConstructionLayer("Fixture Air Cavity", 0.05),
+            new ConstructionLayer("Brick", 0.1),
+        });
+
+        /// <summary>Gas cavity material with explicit conductance h [W/m²K] (R = 1/h m²K/W) — mirrors the real AR90UP 50 mm materials.</summary>
+        public static GasMaterial CreateCavityGasMaterial(double heatTransferCoefficient = 1.25)
+        {
+            GasMaterial result = new GasMaterial(new Guid("33333333-0000-0000-0000-000000000006"), "Fixture Air Cavity");
+            result.SetValue(GasMaterialParameter.HeatTransferCoefficient, heatTransferCoefficient);
+            result.SetValue(GasMaterialParameter.DefaultGasType, "Air");
+            return result;
+        }
+
         private static Point3D P(double x, double y, double z)
         {
             return new Point3D(x, y, z);
@@ -380,6 +397,53 @@ namespace SAM.Analytical.OpenStudio.Tests
             }
 
             return new AnalyticalModel("Degenerate Box Model", "MVP failure-policy fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), CreateProfileLibrary());
+        }
+
+        /// <summary>
+        /// One-zone box whose opaque wall construction carries a 50 mm gas cavity
+        /// (h = 1.25 W/m²K → R = 0.8 m²K/W) — reduced reproduction of the real-model failure
+        /// (review P1-06). An optional second gas material can be added to the library.
+        /// </summary>
+        public static AnalyticalModel OpaqueAirGapBox(double heatTransferCoefficient = 1.25, GasMaterial additionalGasMaterial = null, bool includeWindow = true)
+        {
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
+
+            Space space = new Space(new Guid("ffffffff-0000-0000-0000-000000000001"), "Space AirGap", P(2.5, 2, 1.5));
+            space.SetValue(SpaceParameter.Area, 20.0);
+            space.SetValue(SpaceParameter.Volume, 60.0);
+            space.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
+            space.InternalCondition = CreateOfficeInternalCondition();
+            adjacencyCluster.AddObject(space);
+
+            List<Panel> panels = new List<Panel>
+            {
+                AnalyticalCreate.Panel(CavityWallConstruction, PanelType.SlabOnGrade, F(P(0, 0, 0), P(5, 0, 0), P(5, 4, 0), P(0, 4, 0))),
+                AnalyticalCreate.Panel(CavityWallConstruction, PanelType.Roof, F(P(0, 0, 3), P(5, 0, 3), P(5, 4, 3), P(0, 4, 3))),
+                AnalyticalCreate.Panel(CavityWallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(CavityWallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(CavityWallConstruction, PanelType.WallExternal, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3))),
+                AnalyticalCreate.Panel(CavityWallConstruction, PanelType.WallExternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3))),
+            };
+
+            if (includeWindow)
+            {
+                panels[2].AddAperture(AnalyticalCreate.Aperture(WindowConstruction, F(P(1, 0, 0.8), P(3, 0, 0.8), P(3, 0, 2.2), P(1, 0, 2.2))));
+            }
+
+            foreach (Panel panel in panels)
+            {
+                adjacencyCluster.AddObject(panel);
+                adjacencyCluster.AddRelation(space, panel);
+            }
+
+            MaterialLibrary materialLibrary = CreateMaterialLibrary();
+            materialLibrary.Add(CreateCavityGasMaterial(heatTransferCoefficient));
+            if (additionalGasMaterial != null)
+            {
+                materialLibrary.Add(additionalGasMaterial);
+            }
+
+            return new AnalyticalModel("Opaque AirGap Box Model", "MVP opaque air-gap fixture (review P1-06)", null, null, adjacencyCluster, materialLibrary, CreateProfileLibrary());
         }
     }
 }

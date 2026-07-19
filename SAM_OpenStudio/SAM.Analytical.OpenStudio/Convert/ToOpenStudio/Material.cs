@@ -10,17 +10,22 @@ namespace SAM.Analytical.OpenStudio
     public static partial class Convert
     {
         /// <summary>
-        /// Converts a SAM material to an OpenStudio material at the given layer thickness,
-        /// following docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md. One OpenStudio material is created
-        /// per (SAM material Guid, thickness) pair and cached; invalid physical values raise
-        /// SAM-OS-MAT-001 errors (no hidden defaults), missing optical values raise warnings and
-        /// keep the documented OpenStudio defaults.
+        /// Converts a SAM material to an OpenStudio material in the given construction-usage
+        /// context, following docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md. Opaque and transparent
+        /// materials produce the same object in both contexts; a SAM GasMaterial becomes an
+        /// OpenStudio AirGap (OS:Material:AirGap, R = 1/h from its Heat Transfer Coefficient
+        /// [W/m²K]) in an opaque construction and an OpenStudio Gas (OS:WindowMaterial:Gas) in a
+        /// fenestration pane construction — the cache key includes the usage, so the two objects
+        /// are never shared. Invalid physical values raise SAM-OS-MAT-001 errors (no hidden
+        /// defaults), missing optical values raise warnings and keep the documented OpenStudio
+        /// defaults.
         /// </summary>
         /// <param name="material">SAM material (OpaqueMaterial, TransparentMaterial or GasMaterial).</param>
         /// <param name="thickness">Layer thickness [m] from the construction layer.</param>
         /// <param name="openStudioConversionContext">Conversion context.</param>
+        /// <param name="openStudioMaterialUsage">Construction-usage context (opaque or fenestration).</param>
         /// <returns>OpenStudio material, or null when unsupported/invalid (diagnostic raised).</returns>
-        public static global::OpenStudio.Material ToOpenStudio(this IMaterial material, double thickness, OpenStudioConversionContext openStudioConversionContext)
+        public static global::OpenStudio.Material ToOpenStudio(this IMaterial material, double thickness, OpenStudioConversionContext openStudioConversionContext, OpenStudioMaterialUsage openStudioMaterialUsage = OpenStudioMaterialUsage.OpaqueConstruction)
         {
             if (material == null || openStudioConversionContext == null)
             {
@@ -32,6 +37,13 @@ namespace SAM.Analytical.OpenStudio
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Unsupported material kind {0}", material.GetType().Name));
                 return null;
+            }
+
+            if (material is GasMaterial gasMaterial)
+            {
+                return openStudioMaterialUsage == OpenStudioMaterialUsage.FenestrationConstruction
+                    ? ToOpenStudio_WindowGas(gasMaterial, sAMObject, thickness, openStudioConversionContext)
+                    : ToOpenStudio_AirGap(gasMaterial, sAMObject, openStudioConversionContext);
             }
 
             string cacheKey = string.Format(CultureInfo.InvariantCulture, "{0:N}:{1:R}", sAMObject.Guid, thickness);
@@ -85,6 +97,12 @@ namespace SAM.Analytical.OpenStudio
             }
             else if (material is TransparentMaterial transparentMaterial)
             {
+                if (openStudioMaterialUsage != OpenStudioMaterialUsage.FenestrationConstruction)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "TransparentMaterial (glazing) cannot be used as a layer of an opaque construction — mixed opaque/fenestration material families are rejected", sAMObject, name);
+                    return null;
+                }
+
                 if (!IsValidPositive(transparentMaterial.ThermalConductivity))
                 {
                     openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Invalid thermal conductivity {0}", transparentMaterial.ThermalConductivity), sAMObject, name);
@@ -147,21 +165,6 @@ namespace SAM.Analytical.OpenStudio
 
                 result = standardGlazing;
             }
-            else if (material is GasMaterial gasMaterial)
-            {
-                DefaultGasType defaultGasType = gasMaterial.DefaultGasType();
-                if (defaultGasType != DefaultGasType.Air && defaultGasType != DefaultGasType.Argon && defaultGasType != DefaultGasType.Krypton && defaultGasType != DefaultGasType.Xenon)
-                {
-                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Gas type {0} is not supported by OpenStudio (Air/Argon/Krypton/Xenon)", defaultGasType), sAMObject, name);
-                    return null;
-                }
-
-                global::OpenStudio.Gas gas = new global::OpenStudio.Gas(openStudioConversionContext.Target);
-                gas.setGasType(defaultGasType.ToString());
-                gas.setThickness(thickness);
-
-                result = gas;
-            }
             else
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Unsupported material kind {0}", material.GetType().Name), sAMObject, name);
@@ -169,6 +172,98 @@ namespace SAM.Analytical.OpenStudio
             }
 
             result.setName(name);
+
+            openStudioConversionContext.MaterialMap[cacheKey] = result;
+            if (!openStudioConversionContext.References.Contains(sAMObject.Guid))
+            {
+                openStudioConversionContext.RegisterModelObject(sAMObject, result);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Opaque-context conversion of a SAM GasMaterial: an air/gas cavity layer of an opaque
+        /// construction becomes an OpenStudio AirGap (OS:Material:AirGap). The thermal resistance
+        /// is derived from SAM's authoritative cavity conductance — GasMaterialParameter
+        /// .HeatTransferCoefficient h [W/m²K] (written by SAM's UpdateHeatTransferCoefficients
+        /// from gas type, thickness and tilt) — as R = 1/h [m²K/W]. Missing, non-finite,
+        /// non-positive, or below-EnergyPlus-minimum (0.001 m²K/W) values raise SAM-OS-MAT-001
+        /// errors before any CLI execution — never a silent zero-resistance layer.
+        /// </summary>
+        private static global::OpenStudio.Material ToOpenStudio_AirGap(GasMaterial gasMaterial, SAMObject sAMObject, OpenStudioConversionContext openStudioConversionContext)
+        {
+            const double energyPlusMinimumResistance = 0.001; // InitConductionTransferFunctions per-layer minimum [m²K/W]
+
+            string name = Core.OpenStudio.Query.OpenStudioName(sAMObject.GetType().Name, sAMObject.Name, sAMObject.Guid);
+
+            double heatTransferCoefficient = double.NaN;
+            if (!sAMObject.TryGetValue(GasMaterialParameter.HeatTransferCoefficient, out heatTransferCoefficient) || double.IsNaN(heatTransferCoefficient) || double.IsInfinity(heatTransferCoefficient) || heatTransferCoefficient <= 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Opaque gas cavity has no usable Heat Transfer Coefficient [W/m²K] (value {0}); the thermal resistance cannot be derived — no layer was substituted", double.IsNaN(heatTransferCoefficient) ? "missing" : heatTransferCoefficient.ToString(CultureInfo.InvariantCulture)), sAMObject, name);
+                return null;
+            }
+
+            double thermalResistance = 1.0 / heatTransferCoefficient;
+            if (double.IsNaN(thermalResistance) || double.IsInfinity(thermalResistance) || thermalResistance < energyPlusMinimumResistance)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format(CultureInfo.InvariantCulture, "Opaque gas cavity resistance {0:G4} m²K/W (from conductance {1} W/m²K) is below the EnergyPlus per-layer minimum {2:G4} m²K/W", thermalResistance, heatTransferCoefficient, energyPlusMinimumResistance), sAMObject, name);
+                return null;
+            }
+
+            string cacheKey = string.Format(CultureInfo.InvariantCulture, "{0:N}:OpaqueAirGap:{1:R}", sAMObject.Guid, thermalResistance);
+            global::OpenStudio.Material cached;
+            if (openStudioConversionContext.MaterialMap.TryGetValue(cacheKey, out cached))
+            {
+                return cached;
+            }
+
+            global::OpenStudio.AirGap result = new global::OpenStudio.AirGap(openStudioConversionContext.Target);
+            result.setName(name);
+            result.setThermalResistance(thermalResistance);
+
+            openStudioConversionContext.MaterialMap[cacheKey] = result;
+            if (!openStudioConversionContext.References.Contains(sAMObject.Guid))
+            {
+                openStudioConversionContext.RegisterModelObject(sAMObject, result);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Fenestration-context conversion of a SAM GasMaterial: a gas layer between glazing
+        /// panes becomes an OpenStudio Gas (OS:WindowMaterial:Gas), preserving gas type and
+        /// physical thickness with the existing supported-gas validation (Air/Argon/Krypton/Xenon).
+        /// </summary>
+        private static global::OpenStudio.Material ToOpenStudio_WindowGas(GasMaterial gasMaterial, SAMObject sAMObject, double thickness, OpenStudioConversionContext openStudioConversionContext)
+        {
+            string name = Core.OpenStudio.Query.OpenStudioName(sAMObject.GetType().Name, string.Format(CultureInfo.InvariantCulture, "{0}_{1:0.###}mm", sAMObject.Name, thickness * 1000), sAMObject.Guid);
+
+            if (double.IsNaN(thickness) || thickness <= 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Invalid layer thickness {0} m", thickness), sAMObject, name);
+                return null;
+            }
+
+            DefaultGasType defaultGasType = gasMaterial.DefaultGasType();
+            if (defaultGasType != DefaultGasType.Air && defaultGasType != DefaultGasType.Argon && defaultGasType != DefaultGasType.Krypton && defaultGasType != DefaultGasType.Xenon)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Gas type {0} is not supported by OpenStudio (Air/Argon/Krypton/Xenon)", defaultGasType), sAMObject, name);
+                return null;
+            }
+
+            string cacheKey = string.Format(CultureInfo.InvariantCulture, "{0:N}:WindowGas:{1:R}", sAMObject.Guid, thickness);
+            global::OpenStudio.Material cached;
+            if (openStudioConversionContext.MaterialMap.TryGetValue(cacheKey, out cached))
+            {
+                return cached;
+            }
+
+            global::OpenStudio.Gas result = new global::OpenStudio.Gas(openStudioConversionContext.Target);
+            result.setName(name);
+            result.setGasType(defaultGasType.ToString());
+            result.setThickness(thickness);
 
             openStudioConversionContext.MaterialMap[cacheKey] = result;
             if (!openStudioConversionContext.References.Contains(sAMObject.Guid))
