@@ -10,8 +10,10 @@ namespace SAM.Core.OpenStudio
         /// <summary>
         /// Sanitizes a name for use in OpenStudio/EnergyPlus object names: characters that break
         /// IDF parsing (comma, semicolon, exclamation mark), whitespace and control characters are
-        /// replaced with underscores, runs of underscores are collapsed, and leading/trailing
-        /// underscores are trimmed. Deterministic: equal inputs always produce equal outputs.
+        /// replaced with underscores, as are single and double quotes (they flow into EnergyPlus
+        /// report keys and would break SQL literal quoting downstream); runs of underscores are
+        /// collapsed, and leading/trailing underscores are trimmed. Deterministic: equal inputs
+        /// always produce equal outputs.
         /// </summary>
         /// <param name="name">Name to sanitize; null returns null.</param>
         /// <returns>Sanitized name (possibly empty), or null when input is null.</returns>
@@ -26,7 +28,7 @@ namespace SAM.Core.OpenStudio
             bool previousUnderscore = false;
             foreach (char @char in name)
             {
-                bool invalid = @char == ',' || @char == ';' || @char == '!' || char.IsWhiteSpace(@char) || char.IsControl(@char) || @char == '_';
+                bool invalid = @char == ',' || @char == ';' || @char == '!' || @char == '\'' || @char == '"' || char.IsWhiteSpace(@char) || char.IsControl(@char) || @char == '_';
                 if (invalid)
                 {
                     if (!previousUnderscore)

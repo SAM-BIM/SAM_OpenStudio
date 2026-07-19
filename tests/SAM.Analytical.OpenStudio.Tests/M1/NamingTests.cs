@@ -53,5 +53,28 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(name, Does.EndWith(space.Guid.ToString("N").Substring(0, 8)));
             Assert.That(Core.OpenStudio.Query.OpenStudioName(space), Is.EqualTo(name), "Naming must be deterministic");
         }
+
+        [Test]
+        public void SanitizeName_RemovesQuotes()
+        {
+            // Quotes must never reach OpenStudio object names: they flow into EnergyPlus report
+            // keys and would break the SQL extraction literals (review P2-02).
+            string sanitized = Core.OpenStudio.Query.SanitizeName("O'Brien \"Annex\"");
+            Assert.That(sanitized, Does.Not.Contain("'"));
+            Assert.That(sanitized, Does.Not.Contain("\""));
+            Assert.That(sanitized, Is.EqualTo("O_Brien_Annex"));
+        }
+
+        [Test]
+        public void SpaceName_WithApostrophe_ConvertsWithDeterministicName()
+        {
+            OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox().ToOpenStudio();
+            Assert.That(result.IsValid, Is.True);
+
+            Space space = new Space(new System.Guid("12121212-0000-0000-0000-000000000001"), "O'Brien", new Geometry.Spatial.Point3D(0, 0, 0));
+            string name = Core.OpenStudio.Query.OpenStudioName(space);
+            Assert.That(name, Does.Not.Contain("'"), "No apostrophe may survive into an OpenStudio name");
+            Assert.That(Core.OpenStudio.Query.OpenStudioName(space), Is.EqualTo(name), "Naming must stay deterministic");
+        }
     }
 }
