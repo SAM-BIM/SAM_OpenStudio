@@ -168,9 +168,25 @@ namespace SAM.Analytical.OpenStudio
         private static double[] AnnualHourlyValues(Profile profile, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
         {
             double[] profileValues = ProfileValues(profile);
+            if (profileValues.Length == 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Profile has no values", profile, openStudioObjectName);
+                return null;
+            }
+
             if (profileValues.Length == 8760)
             {
-                return profileValues;
+                return CheckedAnnualValues(profile, profileValues, openStudioObjectName, openStudioConversionContext);
+            }
+
+            if (profileValues.Length > 8760)
+            {
+                // Leap-year (8784) or longer profiles: schedules are 365-day by documented MVP
+                // policy — keep the first 8760 hours; never average the year into one day.
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Profile has {0} values; the first 8760 hours are used (365-day non-leap schedule policy)", profileValues.Length), profile, openStudioObjectName);
+                double[] truncated = new double[8760];
+                Array.Copy(profileValues, truncated, 8760);
+                return CheckedAnnualValues(profile, truncated, openStudioObjectName, openStudioConversionContext);
             }
 
             List<Profile> subProfiles = null;
@@ -181,39 +197,37 @@ namespace SAM.Analytical.OpenStudio
                 subProfiles.RemoveAll(x => x == null);
             }
 
-            List<double[]> dailyValues = new List<double[]>();
-            if (subProfiles != null && subProfiles.Count > 0)
+            if (subProfiles == null || subProfiles.Count == 0)
             {
-                foreach (Profile subProfile in subProfiles)
+                // SAM's own yearly expansion (Profile.GetYearlyValues / the wrapping indexer):
+                // the sequence tiles hour-for-hour at its own period — a 24-hour day repeats
+                // daily, a 168-hour week repeats weekly; nothing is stretched or averaged.
+                double[] tiled = new double[8760];
+                for (int i = 0; i < tiled.Length; i++)
                 {
-                    double[] day = DayHourlyValues(subProfile, openStudioObjectName, openStudioConversionContext);
-                    if (day == null)
-                    {
-                        return null;
-                    }
-
-                    dailyValues.Add(day);
+                    tiled[i] = profile[i];
                 }
 
-                int index = 0;
-                while (dailyValues.Count < 7)
-                {
-                    dailyValues.Add(dailyValues[index]);
-                    index++;
-                }
+                return CheckedAnnualValues(profile, tiled, openStudioObjectName, openStudioConversionContext);
             }
-            else
+
+            List<double[]> dailyValues = new List<double[]>();
+            foreach (Profile subProfile in subProfiles)
             {
-                double[] day = DayHourlyValues(profile, openStudioObjectName, openStudioConversionContext);
+                double[] day = DayHourlyValues(subProfile, openStudioObjectName, openStudioConversionContext);
                 if (day == null)
                 {
                     return null;
                 }
 
-                for (int i = 0; i < 7; i++)
-                {
-                    dailyValues.Add(day);
-                }
+                dailyValues.Add(day);
+            }
+
+            int index = 0;
+            while (dailyValues.Count < 7)
+            {
+                dailyValues.Add(dailyValues[index]);
+                index++;
             }
 
             double[] annual = new double[8760];
@@ -226,56 +240,38 @@ namespace SAM.Analytical.OpenStudio
                 Array.Copy(day, 0, annual, dayIndex * 24, 24);
             }
 
-            return annual;
+            return CheckedAnnualValues(profile, annual, openStudioObjectName, openStudioConversionContext);
+        }
+
+        private static double[] CheckedAnnualValues(Profile profile, double[] annualValues, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
+        {
+            for (int i = 0; i < annualValues.Length; i++)
+            {
+                if (double.IsNaN(annualValues[i]))
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Profile has a gap at hour {0}; missing values are never substituted", i), profile, openStudioObjectName);
+                    return null;
+                }
+            }
+
+            return annualValues;
         }
 
         private static double[] DayHourlyValues(Profile profile, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
         {
             double[] profileValues = ProfileValues(profile);
-            int count = profileValues.Length;
-            if (count <= 0)
+            if (profileValues.Length == 0)
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Profile has no values", profile, openStudioObjectName);
                 return null;
             }
 
+            // One day-type sub-profile expanded to 24 hourly values through the SAM indexer
+            // (cyclic within the sub-profile's own index span — SAM GetDailyValues semantics).
             double[] result = new double[24];
-
-            if (24 % count == 0)
+            for (int i = 0; i < result.Length; i++)
             {
-                int repeat = 24 / count;
-                for (int i = 0; i < count; i++)
-                {
-                    for (int j = 0; j < repeat; j++)
-                    {
-                        result[i * repeat + j] = profileValues[i];
-                    }
-                }
-
-                return result;
-            }
-
-            if (count % 24 == 0)
-            {
-                int block = count / 24;
-                for (int i = 0; i < 24; i++)
-                {
-                    double sum = 0;
-                    for (int j = 0; j < block; j++)
-                    {
-                        sum += profileValues[i * block + j];
-                    }
-
-                    result[i] = sum / block;
-                }
-
-                return result;
-            }
-
-            openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Profile length {0} is not day-aligned; values tiled cyclically over 24 hours", count), profile, openStudioObjectName);
-            for (int i = 0; i < 24; i++)
-            {
-                result[i] = profileValues[i % count];
+                result[i] = profile[i];
             }
 
             return result;

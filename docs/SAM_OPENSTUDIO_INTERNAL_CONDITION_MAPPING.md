@@ -43,21 +43,26 @@ directly to spaces in later work.
 
 ## Profile → ScheduleFixedInterval (MVP schedule policy)
 
-SAM `Profile` is an ordered value sequence (`Count`, indexer), optionally composed of
+SAM `Profile` is an indexed value sequence (`Min`/`Max`, wrapping indexer), optionally composed of
 daily sub-profiles (`GetProfiles()`, weekly semantics as in SAM_LadybugTools
-`ScheduleRuleset.cs`). MVP expansion to **8760 hourly values**:
+`ScheduleRuleset.cs`). MVP expansion to **8760 hourly values** follows SAM's own expansion
+semantics (`Profile.GetYearlyValues()` — cyclic tiling through the wrapping indexer):
 
-1. `Count == 8760` → used as-is (annual profile).
-2. `GetProfiles()` returns k ≥ 1 daily sub-profiles → extended to 7 by cycling (LadybugTools
-   parity), each normalized to 24 hourly values, tiled across 365 days **rotated onto the run
-   calendar**: sub-profile 0 is Monday per the LadybugTools `ScheduleRuleset` convention, so the
-   week is shifted by the 1-Jan day of week of the run — derived from the EPW
-   (`EpwFile.startDayOfWeek`, e.g. Sunday for the pinned Boston TMYx) in the full-pipeline
-   overload, or from `OpenStudioConversionOptions.FirstDayOfWeek` when set explicitly;
-   Monday-first is the fallback for weather-free conversions.
-3. Single profile whose `Count` divides 24 → each value held for 24/Count hours.
-4. `Count` is a multiple of 24 (sub-hourly day, e.g. 48) → block-averaged to hourly.
-5. Anything else → tiled cyclically across 8760 with a warning diagnostic.
+1. `Count` span == 8760 → used as-is (annual profile).
+2. Span > 8760 (e.g. 8784 leap-year) → the first 8760 hours are used with a **warning**
+   (365-day non-leap schedule policy); the year is never averaged into one day.
+3. `GetProfiles()` returns k ≥ 1 daily sub-profiles → extended to 7 by cycling (LadybugTools
+   parity), each expanded to 24 hourly values through the SAM indexer, tiled across 365 days
+   **rotated onto the run calendar**: sub-profile 0 is Monday per the LadybugTools
+   `ScheduleRuleset` convention, so the week is shifted by the 1-Jan day of week of the run —
+   derived from the EPW (`EpwFile.startDayOfWeek`, e.g. Sunday for the pinned Boston TMYx) in
+   the full-pipeline overload, or from `OpenStudioConversionOptions.FirstDayOfWeek` when set
+   explicitly; Monday-first is the fallback for weather-free conversions.
+4. Any other flat profile → tiled hour-for-hour at its own period through the SAM indexer —
+   a 24-hour day repeats daily, a 168-hour week repeats weekly; values are never stretched,
+   held or block-averaged.
+5. Gaps (indexes without values) are an **error** (`SAM-OS-SCH-001`) — NaN never reaches a
+   schedule; a missing profile is never silently replaced.
 
 Schedules are `ScheduleFixedInterval` (60-min interval, no timestep interpolation,
 start 1 Jan). Type limits: `SAM_ScheduleTypeLimits_Fractional` (0–1, continuous,
