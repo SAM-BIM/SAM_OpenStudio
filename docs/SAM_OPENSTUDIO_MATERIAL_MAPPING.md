@@ -48,22 +48,31 @@ absorptances within [0, 1] (out-of-range → error, no clamping).
 
 ## TransparentMaterial → OS:WindowMaterial:Glazing (StandardGlazing)
 
-Mirrors SAM_LadybugTools `EnergyWindowMaterialGlazing.cs` exactly, including its
-front←Internal / back←External assignment (flagged for independent review):
+EnergyPlus defines the glazing **Front side as "the side of the layer opposite the zone"**
+(exterior-facing for exterior windows) and **Back side as the side closest to the zone**
+(I/O Reference, *Materials for Glass Windows and Doors*). SAM `External*` is the
+building-exterior-facing side and `Internal*` the room-facing side, therefore:
+
+**External → Front, Internal → Back.**
+
+Note: SAM_LadybugTools `EnergyWindowMaterialGlazing.cs` maps Internal → Front and External →
+Back. Independent review (P1-04) found that assignment inverted relative to the EnergyPlus
+definition above; this converter deliberately deviates from the LadybugTools reference here.
+(Symmetric glass is unaffected either way — which is why the reference's tests never showed it.)
 
 | SAM source | Unit | OpenStudio field | Missing-value policy |
 | --- | --- | --- | --- |
 | `ConstructionLayer.Thickness` | m | Thickness | as opaque rule |
 | `ThermalConductivity` | W/m·K | Conductivity | **error** if invalid |
 | `TransparentMaterialParameter.SolarTransmittance` | 0–1 | Solar Transmittance at Normal Incidence | warning; OS default |
-| `TransparentMaterialParameter.InternalSolarReflectance` | 0–1 | Front Side Solar Reflectance | warning; OS default |
-| `TransparentMaterialParameter.ExternalSolarReflectance` | 0–1 | Back Side Solar Reflectance | warning; OS default |
+| `TransparentMaterialParameter.ExternalSolarReflectance` | 0–1 | Front Side Solar Reflectance | warning; OS default |
+| `TransparentMaterialParameter.InternalSolarReflectance` | 0–1 | Back Side Solar Reflectance | warning; OS default |
 | `TransparentMaterialParameter.LightTransmittance` | 0–1 | Visible Transmittance at Normal Incidence | warning; OS default |
-| `TransparentMaterialParameter.InternalLightReflectance` | 0–1 | Front Side Visible Reflectance | warning; OS default |
-| `TransparentMaterialParameter.ExternalLightReflectance` | 0–1 | Back Side Visible Reflectance | warning; OS default |
+| `TransparentMaterialParameter.ExternalLightReflectance` | 0–1 | Front Side Visible Reflectance | warning; OS default |
+| `TransparentMaterialParameter.InternalLightReflectance` | 0–1 | Back Side Visible Reflectance | warning; OS default |
 | — | — | Infrared Transmittance | fixed 0 (LadybugTools parity) |
-| `TransparentMaterialParameter.InternalEmissivity` | 0–1 | Front Side IR Hemispherical Emissivity | warning; OS default 0.84 |
-| `TransparentMaterialParameter.ExternalEmissivity` | 0–1 | Back Side IR Hemispherical Emissivity | warning; OS default 0.84 |
+| `TransparentMaterialParameter.ExternalEmissivity` | 0–1 | Front Side IR Hemispherical Emissivity | warning; OS default 0.84 |
+| `TransparentMaterialParameter.InternalEmissivity` | 0–1 | Back Side IR Hemispherical Emissivity | warning; OS default 0.84 |
 | — | — | Dirt Correction Factor | fixed 1 |
 | — | — | Solar Diffusing | fixed No |
 

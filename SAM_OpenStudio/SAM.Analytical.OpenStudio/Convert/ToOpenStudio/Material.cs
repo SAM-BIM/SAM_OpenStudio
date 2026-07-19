@@ -98,19 +98,26 @@ namespace SAM.Analytical.OpenStudio
                 standardGlazing.setDirtCorrectionFactorforSolarandVisibleTransmittance(1);
                 standardGlazing.setSolarDiffusing(false);
 
+                // EnergyPlus defines the glazing Front side as "the side of the layer opposite
+                // the zone" (exterior-facing for exterior windows) and Back as the side closest
+                // to the zone (I/O Reference, Materials for Glass Windows and Doors). SAM
+                // External* is the building-exterior-facing side and Internal* the room-facing
+                // side, therefore External → Front and Internal → Back. (SAM_LadybugTools
+                // EnergyWindowMaterialGlazing.cs maps these the other way round — a deliberate
+                // deviation recorded in docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md, review P1-04.)
                 if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.SolarTransmittance, name, out double solarTransmittance))
                 {
                     standardGlazing.setSolarTransmittanceatNormalIncidence(solarTransmittance);
                 }
 
-                if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.InternalSolarReflectance, name, out double internalSolarReflectance))
-                {
-                    standardGlazing.setFrontSideSolarReflectanceatNormalIncidence(internalSolarReflectance);
-                }
-
                 if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.ExternalSolarReflectance, name, out double externalSolarReflectance))
                 {
-                    standardGlazing.setBackSideSolarReflectanceatNormalIncidence(externalSolarReflectance);
+                    standardGlazing.setFrontSideSolarReflectanceatNormalIncidence(externalSolarReflectance);
+                }
+
+                if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.InternalSolarReflectance, name, out double internalSolarReflectance))
+                {
+                    standardGlazing.setBackSideSolarReflectanceatNormalIncidence(internalSolarReflectance);
                 }
 
                 if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.LightTransmittance, name, out double lightTransmittance))
@@ -118,24 +125,24 @@ namespace SAM.Analytical.OpenStudio
                     standardGlazing.setVisibleTransmittanceatNormalIncidence(lightTransmittance);
                 }
 
-                if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.InternalLightReflectance, name, out double internalLightReflectance))
-                {
-                    standardGlazing.setFrontSideVisibleReflectanceatNormalIncidence(internalLightReflectance);
-                }
-
                 if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.ExternalLightReflectance, name, out double externalLightReflectance))
                 {
-                    standardGlazing.setBackSideVisibleReflectanceatNormalIncidence(externalLightReflectance);
+                    standardGlazing.setFrontSideVisibleReflectanceatNormalIncidence(externalLightReflectance);
                 }
 
-                if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.InternalEmissivity, name, out double internalEmissivity))
+                if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.InternalLightReflectance, name, out double internalLightReflectance))
                 {
-                    standardGlazing.setFrontSideInfraredHemisphericalEmissivity(internalEmissivity);
+                    standardGlazing.setBackSideVisibleReflectanceatNormalIncidence(internalLightReflectance);
                 }
 
                 if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.ExternalEmissivity, name, out double externalEmissivity))
                 {
-                    standardGlazing.setBackSideInfraredHemisphericalEmissivity(externalEmissivity);
+                    standardGlazing.setFrontSideInfraredHemisphericalEmissivity(externalEmissivity);
+                }
+
+                if (TryGetFraction(openStudioConversionContext, sAMObject, TransparentMaterialParameter.InternalEmissivity, name, out double internalEmissivity))
+                {
+                    standardGlazing.setBackSideInfraredHemisphericalEmissivity(internalEmissivity);
                 }
 
                 result = standardGlazing;
