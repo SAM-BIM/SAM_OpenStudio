@@ -6,18 +6,20 @@
 
 ## Deduplication and assignment
 
-One OpenStudio `SpaceType` is created per unique `InternalCondition` **sanitized name** and
-assigned to every space using that condition. Name-based (not Guid-based) deduplication is
-deliberate and verified against SAM sources: `Space.InternalCondition`'s setter clones the
-condition with a **new Guid** per space (`SAM.Analytical\Classes\Space.cs`), so Guids cannot
-identify shared conditions — the same semantics SAM_LadybugTools uses (UniqueName-keyed
-ProgramType). Every per-space condition Guid is still registered in the traceability map
-against the shared SpaceType name. Load densities are per-area/per-person normalized values
-derived through the established SAM queries (evaluated for the first space encountered; SAM
-derives them from InternalCondition parameters, so spaces sharing a condition share
-densities). Thermostat setpoints are **not** part of the SpaceType — they
-are per-thermal-zone (M6). Space-specific overrides remain possible by assigning loads
-directly to spaces in later work.
+One OpenStudio `SpaceType` is created per unique `InternalCondition` identity — **sanitized name
+plus a deterministic content hash** (`SAM_InternalCondition_<Name>_<hash8>`) — and assigned to
+every space using that condition. `Space.InternalCondition`'s setter clones the condition with a
+**new Guid** per space (`SAM.Analytical\Classes\Space.cs`), so Guids cannot identify shared
+conditions. The content hash is computed over the condition's full parameter content (parameter
+sets, profile-name references) with every nested `Guid` excluded: identical clones therefore
+share one SpaceType, while same-named conditions with different gains, fractions or profile
+references never merge silently (name-only deduplication was found and fixed in review P1-03).
+Every per-space condition Guid is still registered in the traceability map against the SpaceType
+name. Load densities are per-area/per-person normalized values derived through the established
+SAM queries (evaluated for the first space encountered; SAM derives them from InternalCondition
+parameters, so spaces sharing a condition share densities). Thermostat setpoints are **not**
+part of the SpaceType — they are per-thermal-zone (M6). Space-specific overrides remain possible
+by assigning loads directly to spaces in later work.
 
 ## Loads
 

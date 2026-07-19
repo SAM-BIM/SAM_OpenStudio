@@ -2,6 +2,9 @@
 // Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
 
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json.Nodes;
 
 namespace SAM.Analytical.OpenStudio
 {
@@ -11,10 +14,12 @@ namespace SAM.Analytical.OpenStudio
         /// Converts a SAM InternalCondition to an OpenStudio SpaceType with People, Lights,
         /// ElectricEquipment, SpaceInfiltrationDesignFlowRate and DesignSpecificationOutdoorAir,
         /// following docs/SAM_OPENSTUDIO_INTERNAL_CONDITION_MAPPING.md. One SpaceType is created
-        /// per InternalCondition Guid (cached); load densities come from the established SAM
-        /// queries evaluated for the given space. A load whose gains exist but whose profile is
-        /// missing raises SAM-OS-SCH-001 and the load is skipped — never silently AlwaysOn.
-        /// Heating/cooling setpoint profiles are not part of the SpaceType (thermostats, M6).
+        /// per unique condition identity — sanitized name plus a deterministic content hash over
+        /// the condition's parameters and profile references (cached); load densities come from
+        /// the established SAM queries evaluated for the given space. A load whose gains exist
+        /// but whose profile is missing raises SAM-OS-SCH-001 and the load is skipped — never
+        /// silently AlwaysOn. Heating/cooling setpoint profiles are not part of the SpaceType
+        /// (thermostats, M6).
         /// </summary>
         /// <param name="internalCondition">SAM internal condition.</param>
         /// <param name="space">Space used to evaluate SAM's calculated load densities.</param>
@@ -28,10 +33,12 @@ namespace SAM.Analytical.OpenStudio
             }
 
             // SAM's Space.InternalCondition setter clones the condition with a NEW Guid
-            // (SAM.Analytical\Classes\Space.cs), so per-space Guids differ by design.
-            // Deduplication is therefore by sanitized NAME — the same semantics as
-            // SAM_LadybugTools' UniqueName-based ProgramType dedup.
-            string name = "SAM_InternalCondition_" + Core.OpenStudio.Query.SanitizeName(internalCondition.Name);
+            // (SAM.Analytical\Classes\Space.cs), so per-space Guids differ by design and cannot
+            // identify shared conditions. Deduplication is by sanitized name PLUS a deterministic
+            // content hash (parameters and profile-name references, Guids excluded): identical
+            // clones share one SpaceType, while same-named conditions with different content
+            // never merge silently.
+            string name = "SAM_InternalCondition_" + Core.OpenStudio.Query.SanitizeName(internalCondition.Name) + "_" + ContentHash(internalCondition);
 
             global::OpenStudio.OptionalSpaceType existing = openStudioConversionContext.Target.getSpaceTypeByName(name);
             if (existing != null && !existing.isNull())
@@ -227,6 +234,64 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return profile.ToOpenStudio(profileType, openStudioConversionContext);
+        }
+
+        /// <summary>
+        /// Deterministic content hash (8 hex chars) of an internal condition's full parameter
+        /// content — parameters, profile-name references and nested parameter sets — with every
+        /// Guid excluded so clones hash identically regardless of their SAM Guids. Two conditions
+        /// with equal names and equal content share a hash; any content difference changes it.
+        /// </summary>
+        private static string ContentHash(InternalCondition internalCondition)
+        {
+            JsonObject jsonObject = internalCondition.ToJsonObject();
+            StringBuilder stringBuilder = new StringBuilder();
+            AppendContent(jsonObject, stringBuilder);
+
+            using (MD5 mD5 = MD5.Create())
+            {
+                byte[] hash = mD5.ComputeHash(Encoding.UTF8.GetBytes(stringBuilder.ToString()));
+                StringBuilder result = new StringBuilder(8);
+                for (int i = 0; i < 4; i++)
+                {
+                    result.Append(hash[i].ToString("x2"));
+                }
+
+                return result.ToString();
+            }
+        }
+
+        private static void AppendContent(JsonNode jsonNode, StringBuilder stringBuilder)
+        {
+            if (jsonNode is JsonObject jsonObject)
+            {
+                foreach (KeyValuePair<string, JsonNode> keyValuePair in jsonObject)
+                {
+                    if (keyValuePair.Key == "Guid")
+                    {
+                        continue;
+                    }
+
+                    stringBuilder.Append(keyValuePair.Key).Append('=');
+                    AppendContent(keyValuePair.Value, stringBuilder);
+                    stringBuilder.Append(';');
+                }
+
+                return;
+            }
+
+            if (jsonNode is JsonArray jsonArray)
+            {
+                foreach (JsonNode item in jsonArray)
+                {
+                    AppendContent(item, stringBuilder);
+                    stringBuilder.Append(';');
+                }
+
+                return;
+            }
+
+            stringBuilder.Append(jsonNode?.ToJsonString());
         }
     }
 }

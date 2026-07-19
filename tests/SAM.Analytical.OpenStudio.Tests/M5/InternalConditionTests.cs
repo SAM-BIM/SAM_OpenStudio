@@ -35,7 +35,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             {
                 global::OpenStudio.OptionalSpaceType spaceType = space.spaceType;
                 Assert.That(spaceType != null && !spaceType.isNull(), $"{space.nameString()} must have a SpaceType");
-                Assert.That(spaceType.get().nameString(), Is.EqualTo("SAM_InternalCondition_Office"));
+                Assert.That(spaceType.get().nameString(), Does.StartWith("SAM_InternalCondition_Office_"), "Name keeps readability plus the deterministic content hash");
             }
         }
 
