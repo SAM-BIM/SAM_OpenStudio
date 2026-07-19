@@ -48,6 +48,13 @@ namespace SAM.Core.OpenStudio
         public bool IncludeShading { get; set; } = true;
 
         /// <summary>
+        /// First day of week of the run calendar (1 Jan), used to align day-composed (weekly)
+        /// profiles with the simulated weekdays. When null (default) the full-pipeline overload
+        /// derives it from the EPW weather file; the geometry-only overload falls back to Monday.
+        /// </summary>
+        public System.DayOfWeek? FirstDayOfWeek { get; set; }
+
+        /// <summary>
         /// Directory where the OSM/OSW and simulation run directories are written.
         /// When null the caller must provide paths explicitly at save/run time.
         /// </summary>

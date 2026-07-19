@@ -42,7 +42,7 @@ namespace SAM.Analytical.OpenStudio
         /// <returns>Conversion result including RunResult and Loads; null when input is null.</returns>
         public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true)
         {
-            OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions);
+            OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions, FirstDayOfWeekOffset(epwPath, openStudioConversionOptions));
             if (context == null)
             {
                 return null;
@@ -53,7 +53,32 @@ namespace SAM.Analytical.OpenStudio
             return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions, run);
         }
 
-        private static OpenStudioConversionContext ToOpenStudio_Context(AnalyticalModel analyticalModel, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions)
+        /// <summary>
+        /// Resolves the 1-Jan day-of-week offset (Monday = 0 … Sunday = 6) used to align weekly
+        /// profiles: the explicit <see cref="Core.OpenStudio.OpenStudioConversionOptions.FirstDayOfWeek"/>
+        /// when set, otherwise the EPW weather file's declared start day of week; 0 (Monday) when
+        /// neither is available.
+        /// </summary>
+        private static int FirstDayOfWeekOffset(string epwPath, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions)
+        {
+            if (openStudioConversionOptions?.FirstDayOfWeek != null)
+            {
+                return ((int)openStudioConversionOptions.FirstDayOfWeek.Value + 6) % 7;
+            }
+
+            if (!string.IsNullOrWhiteSpace(epwPath) && System.IO.File.Exists(epwPath))
+            {
+                global::OpenStudio.OptionalEpwFile optionalEpwFile = global::OpenStudio.EpwFile.load(global::OpenStudio.OpenStudioUtilitiesCore.toPath(epwPath));
+                if (optionalEpwFile != null && !optionalEpwFile.isNull())
+                {
+                    return (optionalEpwFile.get().startDayOfWeek().value() + 6) % 7;
+                }
+            }
+
+            return 0;
+        }
+
+        private static OpenStudioConversionContext ToOpenStudio_Context(AnalyticalModel analyticalModel, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions, int? firstDayOfWeekOffset = null)
         {
             if (analyticalModel == null)
             {
@@ -67,6 +92,14 @@ namespace SAM.Analytical.OpenStudio
             analyticalModel_Temp.ReplaceTransparentPanels(0.1);
 
             OpenStudioConversionContext context = new OpenStudioConversionContext(analyticalModel_Temp, new global::OpenStudio.Model(), options);
+            if (firstDayOfWeekOffset.HasValue)
+            {
+                context.FirstDayOfWeekOffset = firstDayOfWeekOffset.Value;
+            }
+            else if (options.FirstDayOfWeek != null)
+            {
+                context.FirstDayOfWeekOffset = ((int)options.FirstDayOfWeek.Value + 6) % 7;
+            }
 
             AdjacencyCluster adjacencyCluster = analyticalModel_Temp.AdjacencyCluster;
             if (adjacencyCluster == null)

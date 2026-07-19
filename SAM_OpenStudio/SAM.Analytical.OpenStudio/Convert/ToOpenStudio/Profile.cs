@@ -217,9 +217,12 @@ namespace SAM.Analytical.OpenStudio
             }
 
             double[] annual = new double[8760];
+            int firstDayOfWeekOffset = openStudioConversionContext.FirstDayOfWeekOffset;
             for (int dayIndex = 0; dayIndex < 365; dayIndex++)
             {
-                double[] day = dailyValues[dayIndex % 7];
+                // Rotate the Monday-first week onto the run calendar: day 0 of the year maps to
+                // the sub-profile of its actual weekday (Monday = 0 … Sunday = 6).
+                double[] day = dailyValues[(dayIndex + firstDayOfWeekOffset) % 7];
                 Array.Copy(day, 0, annual, dayIndex * 24, 24);
             }
 

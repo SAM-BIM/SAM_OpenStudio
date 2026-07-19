@@ -44,6 +44,14 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>Diagnostics accumulated during the conversion.</summary>
         public IList<Core.OpenStudio.OpenStudioDiagnostic> Diagnostics { get; } = new List<Core.OpenStudio.OpenStudioDiagnostic>();
 
+        /// <summary>
+        /// Day-of-week offset of 1 Jan of the run calendar with Monday = 0 … Sunday = 6.
+        /// Day-composed (weekly) profiles are rotated by this offset so sub-profile 0 (Monday per
+        /// the SAM_LadybugTools ScheduleRuleset convention) lands on the first real Monday.
+        /// Default 0 (1 Jan treated as Monday) for weather-free conversions.
+        /// </summary>
+        public int FirstDayOfWeekOffset { get; set; }
+
         /// <summary>Creates a conversion context.</summary>
         /// <param name="analyticalModel">Source SAM analytical model (null only in contract tests).</param>
         /// <param name="model">Target OpenStudio model; required.</param>

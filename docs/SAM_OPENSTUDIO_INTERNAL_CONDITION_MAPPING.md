@@ -49,8 +49,12 @@ daily sub-profiles (`GetProfiles()`, weekly semantics as in SAM_LadybugTools
 
 1. `Count == 8760` → used as-is (annual profile).
 2. `GetProfiles()` returns k ≥ 1 daily sub-profiles → extended to 7 by cycling (LadybugTools
-   parity), each normalized to 24 hourly values, tiled Mon-first across 365 days
-   (the run period sets Monday as the start day of week, M6).
+   parity), each normalized to 24 hourly values, tiled across 365 days **rotated onto the run
+   calendar**: sub-profile 0 is Monday per the LadybugTools `ScheduleRuleset` convention, so the
+   week is shifted by the 1-Jan day of week of the run — derived from the EPW
+   (`EpwFile.startDayOfWeek`, e.g. Sunday for the pinned Boston TMYx) in the full-pipeline
+   overload, or from `OpenStudioConversionOptions.FirstDayOfWeek` when set explicitly;
+   Monday-first is the fallback for weather-free conversions.
 3. Single profile whose `Count` divides 24 → each value held for 24/Count hours.
 4. `Count` is a multiple of 24 (sub-hourly day, e.g. 48) → block-averaged to hourly.
 5. Anything else → tiled cyclically across 8760 with a warning diagnostic.
