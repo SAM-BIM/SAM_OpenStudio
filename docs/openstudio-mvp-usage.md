@@ -66,7 +66,12 @@ Components are thin wrappers — every conversion rule lives in the tested
 - Ideal Loads only (no detailed HVAC); EnergyPlus object defaults for the Ideal Loads system.
 - Heating-only / cooling-only conditioning is not supported — both setpoint profiles are
   required (SAM-OS-HVAC-001 otherwise).
-- Latent equipment gains, humidification/dehumidification setpoints: not converted (warned).
+- Latent equipment gains, humidification/dehumidification setpoints: not converted — reported
+  as a `SAM-OS-IC-001` **warning** per affected internal condition; the run remains valid.
+- A zero heating or cooling value in `OpenStudioLoadSummary` is a **genuine result**, not a
+  missing one: every reported zone has a full time series in the SQL output. A zone that failed
+  to report is omitted from the per-zone dictionaries (its count then differs from the
+  conditioned-zone count) — zero and missing are never conflated.
 - Aperture frame layers: not converted (pane layers only).
 - Face holes beyond apertures: external boundary only (warned).
 - DDY design days: not imported (annual Ideal Loads runs need no sizing periods).

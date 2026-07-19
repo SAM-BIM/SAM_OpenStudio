@@ -5,17 +5,55 @@ completed milestone. See [SAM_OpenStudio_MVP_Implementation_Plan.md](SAM_OpenStu
 
 ## Current state
 
+The MVP is complete and validated end-to-end: **82/82 automated tests pass, the automated
+opaque-air-gap EnergyPlus test passes, the real Rhino 8 model test passes, and all P0/P1
+review findings are resolved. The branch is ready for PR into `sow/2026-Q3`.**
+
 | Field | Value |
 | --- | --- |
-| Milestone completed | **M8 + independent review (Stage 3/4) + P1-06 — all findings fixed; Rhino deployment smoke test PASSED, EnergyPlus retest of the real model pending** |
+| Milestone completed | **M8 + independent review + P1-06 + real Rhino 8 validation — MVP COMPLETE, ready for PR** |
 | Branch | `feature/analytical-model-to-openstudio-mvp` (base `sow/2026-Q3` @ 94dfce9) |
-| Commit | the commit introducing this change (`fix: distinguish opaque air gaps from window gas layers (review P1-06)`) |
+| Commit | `fd2c0a7` fix: distinguish opaque air gaps from window gas layers (review P1-06) |
 | SDK selected | OpenStudio NuGet **3.10.0** (bumped from 3.8.0 in all three library projects) |
 | CLI selected | **3.10.0+86d7e215a1** — `C:\Program Files\ladybug_tools\openstudio\bin\openstudio.exe` (discovery: explicit → PATH → direct installs → ladybug_tools) |
-| Tests executed | **82/82 passed** — incl. three E2E EnergyPlus runs + CLI-timeout regression + opaque-air-gap E2E |
-| Review | [openstudio-mvp-review.md](openstudio-mvp-review.md) — 0 P0, 6 P1 and 2 P2 findings, all resolved with regression tests |
-| Rhino 8 smoke test | **Deployment PASSED (2026-07-19, user-performed):** Rhino starts, GHA loads, both components appear and execute, OSM/OSW generated, CLI starts, no native-DLL/assembly errors. The run then failed fatally in EnergyPlus → **P1-06** (opaque gas cavities became `OS:WindowMaterial:Gas`), fixed in the tip commit. **EnergyPlus retest of the same real model pending (user)** |
-| Next milestone | Stage 5 — **user-performed Rhino 8 retest of the real model**, then PR into `sow/2026-Q3` |
+| Tests executed | **82/82 passed, 0 skipped** — incl. three E2E EnergyPlus runs + CLI-timeout regression + opaque-air-gap E2E |
+| Review | [openstudio-mvp-review.md](openstudio-mvp-review.md) — 0 P0, 6 P1 and 2 P2 findings, all resolved with regression tests; merge recommendation **READY** |
+| Rhino 8 validation | **PASSED (2026-07-19, user-performed)** — see the dedicated section below |
+| Next milestone | **PR into `sow/2026-Q3`** |
+
+## Rhino 8 real-model validation
+
+User-performed, 2026-07-19, commit `fd2c0a7` (assemblies deployed to `%APPDATA%\SAM` by the
+`-m:1` solution build). Independently verified against the generated artifacts in
+`C:\Users\Virtual Machine\Documents\SAM_daily\2026-07-19 OpenStudio\simulation-fixed`:
+
+| Check | Result |
+| --- | --- |
+| Rhino 8 startup | PASS |
+| Grasshopper GHA loading | PASS |
+| `SAMAnalytical.ToOpenStudio` appears and executes | PASS |
+| `OpenStudio.RunModel` appears and executes | PASS |
+| Real SAM AnalyticalModel converted | PASS |
+| OSM generation (`000000_SAM_AnalyticalModel.osm`) | PASS |
+| OSW generation (`000000_SAM_AnalyticalModel.osw`) | PASS |
+| OpenStudio CLI execution | PASS — `finished.job`: "Finished Workflow"; `EnergyPlus Completed Successfully` |
+| SQL produced and readable (`run\eplusout.sql`) | PASS |
+| Fatal errors | **0** |
+| Severe errors | **0** |
+| Previous R-value fatal error (`R Value below lowest allowed value`) | **RESOLVED — absent** |
+| Opaque gas cavities → `Material:AirGap` | PASS — `Ar90Up_Air_50mm_1.25W/m2K` → R = **0.8** m²K/W; `Ar90Up_Air_50mm_1.95W/m2K` → R = **0.512820512820513** m²K/W (R = 1/h) |
+| `WindowMaterial:Gas` in opaque constructions | **0 occurrences** (none in the whole model) |
+| Heating (verified from SQL) | **3758.36 kWh** (component displayed 3758.359753 kWh) |
+| Cooling (verified from SQL) | **0.00 kWh — genuinely present** (8760 hourly rows summing to 0; London St. James's Park TMYx; not a missing result) |
+| Conditioned-zone result count | 1 = conditioned-zone count (`SAM_IDEALLOADS_CELL_1_99C96B9E`) |
+| Environment periods in SQL | single annual weather run — no design days |
+| Native DLL / assembly-resolution errors | none |
+| Remaining conversion warning | `SAM-OS-IC-001`: latent equipment gains are not converted in the MVP (documented limitation) |
+| Remaining EnergyPlus warnings (non-blocking) | ground temperatures default 18 °C; floor/roof "upside down" auto-fixed by E+; zone volume −100 → 10 m³ (source-model geometry); meter key names; monthly tabular reports; LifeCycleCost resources; 3 unused schedules; EPW design-condition field count |
+
+Zero cooling is a valid result here: the time series exists (8760 hourly values summing to
+0.00 kWh), extraction completed successfully, heating is finite and > 0, and no fatal or severe
+errors occurred.
 
 ## Milestone history
 
@@ -31,7 +69,7 @@ completed milestone. See [SAM_OpenStudio_MVP_Implementation_Plan.md](SAM_OpenStu
 | M7 | 8658945 | 56/56 | TwoStackedBoxes (stories 0m/3m, shared floor RoofCeiling/Floor flip), conditioned/unconditioned pair, irregular-planar cleaning, degenerate-panel kernel-failure isolation (SAM Face3D NRE → space-level GEO-001 error + per-panel no-silent-drop warnings), no-source-mutation, deterministic names, disposal loop, two-zone E2E. Hardened: per-panel elevation with exception isolation + floor-group story filter; UpdateNormals/panel-conversion/GetArea guards. Restored externally wiped SAMuild and SAM_SQLiteuild prebuilts (SAM repo moved to 487bd679) |
 | M6 | 1015180 | 48/48 | Central IsConditioned; dual-setpoint thermostats with hourly heating≤cooling validation; ZoneHVACIdealLoadsAirSystem (E+ defaults, documented); EPW weather + Site from EpwFile; annual RunPeriod, 6 timesteps/h, no sizing runs, 6 hourly output variables; OpenStudioSimulationRunner (OSM save, minimal OSW, CLI discovery, timeout, err parse, SQL discovery, kWh extraction via DISTINCT KeyValue sums); full-pipeline ToOpenStudio(model, epw, outDir) overload. E2E: 2621.7 kWh heating / 1745.0 kWh cooling, Boston TMYx |
 | **Review fixes** | `4d28513` … `8c3367f` | 73/73 | Independent review ([openstudio-mvp-review.md](openstudio-mvp-review.md)): P1-01 weekly-profile calendar alignment; P1-02 leap-year/multi-day profile squash; P1-03 SpaceType same-name collision; P1-04 glazing front/back swap; P1-05 CLI timeout/deadlock; P2-01 self-intersecting polygons; P2-02 quote sanitization — one commit + regression tests each |
-| **P1-06** | (this commit) | **82/82** | Real Rhino 8 smoke test (user): deployment passed, EnergyPlus failed fatally on opaque gas cavities (`OS:WindowMaterial:Gas` R = 0.000 in `InitConductionTransferFunctions`). Fix: explicit `OpenStudioMaterialUsage` — SAM `GasMaterial` in opaque `Construction` → `OpenStudio.AirGap` with R = 1/h from `GasMaterialParameter.HeatTransferCoefficient` [W/m²K] (validated, SAM-OS-MAT-001 on missing/invalid/below-minimum); in `ApertureConstruction` panes → `OpenStudio.Gas` unchanged; usage-aware cache keys; material-family validation; 9 new tests incl. opaque-air-gap E2E (exit 0, 0 fatal/severe, 4953.6/1555.5 kWh) |
+| **P1-06** | `fd2c0a7` | **82/82** | Real Rhino 8 smoke test (user): deployment passed, EnergyPlus failed fatally on opaque gas cavities (`OS:WindowMaterial:Gas` R = 0.000 in `InitConductionTransferFunctions`). Fix: explicit `OpenStudioMaterialUsage` — SAM `GasMaterial` in opaque `Construction` → `OpenStudio.AirGap` with R = 1/h from `GasMaterialParameter.HeatTransferCoefficient` [W/m²K] (validated, SAM-OS-MAT-001 on missing/invalid/below-minimum); in `ApertureConstruction` panes → `OpenStudio.Gas` unchanged; usage-aware cache keys; material-family validation; 9 new tests incl. opaque-air-gap E2E (exit 0, 0 fatal/severe, 4953.6/1555.5 kWh). **Real-model Rhino retest PASSED 2026-07-19** (see section above) |
 
 ## Known limitations at this point
 

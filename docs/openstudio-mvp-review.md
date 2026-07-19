@@ -38,7 +38,7 @@ recorded and resolved as **P1-06**.
 | P1-03 | P1 | `SpaceType` deduplication by sanitized name silently merged two internal conditions that share a name but differ in gains or profiles | Resolved `f46c98f` |
 | P1-04 | P1 | Glazing front/back optical properties were swapped relative to EnergyPlus semantics (SAM `Internal*` written to the E+ *front* = exterior-facing side) | Resolved `fea508f` |
 | P1-05 | P1 | CLI runner: `TimeoutSeconds` never fired while the process ran (proven: 120.6 s block with a 5 s timeout); sequential `ReadToEnd()` on both pipes could deadlock; process tree not killed | Resolved `20b2b85` |
-| P1-06 | P1 | SAM `GasMaterial` in opaque constructions was converted to `OS:WindowMaterial:Gas`, which reports R = 0.000 to EnergyPlus `InitConductionTransferFunctions` → fatal (the real Rhino smoke-test model) | Resolved (this branch tip) |
+| P1-06 | P1 | SAM `GasMaterial` in opaque constructions was converted to `OS:WindowMaterial:Gas`, which reports R = 0.000 to EnergyPlus `InitConductionTransferFunctions` → fatal (the real Rhino smoke-test model) | Resolved `fd2c0a7` — real Rhino retest passed |
 | P2-01 | P2 | Self-intersecting polygons with non-zero signed area were accepted silently and became invalid EnergyPlus surfaces | Resolved `add236f` |
 | P2-02 | P2 | `SanitizeName` kept `'` and `"`; such names broke the SQL extraction query and the zone's results were silently dropped | Resolved `8c3367f` |
 
@@ -295,7 +295,11 @@ None.
   minimum → SAM-OS-MAT-001; glazing layer in an opaque construction rejected; end-to-end
   EnergyPlus run of an opaque-air-gap fixture (exit 0, SQL present, no fatal/severe, finite
   loads).
-- **Status:** **Resolved** — the commit introducing this change (see §9).
+- **Status:** **Resolved** — commit `fd2c0a7`.
+  - *Before (generated object, real model):* `WindowMaterial:Gas, …Ar90Up_Air_50mm_1.25W/m2K…, Air, 0.05` as layers of the opaque constructions `SIM_EXT_SLD` (layers 2/5) and `SIM_EXT_SLD_Roof` (layer 4) → `InitConductionTransferFunctions` severe ×3 → fatal, SQL not produced, CLI exit 1.
+  - *After (generated object, real model):* `Material:AirGap, …Ar90Up_Air_50mm_1.25W/m2K…, 0.8` and `Material:AirGap, …Ar90Up_Air_50mm_1.95W/m2K…, 0.512820512820513` (R = 1/h); zero `WindowMaterial:Gas` in the model.
+  - *Automated regression evidence:* 9 tests in `GasMaterialUsageTests` + `AirGapConstruction_EndToEnd_EnergyPlusRun_MeetsResultGate` (exit 0, SQL present, 0 fatal, 0 severe, R = 0.8 m²K/W, heating 4953.6 / cooling 1555.5 kWh, independently re-verified from the SQL).
+  - *Real Rhino retest evidence (user-performed, 2026-07-19, `simulation-fixed`):* GHA loads; both components execute; real model converted; OSM/OSW generated; CLI completed (`finished.job` — "Finished Workflow"; `EnergyPlus Completed Successfully`); SQL produced; **fatal 0, severe 0**; no R-value error; **heating 3758.36 kWh** (verified from SQL; component displayed 3758.359753 kWh); **cooling 0.00 kWh — genuinely present** (8760 hourly rows summing to 0, not missing); 1 conditioned-zone result = conditioned-zone count; only the documented `SAM-OS-IC-001` latent-equipment warning plus non-blocking EnergyPlus warnings (§12 of the status doc).
 
 ---
 
@@ -445,7 +449,7 @@ None.
 | `20b2b85` fix: make the CLI timeout real and deadlock-safe (review P1-05) | P1-05 | `CliTimeout_KillsProcess_AndReportsTimeout` (plus the pre-existing healthy-run E2E tests); manual re-verification: 120 s sleeper now dies at 5.7 s with exit −1 (was 120.6 s, exit 0) |
 | `add236f` fix: reject self-intersecting polygons (review P2-01) | P2-01 | `SelfIntersectingPolygon_IsAnError`, `BowtiePolygon_IsAnError`, `ConcavePolygon_IsAccepted` |
 | `8c3367f` fix: sanitize quotes out of OpenStudio names (review P2-02) | P2-02 | `SanitizeName_RemovesQuotes`, `SpaceName_WithApostrophe_ConvertsWithDeterministicName` |
-| (this branch tip) fix: distinguish opaque air gaps from window gas layers (review P1-06) | P1-06 | `OpaqueCavity_BecomesAirGap`, `OpaqueCavity_Resistance_FromConductance_1_25`, `OpaqueCavity_Resistance_FromConductance_1_95`, `WindowGas_RemainsGas_InAperturePane`, `SameGasMaterial_TwoContexts_SeparateObjects`, `MissingConductance_RaisesError_NeverSilent`, `ResistanceBelowEnergyPlusMinimum_RaisesError`, `GlazingLayer_InOpaqueConstruction_IsRejected`, `AirGapConstruction_EndToEnd_EnergyPlusRun_MeetsResultGate` |
+| `fd2c0a7` fix: distinguish opaque air gaps from window gas layers (review P1-06) | P1-06 | `OpaqueCavity_BecomesAirGap`, `OpaqueCavity_Resistance_FromConductance_1_25`, `OpaqueCavity_Resistance_FromConductance_1_95`, `WindowGas_RemainsGas_InAperturePane`, `SameGasMaterial_TwoContexts_SeparateObjects`, `MissingConductance_RaisesError_NeverSilent`, `ResistanceBelowEnergyPlusMinimum_RaisesError`, `GlazingLayer_InOpaqueConstruction_IsRejected`, `AirGapConstruction_EndToEnd_EnergyPlusRun_MeetsResultGate`; real-model Rhino retest passed 2026-07-19 |
 
 Every fix was reproduced with a failing test first, corrected minimally, verified with the
 focused test and then the complete suite. No existing milestone commit was rewritten.
@@ -513,23 +517,23 @@ glazing, CLI failure handling, self-intersecting geometry, quoted names and opaq
 - Weekly semantics: day-composed profiles align to the run start weekday (EPW-derived or explicit
   option); flat sequences tile at their own period exactly as SAM does natively.
 
-## 12. Remaining human validation
+## 12. Remaining human validation — COMPLETE
 
-A real Rhino 8 Grasshopper smoke test was performed by the user on 2026-07-19: deployment
-**passed** (Rhino 8 starts; Grasshopper loads the GHA; `SAMAnalytical.ToOpenStudio` and
-`OpenStudio.RunModel` appear and execute; OSM/OSW created; OpenStudio CLI started; no native-DLL
-or managed-assembly errors). The run itself failed in EnergyPlus — finding P1-06, now resolved.
+The mandatory Rhino 8 smoke test was performed by the user in two rounds (2026-07-19):
 
-**Outstanding:** a Rhino 8 **retest** of the exact same analytical model against this branch's
-build (the new assemblies are deployed to `%APPDATA%\SAM`). The retest must be performed
-interactively by the user; expected outcome: both components load, OSM/OSW generated, CLI exit
-code 0, SQL present, fatal = 0, severe = 0, heating/cooling results returned, no R-value error.
-This review does not claim it.
+1. **Deployment round — PASSED, exposing P1-06:** Rhino 8 starts; Grasshopper loads the GHA;
+   `SAMAnalytical.ToOpenStudio` and `OpenStudio.RunModel` appear and execute; OSM/OSW created;
+   CLI starts; no native-DLL or managed-assembly errors. EnergyPlus then failed fatally on the
+   opaque gas cavities → finding P1-06 (§4), fixed in `fd2c0a7`.
+2. **Retest round (`simulation-fixed`) — PASSED:** real model converts; OSM/OSW generated; CLI
+   completes successfully; SQL produced; fatal 0; severe 0; no R-value error; heating
+   **3758.36 kWh** / cooling **0.00 kWh** (both verified directly from `run\eplusout.sql`;
+   cooling is a genuine zero result, not missing); conditioned-zone result count 1; only the
+   documented `SAM-OS-IC-001` latent-equipment warning remains.
 
 ## 13. Merge recommendation
 
-**READY pending the Rhino 8 retest.** All eight P1 findings (P1-01…P1-06 plus the two P2 items)
-are resolved with regression tests; the final suite is **82/82** with four clean post-fix
-EnergyPlus validations including an opaque-air-gap model. The only unresolved pre-PR item is the
-user-performed Rhino 8 retest of the real model (§12). Do not open the PR until that retest
-passes interactively in Rhino.
+**READY.** All eight findings (P1-01…P1-06, P2-01, P2-02) are resolved with regression tests;
+the final suite is **82/82** with four clean automated EnergyPlus validations including an
+opaque-air-gap model; the real Rhino 8 model validation passed with artifact-verified results.
+The branch is recommended for PR into `sow/2026-Q3`.
