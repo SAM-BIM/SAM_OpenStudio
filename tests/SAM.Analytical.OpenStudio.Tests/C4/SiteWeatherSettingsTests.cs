@@ -98,14 +98,65 @@ namespace SAM.Analytical.OpenStudio.Tests
         [Test]
         public void DdyImport_AddsDesignDays_EnablesSizing()
         {
+            // Review P1-02: ASHRAE DDYs name the annual pair "… Ann Htg 99.6% Condns DB" and
+            // "… Ann Clg .4% Condns DB=>MWB" (no leading zero). The default import must select
+            // exactly that pair — never the humidification (Hum_n) or wind (Htg Wind) 99.6% days.
             Core.OpenStudio.OpenStudioConversionOptions options = new Core.OpenStudio.OpenStudioConversionOptions { DdyPath = WeatherPath(".ddy") };
 
             Convert_NoRun(AnalyticalModelFixtures.SingleBox(), options, out OpenStudioConversionResult result);
 
-            Assert.That(result.Model.getDesignDays().Count, Is.GreaterThanOrEqualTo(2), "Heating 99.6% + cooling 0.4% design days imported");
-            Assert.That(result.Model.getDesignDays().Count(x => x.nameString().Contains("99.6%") || x.nameString().Contains("0.4%")), Is.EqualTo(result.Model.getDesignDays().Count), "Default filter keeps only the 99.6/0.4 pair");
+            System.Collections.Generic.List<string> names = result.Model.getDesignDays().Select(x => x.nameString()).ToList();
+            Assert.That(names.Count, Is.EqualTo(2), "Exactly the heating 99.6% + cooling .4% pair: " + string.Join(" | ", names));
+            Assert.That(names.Count(x => System.Text.RegularExpressions.Regex.IsMatch(x, @"Ann\s+Htg\s+99\.6\s*%\s+Condns\s+DB", System.Text.RegularExpressions.RegexOptions.IgnoreCase)), Is.EqualTo(1), "The annual heating 99.6% dry-bulb day is imported");
+            Assert.That(names.Count(x => System.Text.RegularExpressions.Regex.IsMatch(x, @"Ann\s+Clg\s+0?\.4\s*%\s+Condns\s+DB\s*=>\s*M(C)?WB", System.Text.RegularExpressions.RegexOptions.IgnoreCase)), Is.EqualTo(1), "The annual cooling .4% DB=>MWB day is imported");
+            Assert.That(names.Any(x => x.IndexOf("Hum_n", StringComparison.OrdinalIgnoreCase) >= 0 || x.IndexOf("Wind", StringComparison.OrdinalIgnoreCase) >= 0), Is.False, "No humidification or wind design days in the default pair");
             Assert.That(result.Model.getSimulationControl().runSimulationforSizingPeriods(), Is.True, "Sizing periods enabled when design days are imported");
             Assert.That(result.Model.getSimulationControl().doZoneSizingCalculation(), Is.True);
+        }
+
+        [Test]
+        public void DdyImport_MissingCoolingDay_ImportsHeatingAndWarns()
+        {
+            // A DDY carrying only the heating day (site-specific files exist without the
+            // cooling row): the heating day imports and the missing cooling side is reported —
+            // never a silent fallback onto humidification/wind days.
+            string[] lines = File.ReadAllLines(WeatherPath(".ddy"));
+            System.Text.StringBuilder heatingOnly = new System.Text.StringBuilder();
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].TrimStart().StartsWith("SizingPeriod:DesignDay", StringComparison.OrdinalIgnoreCase) && i + 1 < lines.Length && lines[i + 1].Contains("Ann Htg 99.6% Condns DB"))
+                {
+                    for (int j = i; j < lines.Length; j++)
+                    {
+                        heatingOnly.AppendLine(lines[j]);
+
+                        // The object terminator ';' precedes an inline "!- field name" comment.
+                        string code = lines[j];
+                        int commentIndex = code.IndexOf('!');
+                        if (commentIndex >= 0)
+                        {
+                            code = code.Substring(0, commentIndex);
+                        }
+
+                        if (code.TrimEnd().EndsWith(";"))
+                        {
+                            break;
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            string heatingOnlyPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, "c4_heating_only.ddy");
+            File.WriteAllText(heatingOnlyPath, heatingOnly.ToString());
+
+            Core.OpenStudio.OpenStudioConversionOptions options = new Core.OpenStudio.OpenStudioConversionOptions { DdyPath = heatingOnlyPath };
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), options, out OpenStudioConversionResult result);
+
+            Assert.That(result.Model.getDesignDays().Count, Is.EqualTo(1), "The heating day imports on its own");
+            Assert.That(result.Model.getDesignDays().First().nameString(), Does.Contain("Ann Htg 99.6% Condns DB"));
+            Assert.That(result.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("cooling")), Is.True, "The missing cooling design day is reported");
         }
 
         [Test]
@@ -215,7 +266,31 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             Assert.That(baseline.RunResult?.Success, Is.True);
             Assert.That(withDesignDays.RunResult?.Success, Is.True);
-            Assert.That(withDesignDays.Model.getDesignDays().Count, Is.GreaterThanOrEqualTo(2));
+            Assert.That(withDesignDays.Model.getDesignDays().Count, Is.EqualTo(2), "Exactly the heating 99.6% + cooling .4% pair (review P1-02)");
+
+            // Review P1-02: the sizing environments actually simulated must be the heating
+            // 99.6% dry-bulb day AND the cooling .4% DB=>MWB day — no humidification/wind days.
+            System.Collections.Generic.List<string> sizingEnvironments = new System.Collections.Generic.List<string>();
+            using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection("Data Source=" + withDesignDays.RunResult.SqlPath + ";Read Only=True"))
+            {
+                connection.Open();
+                using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT EnvironmentName FROM EnvironmentPeriods WHERE EnvironmentType IN (1, 2)";
+                    using (System.Data.SQLite.SQLiteDataReader reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            sizingEnvironments.Add(reader.GetString(0));
+                        }
+                    }
+                }
+            }
+
+            Assert.That(sizingEnvironments.Count, Is.EqualTo(2), "Two sizing environments: " + string.Join(" | ", sizingEnvironments));
+            Assert.That(sizingEnvironments.Count(x => x.IndexOf("HTG 99.6%", StringComparison.OrdinalIgnoreCase) >= 0 && x.IndexOf("WIND", StringComparison.OrdinalIgnoreCase) < 0), Is.EqualTo(1), "Heating sizing environment present");
+            Assert.That(sizingEnvironments.Count(x => x.IndexOf("CLG .4%", StringComparison.OrdinalIgnoreCase) >= 0), Is.EqualTo(1), "Cooling sizing environment present");
+            Assert.That(sizingEnvironments.Any(x => x.IndexOf("HUM_N", StringComparison.OrdinalIgnoreCase) >= 0 || x.IndexOf("WIND", StringComparison.OrdinalIgnoreCase) >= 0), Is.False, "No humidification/wind sizing environments");
 
             // The environment-period filter must exclude the sizing days from the annual sums:
             // identical model and weather → identical annual loads.

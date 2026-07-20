@@ -27,7 +27,7 @@ Three P1 findings were confirmed by reproduction — all three in the newest (C2
 | ID | Priority | Finding | Status |
 | --- | --- | --- | --- |
 | P1-01 | P1 | Eighteen coverage-manifest rows declare structured diagnostics that no converter ever emits (false completeness: view coefficients, lighting control function, internal-shadow flags, panel feature shades, vapour diffusion factor, opaque internal-optics divergence, emitter and exhaust parameters) | **Fixed** (Stage L, §8) |
-| P1-02 | P1 | The default DDY design-day filter (`"99.6%"`/`"0.4%"`) imports **no cooling design day** (ASHRAE DDYs name them `Ann Clg .4% …`) and wrongly imports humidification (`Hum_n`) and wind (`Htg Wind`) 99.6% days | Confirmed — fix pending |
+| P1-02 | P1 | The default DDY design-day filter (`"99.6%"`/`"0.4%"`) imports **no cooling design day** (ASHRAE DDYs name them `Ann Clg .4% …`) and wrongly imports humidification (`Hum_n`) and wind (`Htg Wind`) 99.6% days | **Fixed** (Stage L, §8) |
 | P1-03 | P1 | Leap-year runs: SQL hour-of-year uses a fixed non-leap reference year, so Feb 29 rows clamp onto Feb 28 (duplicate hour keys double-count the coincident peak) and all post-February peak hours shift by one day | Confirmed — fix pending |
 | P2-01 | P2 | The C7 completeness test does not implement the stale-manifest-id detection the coverage document claims | Confirmed — fix pending |
 | P2-02 | P2 | `OutputVariableFrequency` ≠ Hourly silently mis-scales extracted peaks (fixed 3600 s interval assumption) | Confirmed — mitigation pending; full support is follow-up |
@@ -162,7 +162,12 @@ None.
   (`…Ann Htg 99.6% Condns DB`) and one cooling (`…Ann Clg .4% Condns DB=>MWB`) day, and no
   `Hum_n`/`Wind` day; `ImportAllDesignDays` unchanged; end-to-end sizing run shows both a
   heating and a cooling sizing environment.
-- **Status:** **Confirmed — fix pending** (Stage L).
+- **Status:** **Fixed** (Stage L) — regex selection (`Ann Htg 99.6% Condns DB` /
+  `Ann Clg 0?.4% Condns DB=>M(C)?WB`, case-insensitive) with per-side warnings and the
+  existing all-days fallback when neither side matches. C4 assertion rewritten to name the
+  exact pair; new heating-only-DDY warning test; the end-to-end sizing run now asserts (via
+  SQL EnvironmentPeriods) exactly one heating and one cooling sizing environment and identical
+  annual totals. Commit in §8.
 
 ### P1-03 — Leap-year Feb 29 collapses onto Feb 28 in the SQL hour-of-year
 
