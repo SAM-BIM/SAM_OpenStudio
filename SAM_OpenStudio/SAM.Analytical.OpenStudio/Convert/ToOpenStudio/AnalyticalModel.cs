@@ -39,8 +39,38 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="openStudioConversionOptions">Conversion options; defaults when null.</param>
         /// <param name="openStudioRunOptions">Run options (CLI path, timeout); defaults when null.</param>
         /// <param name="run">False converts and saves OSM/OSW without executing the CLI.</param>
+        /// <param name="progress">Optional stage progress sink.</param>
+        /// <param name="cancellationToken">Cancellation; kills the CLI/EnergyPlus process tree when triggered.</param>
         /// <returns>Conversion result including RunResult and Loads; null when input is null.</returns>
-        public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true)
+        public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        {
+            OpenStudioConversionContext context = ToOpenStudio_ContextWithSite(analyticalModel, epwPath, openStudioConversionOptions, openStudioRunOptions);
+            if (context == null)
+            {
+                return null;
+            }
+
+            return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions, run, progress, cancellationToken);
+        }
+
+        /// <summary>
+        /// Asynchronous full pipeline (C6): conversion executes inline (fast CPU work), the
+        /// save → OSW → CLI → parse pipeline on a worker thread; cancellation terminates the
+        /// CLI/EnergyPlus process tree. Progress stages are reported through
+        /// <paramref name="progress"/>.
+        /// </summary>
+        public static System.Threading.Tasks.Task<OpenStudioConversionResult> ToOpenStudioAsync(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        {
+            OpenStudioConversionContext context = ToOpenStudio_ContextWithSite(analyticalModel, epwPath, openStudioConversionOptions, openStudioRunOptions);
+            if (context == null)
+            {
+                return System.Threading.Tasks.Task.FromResult<OpenStudioConversionResult>(null);
+            }
+
+            return OpenStudioSimulationRunner.RunAsync(context, epwPath, outputDirectory, openStudioRunOptions, run, progress, cancellationToken);
+        }
+
+        private static OpenStudioConversionContext ToOpenStudio_ContextWithSite(AnalyticalModel analyticalModel, string epwPath, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions)
         {
             OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions, FirstDayOfWeekOffset(epwPath, openStudioConversionOptions));
             if (context == null)
@@ -56,7 +86,7 @@ namespace SAM.Analytical.OpenStudio
             context.ToOpenStudio_DesignDays(ddyPath);
 
             context.ToOpenStudio_SimulationSettings();
-            return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions, run);
+            return context;
         }
 
         /// <summary>

@@ -99,26 +99,30 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="openStudioObjectName">Related OpenStudio object name, when applicable.</param>
         public void AddDiagnostic(string code, Core.OpenStudio.OpenStudioDiagnosticSeverity severity, string message, Core.SAMObject sAMObject = null, string openStudioObjectName = null)
         {
-            Diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(code, severity, message, sAMObject?.Guid, sAMObject?.GetType().Name, openStudioObjectName));
-
-            switch (severity)
+            // Lock: RunAsync reports from a worker thread while the caller may read.
+            lock (Diagnostics)
             {
-                case Core.OpenStudio.OpenStudioDiagnosticSeverity.Information:
-                    Statistics.InformationCount++;
-                    break;
+                Diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(code, severity, message, sAMObject?.Guid, sAMObject?.GetType().Name, openStudioObjectName));
 
-                case Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning:
-                    Statistics.WarningCount++;
-                    break;
+                switch (severity)
+                {
+                    case Core.OpenStudio.OpenStudioDiagnosticSeverity.Information:
+                        Statistics.InformationCount++;
+                        break;
 
-                case Core.OpenStudio.OpenStudioDiagnosticSeverity.Error:
-                    Statistics.ErrorCount++;
-                    break;
-            }
+                    case Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning:
+                        Statistics.WarningCount++;
+                        break;
 
-            if (code == Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter)
-            {
-                Statistics.UnsupportedObjects++;
+                    case Core.OpenStudio.OpenStudioDiagnosticSeverity.Error:
+                        Statistics.ErrorCount++;
+                        break;
+                }
+
+                if (code == Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter)
+                {
+                    Statistics.UnsupportedObjects++;
+                }
             }
         }
 

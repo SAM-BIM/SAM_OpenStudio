@@ -4,6 +4,8 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SAM.Analytical.OpenStudio
 {
@@ -11,9 +13,23 @@ namespace SAM.Analytical.OpenStudio
     /// Saves the converted model (OSM), generates a minimal OSW workflow, executes the OpenStudio
     /// CLI (discovered per plan §11.2), parses eplusout.err, discovers the SQLite results file and
     /// extracts annual Ideal Loads energy through the SQL layer. Requires no Rhino/Grasshopper.
+    /// C6: cancellation tokens share the timeout's Job-Object tree-kill path, RunAsync executes
+    /// off the caller thread, runs execute in unique GUID subdirectories by default (an
+    /// in-progress lock file guards non-unique directories), and progress stages are reported
+    /// through IProgress.
     /// </summary>
     public static class OpenStudioSimulationRunner
     {
+        /// <summary>
+        /// Asynchronous wrapper over <see cref="Run(OpenStudioConversionContext, string, string, Core.OpenStudio.OpenStudioRunOptions, bool, System.IProgress{Core.OpenStudio.OpenStudioSimulationProgress}, CancellationToken)"/>:
+        /// the full save → OSW → CLI → parse pipeline executes on a worker thread; cancellation
+        /// terminates the whole CLI/EnergyPlus process tree.
+        /// </summary>
+        public static Task<OpenStudioConversionResult> RunAsync(OpenStudioConversionContext openStudioConversionContext, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool execute = true, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return Task.Run(() => Run(openStudioConversionContext, epwPath, outputDirectory, openStudioRunOptions, execute, progress, cancellationToken), cancellationToken);
+        }
+
         /// <summary>
         /// Runs the full save → OSW → CLI → parse pipeline for a converted context and returns
         /// the result snapshot including <see cref="Core.OpenStudio.OpenStudioRunResult"/> and
@@ -25,8 +41,10 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="outputDirectory">Directory for OSM/OSW and the run folder.</param>
         /// <param name="openStudioRunOptions">Run options; defaults when null.</param>
         /// <param name="execute">False saves the OSM/OSW without launching the CLI (RunResult stays null).</param>
+        /// <param name="progress">Optional stage progress sink.</param>
+        /// <param name="cancellationToken">Cancellation; kills the CLI/EnergyPlus process tree when triggered.</param>
         /// <returns>Result snapshot with paths, run outcome and loads.</returns>
-        public static OpenStudioConversionResult Run(OpenStudioConversionContext openStudioConversionContext, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool execute = true)
+        public static OpenStudioConversionResult Run(OpenStudioConversionContext openStudioConversionContext, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool execute = true, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (openStudioConversionContext == null)
             {
@@ -42,7 +60,66 @@ namespace SAM.Analytical.OpenStudio
                 return new OpenStudioConversionResult(openStudioConversionContext);
             }
 
+            if (runOptions.UseUniqueRunDirectory)
+            {
+                directory = Path.Combine(directory, "SAM_OpenStudio_" + System.Guid.NewGuid().ToString("N").Substring(0, 8));
+            }
+
             Directory.CreateDirectory(directory);
+
+            // Non-unique directories: in-progress guard (a stale lock from a crashed run is
+            // honoured — never overwritten) plus deterministic cleanup of the old run folder.
+            string lockPath = null;
+            FileStream lockStream = null;
+            if (!runOptions.UseUniqueRunDirectory)
+            {
+                lockPath = Path.Combine(directory, "sam_openstudio_run.lock");
+                try
+                {
+                    lockStream = new FileStream(lockPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Another run is in progress in {0} (lock file present); use unique run directories for concurrent runs", directory));
+                    return new OpenStudioConversionResult(openStudioConversionContext);
+                }
+            }
+
+            try
+            {
+                return RunInDirectory(openStudioConversionContext, epwPath, directory, runOptions, execute, progress, cancellationToken);
+            }
+            finally
+            {
+                if (lockStream != null)
+                {
+                    lockStream.Dispose();
+                    try
+                    {
+                        File.Delete(lockPath);
+                    }
+                    catch (System.Exception)
+                    {
+                        // lock cleanup is best effort
+                    }
+                }
+            }
+        }
+
+        private static OpenStudioConversionResult RunInDirectory(OpenStudioConversionContext openStudioConversionContext, string epwPath, string directory, Core.OpenStudio.OpenStudioRunOptions runOptions, bool execute, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress, CancellationToken cancellationToken)
+        {
+            string oldRunDirectory = Path.Combine(directory, "run");
+            if (Directory.Exists(oldRunDirectory))
+            {
+                try
+                {
+                    Directory.Delete(oldRunDirectory, true);
+                }
+                catch (System.Exception)
+                {
+                    // a leftover run folder must not fail the new run
+                }
+            }
 
             string modelName = Core.OpenStudio.Query.SanitizeName(openStudioConversionContext.Source?.Name);
             if (string.IsNullOrWhiteSpace(modelName))
@@ -53,18 +130,21 @@ namespace SAM.Analytical.OpenStudio
             string osmPath = Path.Combine(directory, modelName + ".osm");
             string oswPath = Path.Combine(directory, modelName + ".osw");
 
+            progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.SavingOsm, osmPath));
             if (!openStudioConversionContext.Target.save(global::OpenStudio.OpenStudioUtilitiesCore.toPath(osmPath), true))
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("The OSM could not be saved to {0}", osmPath));
                 return new OpenStudioConversionResult(openStudioConversionContext);
             }
 
+            progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.WritingOsw, oswPath));
             File.WriteAllText(oswPath, string.Format("{{\n  \"seed_file\": \"{0}\",\n  \"weather_file\": \"{1}\",\n  \"steps\": []\n}}\n", Path.GetFileName(osmPath), (epwPath ?? string.Empty).Replace('\\', '/')));
 
             OpenStudioConversionResult result;
 
             if (!execute)
             {
+                progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.Complete, "Saved without execution"));
                 result = new OpenStudioConversionResult(openStudioConversionContext);
                 result.OsmPath = osmPath;
                 result.OswPath = oswPath;
@@ -83,6 +163,15 @@ namespace SAM.Analytical.OpenStudio
                 return result;
             }
 
+            if (cancellationToken.IsCancellationRequested)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Simulation cancelled before the CLI was started");
+                result = new OpenStudioConversionResult(openStudioConversionContext);
+                result.OsmPath = osmPath;
+                result.OswPath = oswPath;
+                return result;
+            }
+
             string cliPath = Core.OpenStudio.Query.OpenStudioCliPath(runOptions.CliPath);
             if (cliPath == null)
             {
@@ -93,11 +182,19 @@ namespace SAM.Analytical.OpenStudio
                 return result;
             }
 
+            progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.RunningCli, cliPath));
+
             int exitCode;
+            bool cancelled;
             Stopwatch stopwatch = Stopwatch.StartNew();
-            string output = ExecuteCli(cliPath, oswPath, directory, runOptions.TimeoutSeconds, out exitCode);
+            string output = ExecuteCli(cliPath, oswPath, directory, runOptions.TimeoutSeconds, cancellationToken, out exitCode, out cancelled);
             stopwatch.Stop();
             double runtimeSeconds = stopwatch.Elapsed.TotalSeconds;
+
+            if (cancelled)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Simulation cancelled; the CLI/EnergyPlus process tree was terminated");
+            }
 
             string runDirectory = Path.Combine(directory, "run");
             string errorFilePath = Path.Combine(runDirectory, "eplusout.err");
@@ -141,9 +238,9 @@ namespace SAM.Analytical.OpenStudio
             }
 
             bool sqlExists = File.Exists(sqlPath);
-            bool success = exitCode == 0 && fatalErrors.Count == 0 && sqlExists;
+            bool success = !cancelled && exitCode == 0 && fatalErrors.Count == 0 && sqlExists;
 
-            if (!success)
+            if (!success && !cancelled)
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("OpenStudio CLI run failed (exit code {0}, SQL {1}, {2} fatal error(s)). Output tail: {3}", exitCode, sqlExists ? "present" : "missing", fatalErrors.Count, Tail(output, 500)));
             }
@@ -164,6 +261,7 @@ namespace SAM.Analytical.OpenStudio
             OpenStudioSimulationResultSet resultSet = null;
             if (success)
             {
+                progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.ReadingResults, sqlPath));
                 loadSummary = ExtractLoads(sqlPath);
                 if (loadSummary == null)
                 {
@@ -175,6 +273,8 @@ namespace SAM.Analytical.OpenStudio
                     resultSet = ExtractResultSet(sqlPath, loadSummary, runOptions.ExtractTimeSeries, runtimeSeconds, warningCount, severeErrors.Count, fatalErrors.Count);
                 }
             }
+
+            progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.Complete, cancelled ? "Cancelled" : success ? "Success" : "Failed"));
 
             result = new OpenStudioConversionResult(openStudioConversionContext);
             result.OsmPath = osmPath;
@@ -196,8 +296,9 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="openStudioRunOptions">Run options; defaults when null.</param>
         /// <param name="loadSummary">Annual Ideal Loads extracted on success; null otherwise.</param>
         /// <param name="diagnostics">Optional diagnostics sink.</param>
+        /// <param name="cancellationToken">Cancellation; kills the CLI/EnergyPlus process tree when triggered.</param>
         /// <returns>The run result (never null).</returns>
-        public static Core.OpenStudio.OpenStudioRunResult Run(string path, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions, out OpenStudioLoadSummary loadSummary, IList<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = null)
+        public static Core.OpenStudio.OpenStudioRunResult Run(string path, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions, out OpenStudioLoadSummary loadSummary, IList<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             loadSummary = null;
             Core.OpenStudio.OpenStudioRunOptions runOptions = openStudioRunOptions ?? new Core.OpenStudio.OpenStudioRunOptions();
@@ -214,6 +315,11 @@ namespace SAM.Analytical.OpenStudio
             }
 
             string directory = runOptions.RunDirectory ?? outputDirectory ?? Path.GetDirectoryName(path);
+            if (runOptions.UseUniqueRunDirectory)
+            {
+                directory = Path.Combine(directory, "SAM_OpenStudio_" + System.Guid.NewGuid().ToString("N").Substring(0, 8));
+            }
+
             Directory.CreateDirectory(directory);
 
             string osmPath = null;
@@ -244,8 +350,34 @@ namespace SAM.Analytical.OpenStudio
             }
 
             string workingDirectory = Path.GetDirectoryName(oswPath);
+
+            string oldRunDirectory = Path.Combine(workingDirectory, "run");
+            if (Directory.Exists(oldRunDirectory))
+            {
+                try
+                {
+                    Directory.Delete(oldRunDirectory, true);
+                }
+                catch (System.Exception)
+                {
+                    // a leftover run folder must not fail the new run
+                }
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Simulation cancelled before the CLI was started");
+                return new Core.OpenStudio.OpenStudioRunResult(false, -1, osmPath, oswPath, null, null, null, null);
+            }
+
             int exitCode;
-            string output = ExecuteCli(cliPath, oswPath, workingDirectory, runOptions.TimeoutSeconds, out exitCode);
+            bool cancelled;
+            string output = ExecuteCli(cliPath, oswPath, workingDirectory, runOptions.TimeoutSeconds, cancellationToken, out exitCode, out cancelled);
+
+            if (cancelled)
+            {
+                AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Simulation cancelled; the CLI/EnergyPlus process tree was terminated");
+            }
 
             string runDirectory = Path.Combine(workingDirectory, "run");
             string errorFilePath = Path.Combine(runDirectory, "eplusout.err");
@@ -282,9 +414,9 @@ namespace SAM.Analytical.OpenStudio
             }
 
             bool sqlExists = File.Exists(sqlPath);
-            bool success = exitCode == 0 && fatalErrors.Count == 0 && sqlExists;
+            bool success = !cancelled && exitCode == 0 && fatalErrors.Count == 0 && sqlExists;
 
-            if (!success)
+            if (!success && !cancelled)
             {
                 AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("OpenStudio CLI run failed (exit code {0}, SQL {1}, {2} fatal error(s)). Output tail: {3}", exitCode, sqlExists ? "present" : "missing", fatalErrors.Count, Tail(output, 500)));
             }
@@ -302,8 +434,11 @@ namespace SAM.Analytical.OpenStudio
             return new Core.OpenStudio.OpenStudioRunResult(success, exitCode, osmPath, oswPath, sqlExists ? sqlPath : null, File.Exists(errorFilePath) ? errorFilePath : null, severeErrors, fatalErrors);
         }
 
-        private static string ExecuteCli(string cliPath, string oswPath, string workingDirectory, int timeoutSeconds, out int exitCode)
+        private static string ExecuteCli(string cliPath, string oswPath, string workingDirectory, int timeoutSeconds, CancellationToken cancellationToken, out int exitCode, out bool cancelled)
         {
+            cancelled = false;
+            bool cancellationRequested = false;
+
             ProcessStartInfo processStartInfo = new ProcessStartInfo
             {
                 FileName = cliPath,
@@ -327,8 +462,9 @@ namespace SAM.Analytical.OpenStudio
                     return "The CLI process could not be started";
                 }
 
-                // Job object first (best effort): on timeout the whole tree — the CLI and any
-                // EnergyPlus child it spawned — is terminated when the job handle closes.
+                // Job object first (best effort): on timeout OR cancellation the whole tree —
+                // the CLI and any EnergyPlus child it spawned — is terminated when the job
+                // handle closes.
                 System.IntPtr jobHandle = ProcessJobObject.CreateKillOnCloseJob();
                 ProcessJobObject.TryAssign(jobHandle, process);
 
@@ -342,43 +478,61 @@ namespace SAM.Analytical.OpenStudio
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
 
-                    int timeoutMilliseconds = timeoutSeconds <= 0 ? 3600000 : timeoutSeconds * 1000;
-                    if (!process.WaitForExit(timeoutMilliseconds))
+                    using (cancellationToken.Register(() =>
                     {
-                        // Terminate the tree first (children keep spawning while the root dies),
-                        // then kill the root as the fallback for a failed job assignment.
+                        cancellationRequested = true;
                         ProcessJobObject.Terminate(jobHandle);
-
                         try
                         {
                             process.Kill();
                         }
                         catch (System.Exception)
                         {
-                            // the process may have exited between the timeout and the kill
+                            // the process may have exited between cancellation and the kill
+                        }
+                    }))
+                    {
+                        int timeoutMilliseconds = timeoutSeconds <= 0 ? 3600000 : timeoutSeconds * 1000;
+                        if (!process.WaitForExit(timeoutMilliseconds))
+                        {
+                            // Terminate the tree first (children keep spawning while the root
+                            // dies), then kill the root as the fallback for a failed job
+                            // assignment.
+                            ProcessJobObject.Terminate(jobHandle);
+
+                            try
+                            {
+                                process.Kill();
+                            }
+                            catch (System.Exception)
+                            {
+                                // the process may have exited between the timeout and the kill
+                            }
+
+                            try
+                            {
+                                process.WaitForExit(5000);
+                            }
+                            catch (System.Exception)
+                            {
+                                // best effort
+                            }
+
+                            exitCode = -1;
+                            cancelled = cancellationRequested;
+                            lock (sync)
+                            {
+                                return cancelled ? "CANCELLED\n" + standardOutput + standardError.ToString() : "TIMEOUT after " + timeoutSeconds + " s\n" + standardOutput + standardError.ToString();
+                            }
                         }
 
-                        try
-                        {
-                            process.WaitForExit(5000);
-                        }
-                        catch (System.Exception)
-                        {
-                            // best effort
-                        }
-
-                        exitCode = -1;
+                        process.WaitForExit(); // let the asynchronous output handlers flush
+                        cancelled = cancellationRequested;
+                        exitCode = cancelled ? -1 : process.ExitCode;
                         lock (sync)
                         {
-                            return "TIMEOUT after " + timeoutSeconds + " s\n" + standardOutput + standardError.ToString();
+                            return cancelled ? "CANCELLED\n" + standardOutput + standardError.ToString() : standardOutput.ToString() + standardError;
                         }
-                    }
-
-                    process.WaitForExit(); // let the asynchronous output handlers flush
-                    exitCode = process.ExitCode;
-                    lock (sync)
-                    {
-                        return standardOutput.ToString() + standardError;
                     }
                 }
                 finally

@@ -14,7 +14,7 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C3 | Fenestration, frames, constructions (FrameAndDivider, doors, hole diagnostics) | **Done** | — |
 | C4 | Site, weather, DDY, simulation settings (north, ground temps, run period, calendar) | **Done** | — |
 | C5 | Results extraction and SAM result mapping (engine-neutral schema, units authority) | **Done** | — |
-| C6 | Cancellation, asynchronous execution, Grasshopper UX | Pending | — |
+| C6 | Cancellation, asynchronous execution, Grasshopper UX | **Done** | — |
 | C7 | Full regression suite, completeness enforcement, documentation | Pending | — |
 
 ## C0 — Coverage audit (done)
@@ -163,6 +163,26 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
   fixed with `DaysInMonth`.
 - Tests: +6 (`tests/.../C5/ResultsExtractionTests.cs`) — 124 → **130**.
 
+## C6 — Cancellation, async, Grasshopper (done)
+
+- `OpenStudioSimulationRunner.cs` — `CancellationToken` on both Run paths (token and timeout
+  share the existing Job-Object tree-kill); `RunAsync` / `Convert.ToOpenStudioAsync`;
+  `IProgress<OpenStudioSimulationProgress>` stages (SavingOsm → WritingOsw → RunningCli →
+  ReadingResults → Complete); **unique GUID run directories by default**
+  (`OpenStudioRunOptions.UseUniqueRunDirectory`) with an in-progress lock-file guard +
+  deterministic cleanup for non-unique directories; thread-safe diagnostics (context lock).
+- New `SAM.Core.OpenStudio/Classes/OpenStudioSimulationProgress.cs` (+ stage enum).
+- New local GH base `GH_SamAsyncComponent` (Grasshopper project — no task-capable base exists
+  in the SAM ecosystem and SAM core is untouched): input-signature gating (changed inputs
+  cancel the stale run — never duplicate runs), optional `cancel_` input, stale-output
+  clearing at run start, document-reschedule harvest on the UI thread, no native OpenStudio
+  objects across the boundary, results disposed after harvest. Both components
+  (`SAMAnalyticalToOpenStudio`, `OpenStudioRunModel`) migrated.
+- Rhino-process exit kills orphaned runs by design (kill-on-close Job Object).
+- GH/Rhino interaction itself is validated by a human in Rhino 8 (see C7 validation steps);
+  everything below the component shell is test-covered headless.
+- Tests: +6 (`tests/.../C6/CancellationAsyncTests.cs`) — 130 → **136**.
+
 ## Gates log
 
 | Milestone | Build | Tests | EnergyPlus gate |
@@ -174,3 +194,4 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C3 | clean (0 errors; GH project excluded — Rhino running) | 114/114 | Framed window end-to-end (frame in IDF; E+ glass area = pane area 2.47 m²) |
 | C4 | clean (0 errors; GH project excluded — Rhino running) | 124/124 | Design-day run (sizing on): annual results unchanged vs baseline (environment filter proven); north rotation 0°→180° shifts heating/cooling as expected |
 | C5 | clean (0 errors; GH project excluded — Rhino running) | 130/130 | Extraction validated on annual + sizing-enabled runs (peaks, unmet, gains, series, units, design-day exclusion) |
+| C6 | clean (0 errors, **full solution incl. GH** — Rhino closed) | 136/136 | Cancel-before/cancel-during (tree kill, no surviving process), parallel unique dirs, same-dir collision, sequential, progress stages |

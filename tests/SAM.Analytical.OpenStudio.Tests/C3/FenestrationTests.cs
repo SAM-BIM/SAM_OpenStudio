@@ -258,7 +258,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(result.RunResult.SevereErrors, Is.Empty);
             Assert.That(result.RunResult.Success, Is.True);
 
-            string idf = File.ReadAllText(Path.Combine(outputDirectory, "run", "in.idf"));
+            string idf = File.ReadAllText(Path.Combine(Path.GetDirectoryName(result.OsmPath), "run", "in.idf"));
             Assert.That(idf, Does.Contain("WindowProperty:FrameAndDivider"), "The frame must reach the IDF");
 
             using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection("Data Source=" + result.RunResult.SqlPath + ";Read Only=True"))

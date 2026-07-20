@@ -5,10 +5,12 @@ using Grasshopper.Kernel;
 using SAM.Core.Grasshopper;
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SAM.Analytical.Grasshopper.OpenStudio
 {
-    public class OpenStudioRunModel : GH_SAMVariableOutputParameterComponent
+    public class OpenStudioRunModel : GH_SamAsyncComponent
     {
         /// <summary>
         /// Gets the unique ID for this component. Do not change this ID after release.
@@ -18,7 +20,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.0.0";
+        public override string LatestComponentVersion => "1.1.0";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -27,12 +29,14 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
 
         /// <summary>
         /// Runs an existing OpenStudio model (OSM or OSW) through the OpenStudio CLI and returns
-        /// paths, diagnostics and annual Ideal Loads energy. Thin wrapper over
-        /// SAM.Analytical.OpenStudio.OpenStudioSimulationRunner — no run logic lives here.
+        /// paths, diagnostics and annual Ideal Loads energy. Non-blocking (C6): the simulation
+        /// executes on a background task with cancellation; results are harvested on the UI
+        /// thread. Thin wrapper over SAM.Analytical.OpenStudio.OpenStudioSimulationRunner — no
+        /// run logic lives here.
         /// </summary>
         public OpenStudioRunModel()
           : base("OpenStudio.RunModel", "OpenStudio.RunModel",
-              "Runs an existing OpenStudio model (OSM or OSW) through the OpenStudio CLI (EnergyPlus)",
+              "Runs an existing OpenStudio model (OSM or OSW) through the OpenStudio CLI (EnergyPlus) — asynchronous, cancellable",
               "SAM", "OpenStudio")
         {
         }
@@ -52,6 +56,8 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 global::Grasshopper.Kernel.Parameters.Param_Boolean param_Boolean = new global::Grasshopper.Kernel.Parameters.Param_Boolean() { Name = "_run", NickName = "_run", Description = "True executes the simulation", Access = GH_ParamAccess.item };
                 param_Boolean.SetPersistentData(false);
                 result.Add(new GH_SAMParam(param_Boolean, ParamVisibility.Binding));
+
+                result.Add(CreateCancelParam());
 
                 return result.ToArray();
             }
@@ -74,16 +80,10 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
             }
         }
 
-        /// <summary>
-        /// This is the method that actually does the work.
-        /// </summary>
-        /// <param name="dataAccess">The DA object is used to retrieve from inputs and store in outputs.</param>
-        protected override void SolveInstance(IGH_DataAccess dataAccess)
+        protected override string ComputeSignature(IGH_DataAccess dataAccess)
         {
-            int index;
-
             bool run = false;
-            index = Params.IndexOfInputParam("_run");
+            int index = Params.IndexOfInputParam("_run");
             if (index != -1)
             {
                 dataAccess.GetData(index, ref run);
@@ -92,15 +92,15 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
             if (!run)
             {
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, "Set _run to True to execute the simulation");
-                return;
+                return null;
             }
 
             string path = null;
             index = Params.IndexOfInputParam("_path");
             if (index == -1 || !dataAccess.GetData(index, ref path) || string.IsNullOrWhiteSpace(path))
             {
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Invalid data");
-                return;
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Invalid _path data");
+                return null;
             }
 
             string epwPath = null;
@@ -117,37 +117,80 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 dataAccess.GetData(index, ref outputDirectory);
             }
 
-            List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>();
-            Core.OpenStudio.OpenStudioRunResult openStudioRunResult = Analytical.OpenStudio.OpenStudioSimulationRunner.Run(path, epwPath, outputDirectory, null, out Analytical.OpenStudio.OpenStudioLoadSummary openStudioLoadSummary, diagnostics);
+            return string.Format("{0}|{1}|{2}", path, epwPath, outputDirectory);
+        }
 
-            index = Params.IndexOfOutputParam("successful");
+        protected override Task CreateTask(IGH_DataAccess dataAccess, CancellationToken cancellationToken)
+        {
+            string path = null;
+            dataAccess.GetData(Params.IndexOfInputParam("_path"), ref path);
+
+            string epwPath = null;
+            dataAccess.GetData(Params.IndexOfInputParam("epwPath_"), ref epwPath);
+
+            string outputDirectory = null;
+            dataAccess.GetData(Params.IndexOfInputParam("outputDirectory_"), ref outputDirectory);
+
+            return Task.Run(() =>
+            {
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>();
+                Core.OpenStudio.OpenStudioRunResult openStudioRunResult = Analytical.OpenStudio.OpenStudioSimulationRunner.Run(path, epwPath, outputDirectory, null, out Analytical.OpenStudio.OpenStudioLoadSummary openStudioLoadSummary, diagnostics, cancellationToken);
+                return new RunOutcome(openStudioRunResult, openStudioLoadSummary, diagnostics);
+            }, cancellationToken);
+        }
+
+        protected override void Harvest(Task task, IGH_DataAccess dataAccess)
+        {
+            if (task.IsFaulted)
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, task.Exception?.GetBaseException().Message ?? "Simulation failed");
+                return;
+            }
+
+            RunOutcome runOutcome = ((Task<RunOutcome>)task).Result;
+
+            int index = Params.IndexOfOutputParam("successful");
             if (index != -1)
             {
-                dataAccess.SetData(index, openStudioRunResult.Success);
+                dataAccess.SetData(index, runOutcome.RunResult.Success);
             }
 
             index = Params.IndexOfOutputParam("sqlPath");
             if (index != -1)
             {
-                dataAccess.SetData(index, openStudioRunResult.SqlPath);
+                dataAccess.SetData(index, runOutcome.RunResult.SqlPath);
             }
 
             index = Params.IndexOfOutputParam("heating");
-            if (index != -1 && openStudioLoadSummary != null)
+            if (index != -1 && runOutcome.Loads != null)
             {
-                dataAccess.SetData(index, openStudioLoadSummary.TotalHeating);
+                dataAccess.SetData(index, runOutcome.Loads.TotalHeating);
             }
 
             index = Params.IndexOfOutputParam("cooling");
-            if (index != -1 && openStudioLoadSummary != null)
+            if (index != -1 && runOutcome.Loads != null)
             {
-                dataAccess.SetData(index, openStudioLoadSummary.TotalCooling);
+                dataAccess.SetData(index, runOutcome.Loads.TotalCooling);
             }
 
             index = Params.IndexOfOutputParam("diagnostics");
             if (index != -1)
             {
-                dataAccess.SetDataList(index, diagnostics.ConvertAll(x => x.ToString()));
+                dataAccess.SetDataList(index, runOutcome.Diagnostics.ConvertAll(x => x.ToString()));
+            }
+        }
+
+        private sealed class RunOutcome
+        {
+            internal Core.OpenStudio.OpenStudioRunResult RunResult { get; }
+            internal Analytical.OpenStudio.OpenStudioLoadSummary Loads { get; }
+            internal List<Core.OpenStudio.OpenStudioDiagnostic> Diagnostics { get; }
+
+            internal RunOutcome(Core.OpenStudio.OpenStudioRunResult runResult, Analytical.OpenStudio.OpenStudioLoadSummary loads, List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics)
+            {
+                RunResult = runResult;
+                Loads = loads;
+                Diagnostics = diagnostics;
             }
         }
     }
