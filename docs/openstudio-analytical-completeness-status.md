@@ -319,9 +319,45 @@ documented fallback or blocking diagnostic
   are supplied) — see the PR discussion.
 - Tests: +11 (`tests/.../C4/EmbeddedWeatherDesignDaysTests.cs`) — 170 → **181**.
 
+## Human-Rhino validation corrections — EnergyPlus SQL timestamps (done)
+
+`OpenStudio.CreateDesignDaysBySQL` threw `Hour, Minute, and Second parameters describe an
+un-representable DateTime` on a real `eplusout.sql`: raw SQL fields went straight into a
+`DateTime` constructor (`TimeIndexDictionary.cs` did `hour - 1`, so the hour-0 sub-hourly rows
+every EnergyPlus timestep output writes produced hour −1; `Query/DateTime.cs` received hour 24
+rows unmodified).
+
+- **Encoded convention** (verified against the live SQL): the `Time` fields denote the **end
+  of the reporting interval** — `Hour` 0–24, `Minute` 0–60, `Year` 0 on sizing/design-day
+  environments. `24:00` is midnight at the end of the day; minute 60 is the full hour;
+  `(0, 10)` is the interval ending 00:10.
+- New authoritative helper `SAM.Core.OpenStudio/Query/TryGetDateTime.cs` — validates the
+  calendar date (February 29 under a non-leap calendar, month/day 0, hour > 24, minute > 60 →
+  structured diagnostic, never a throw, never clamped) and normalises by `TimeSpan` addition,
+  so day/month/year rollover (December 31 24:00, leap years) is DateTime arithmetic.
+  `IntervalHourOfYear` maps an interval-end timestamp to the 0-based interval index by
+  stepping one tick back into the interval (matches the legacy hourly convention exactly and
+  extends it to sub-hourly rows).
+- `TimeIndexDictionary.cs` rewritten on the helper (the inverted/unused `year_Temp` default
+  logic removed) with an optional diagnostics sink — malformed rows are skipped and reported.
+  `Query/DateTime.cs` normalises through the helper and returns null on malformed rows.
+- `Create/DesignDays.cs` — annual weather-run environments (EnvironmentType 3) are no longer
+  misread as design days; hourly indices come from interval-start semantics (the 24:00 row
+  stays with its design day); missing series/TimeIndex values are skipped instead of throwing
+  `KeyNotFoundException`; days are classified heating/cooling from the environment name; a
+  `diagnostics` out-parameter reports skipped rows and the no-design-days case.
+- `Create/SpaceSimulationResults.cs` — peak/max/min hour indices use `IntervalHourOfYear`.
+- `OpenStudio.CreateDesignDaysBySQL` (component 1.0.2) — malformed SQL rows surface as
+  structured runtime warnings, never a solution exception.
+- Tests: +18 (`tests/.../C5/EnergyPlusTimestampTests.cs`: ordinary/hour-24/minute-60/
+  hour-24+minute-60/sub-hourly-hour-0 rows, year-0 sizing rows, Feb 28, Feb 29 leap and
+  non-leap, Dec 31 final timestep, month-0 warmup, duplicate hour-boundary rows, synthetic
+  sizing-environment SQL end-to-end, annual-only SQL with the live edge rows, plus the real
+  30 MB reproduction fixture gated on `SAM_OPENSTUDIO_TEST_SQL`) — 181 → **199**.
+
 ## Final summary
 
-- Tests: 82 (MVP) ��' 146 (C7) ��' 170 (Stage L) ��' **181 after the human-Rhino validation
+- Tests: 82 (MVP) ��' 146 (C7) ��' 170 (Stage L) ��' **199 after the human-Rhino validation
   corrections** (0 skipped); every milestone and every review fix gated by x64 Debug build +
   full suite + E+ runs.
 - Coverage (277 manifest entries after review P2-01 removed two stale rows): **Native 135,

@@ -18,7 +18,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.0.1";
+        public override string LatestComponentVersion => "1.0.2";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -75,7 +75,25 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 return;
             }
 
-            List<DesignDay> result = Analytical.OpenStudio.Create.DesignDays(path);
+            List<DesignDay> result = null;
+            List<string> diagnostics = null;
+            try
+            {
+                result = Analytical.OpenStudio.Create.DesignDays(path, out diagnostics);
+            }
+            catch (Exception exception)
+            {
+                // Malformed SQL content is a structured diagnostic, never a solution exception.
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, string.Format("Design days could not be read: {0}", exception.Message));
+            }
+
+            if (diagnostics != null)
+            {
+                foreach (string diagnostic in diagnostics)
+                {
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, diagnostic);
+                }
+            }
 
             index = Params.IndexOfOutputParam("designDays");
             if (index != -1)

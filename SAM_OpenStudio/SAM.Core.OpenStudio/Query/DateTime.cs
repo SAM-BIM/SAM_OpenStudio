@@ -116,7 +116,12 @@ namespace SAM.Core.OpenStudio
 
                 }
 
-                return new DateTime(year_Temp, month_Temp, day_Temp, hour_Temp, minute_Temp, second_Temp);
+                // Raw EnergyPlus fields (hour 0–24, minute 0–60, end-of-interval) are
+                // normalised centrally; unrepresentable rows return null, never throw.
+                if (TryGetDateTime(year_Temp, month_Temp, day_Temp, hour_Temp, minute_Temp, second_Temp, deafultYear, out DateTime dateTime, out string _))
+                {
+                    return dateTime;
+                }
             }
 
             return null;
