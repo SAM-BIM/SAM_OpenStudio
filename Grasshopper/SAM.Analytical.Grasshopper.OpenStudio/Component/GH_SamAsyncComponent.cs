@@ -86,6 +86,16 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
             Task completed = task;
             task = null;
             Message = completed.IsCanceled ? "Cancelled" : completed.IsFaulted ? "Failed" : "Completed";
+
+            if (completed.IsCanceled)
+            {
+                // Task.Run observes the token before the body runs, so a cancel that lands in
+                // that window completes the task as Canceled rather than producing a result.
+                // Harvesting it would throw on Task<T>.Result — report and leave outputs clear.
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "The simulation was cancelled");
+                return;
+            }
+
             Harvest(completed, dataAccess);
         }
 

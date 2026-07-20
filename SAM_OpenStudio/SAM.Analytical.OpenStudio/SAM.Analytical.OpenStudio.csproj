@@ -71,4 +71,37 @@
     <ProjectReference Include="..\SAM.Core.OpenStudio\SAM.Core.OpenStudio.csproj" />
     <ProjectReference Include="..\SAM.Geometry.OpenStudio\SAM.Geometry.OpenStudio.csproj" />
   </ItemGroup>
+  <!--
+    SAM-OS-RUN-001 / results extraction.
+
+    This is a class library, so the SDK does NOT copy PackageReference runtime assets to
+    OutputPath (CopyLocalLockFileAssemblies defaults to false for libraries). The Grasshopper
+    .gha is loaded by Rhino out of %APPDATA%\SAM, where nothing resolves assets from the
+    NuGet cache, so without this target the first touch of a System.Data.SQLite type throws
+    FileNotFoundException and every Ideal Loads extraction fails.
+
+    Only the two SQLite assets are copied — deliberately NOT CopyLocalLockFileAssemblies=true,
+    which would also push System.Text.Json, System.Memory and 7 more facades into a folder
+    that is loaded into Rhino's default AssemblyLoadContext and shared by every SAM plugin.
+
+    No RuntimeIdentifier is needed: RuntimeTargetsCopyLocalItems already carries the per-RID
+    native asset (with a DestinationSubDirectory of runtimes\win-x64\native\) on a RID-less
+    build, and setting a RID would flatten that layout for no benefit.
+
+    The NuGet layout is preserved rather than flattened: System.Data.SQLite's own loader finds
+    runtimes\win-x64\native\SQLite.Interop.dll next to the managed assembly, and SAM's
+    AssemblyResolver independently registers that same path as a native probing directory.
+    Copying only win-x64 also means no stale win-x86 interop can ever be picked up instead.
+  -->
+  <Target Name="SAMCopySQLiteAssets" AfterTargets="Build" DependsOnTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <_SAMSQLiteManaged Include="@(RuntimeCopyLocalItems)" Condition="'%(RuntimeCopyLocalItems.NuGetPackageId)' == 'Stub.System.Data.SQLite.Core.NetStandard'" />
+      <_SAMSQLiteNative Include="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'Stub.System.Data.SQLite.Core.NetStandard' AND '%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'win-x64'" />
+    </ItemGroup>
+    <!-- Fail the build rather than ship a .gha that cannot read results at runtime. -->
+    <Error Condition="'@(_SAMSQLiteManaged)' == ''" Text="System.Data.SQLite managed assembly was not resolved from Stub.System.Data.SQLite.Core.NetStandard; Ideal Loads extraction would fail at runtime." />
+    <Error Condition="'@(_SAMSQLiteNative)' == ''" Text="win-x64 SQLite.Interop.dll was not resolved from Stub.System.Data.SQLite.Core.NetStandard; Ideal Loads extraction would fail at runtime." />
+    <Copy SourceFiles="@(_SAMSQLiteManaged)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_SAMSQLiteNative)" DestinationFolder="$(OutDir)%(_SAMSQLiteNative.DestinationSubDirectory)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

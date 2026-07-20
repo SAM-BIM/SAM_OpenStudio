@@ -262,15 +262,29 @@ namespace SAM.Analytical.OpenStudio
             if (success)
             {
                 progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.ReadingResults, sqlPath));
-                loadSummary = ExtractLoads(sqlPath);
+                loadSummary = ExtractLoads(sqlPath, out string failureDetail);
                 if (loadSummary == null)
                 {
-                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Ideal Loads results could not be extracted from the SQLite output");
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Ideal Loads results could not be extracted from the SQLite output — {0}", failureDetail));
                     success = false;
                 }
                 else
                 {
+                    // EnergyPlus ran and the file is readable, but no zone reported Ideal Loads.
+                    // Legitimate for a model with no conditioned zones, so not an error — but it
+                    // must never be silently indistinguishable from a genuine zero-load result.
+                    if (loadSummary.ZoneHeating.Count == 0 && loadSummary.ZoneCooling.Count == 0)
+                    {
+                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "The SQLite output was read successfully but contains no Zone Ideal Loads variables for any zone — check that at least one zone is conditioned");
+                    }
+
                     resultSet = ExtractResultSet(sqlPath, loadSummary, runOptions.ExtractTimeSeries, runtimeSeconds, warningCount, severeErrors.Count, fatalErrors.Count);
+                    if (resultSet == null)
+                    {
+                        // Previously a silent null: the caller saw Results == null with nothing
+                        // said about why.
+                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Annual Ideal Loads were extracted but the detailed result set (peaks, unmet hours, gains) could not be built from the SQLite output");
+                    }
                 }
             }
 
@@ -428,7 +442,13 @@ namespace SAM.Analytical.OpenStudio
 
             if (success)
             {
-                loadSummary = ExtractLoads(sqlPath);
+                loadSummary = ExtractLoads(sqlPath, out string failureDetail);
+                if (loadSummary == null)
+                {
+                    // Previously this overload dropped the failure entirely — the caller got a
+                    // successful run with a null summary and no explanation.
+                    AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Ideal Loads results could not be extracted from the SQLite output — {0}", failureDetail));
+                }
             }
 
             return new Core.OpenStudio.OpenStudioRunResult(success, exitCode, osmPath, oswPath, sqlExists ? sqlPath : null, File.Exists(errorFilePath) ? errorFilePath : null, severeErrors, fatalErrors);
@@ -542,23 +562,94 @@ namespace SAM.Analytical.OpenStudio
             }
         }
 
-        private static OpenStudioLoadSummary ExtractLoads(string sqlPath)
+        /// <summary>
+        /// Extracts the annual Ideal Loads summary. On failure returns null and sets
+        /// <paramref name="failureDetail"/> to a single-line description precise enough to tell
+        /// a missing managed assembly, a missing/mismatched native interop, a bad architecture
+        /// and a genuine SQL/query failure apart — see <see cref="DescribeExtractionFailure"/>.
+        /// </summary>
+        internal static OpenStudioLoadSummary ExtractLoads(string sqlPath, out string failureDetail)
         {
+            failureDetail = null;
             try
             {
                 Dictionary<string, double> zoneHeating = ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Supply Air Total Heating Energy");
                 Dictionary<string, double> zoneCooling = ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Supply Air Total Cooling Energy");
                 if (zoneHeating == null || zoneCooling == null)
                 {
+                    failureDetail = string.Format("the SQLite results file could not be read (path: {0}, exists: {1})", sqlPath, File.Exists(sqlPath));
                     return null;
                 }
 
                 return new OpenStudioLoadSummary(zoneHeating, zoneCooling);
             }
-            catch (System.Exception)
+            catch (System.Exception exception)
             {
+                failureDetail = DescribeExtractionFailure(exception, sqlPath);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Renders an extraction exception as one concise but diagnostic line: the exception
+        /// type and message plus the whole inner-exception chain, the SQL path, where (or
+        /// whether) System.Data.SQLite actually loaded from, the plugin and base directories
+        /// and the process bitness. Deployment faults are by far the most common cause here —
+        /// a FileNotFoundException naming System.Data.SQLite means the managed assembly was
+        /// never deployed, a DllNotFoundException naming SQLite.Interop.dll means the native
+        /// asset (or one of its own dependencies) is missing, and a BadImageFormatException
+        /// means the deployed interop does not match the process architecture.
+        /// </summary>
+        internal static string DescribeExtractionFailure(System.Exception exception, string sqlPath)
+        {
+            System.Text.StringBuilder stringBuilder = new System.Text.StringBuilder();
+
+            for (System.Exception current = exception; current != null; current = current.InnerException)
+            {
+                if (stringBuilder.Length != 0)
+                {
+                    stringBuilder.Append(" -> ");
+                }
+
+                stringBuilder.AppendFormat("{0}: {1}", current.GetType().FullName, current.Message);
+            }
+
+            string sqliteLocation = "not loaded";
+            try
+            {
+                foreach (System.Reflection.Assembly assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (string.Equals(assembly.GetName().Name, "System.Data.SQLite", System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        sqliteLocation = string.IsNullOrEmpty(assembly.Location) ? "loaded (no location)" : assembly.Location;
+                        break;
+                    }
+                }
+            }
+            catch (System.Exception)
+            {
+                sqliteLocation = "unavailable";
+            }
+
+            string pluginLocation;
+            try
+            {
+                pluginLocation = typeof(OpenStudioSimulationRunner).Assembly.Location;
+            }
+            catch (System.Exception)
+            {
+                pluginLocation = "unavailable";
+            }
+
+            stringBuilder.AppendFormat(
+                " [sql: {0}; System.Data.SQLite: {1}; plugin: {2}; base: {3}; process: {4}-bit]",
+                sqlPath,
+                sqliteLocation,
+                pluginLocation,
+                System.AppContext.BaseDirectory,
+                System.IntPtr.Size * 8);
+
+            return stringBuilder.ToString();
         }
 
         /// <summary>
