@@ -34,7 +34,7 @@ Three P1 findings were confirmed by reproduction — all three in the newest (C2
 | P2-03 | P2 | SAM `Location` site override writes non-finite/out-of-range coordinates into `OS:Site` unvalidated | **Fixed** (Stage L, §8) |
 | P2-04 | P2 | Standalone `Run(path, …)` ignores `UseUniqueRunDirectory` for `.osw` inputs and has no collision lock on that path | **Open (follow-up)** — needs an OSW-rewrite design; not fixed here |
 | P2-05 | P2 | Grasshopper: removing the component or closing the document does not cancel a running simulation; the completion callback can target a disposed document | **Fixed** (Stage L, §8) — compile-verified; runtime on the human Rhino checklist (§10 step 5) |
-| P2-06 | P2 | Encoding corruption: coverage Markdown carries double-encoded arrows (`â†’`); the JSON manifest carries a raw CP1252 byte (invalid UTF-8) | Confirmed — fix pending |
+| P2-06 | P2 | Encoding corruption: coverage Markdown carries double-encoded arrows (`â†’`); the JSON manifest carries a raw CP1252 byte (invalid UTF-8) | **Fixed** (Stage L, §8) — full byte scan repaired 16 MD sequences + the JSON byte |
 
 No P0 finding exists: nothing crashes, corrupts an *annual* result in the shipped default
 configuration, mutates sources, leaks processes or endangers the repository. P1-02 and P1-03
@@ -289,7 +289,12 @@ None.
   (0x97) — invalid UTF-8 — in the `Result.Space.GlazingExternalConduction` note (tests survive
   because `File.ReadAllText` substitutes U+FFFD).
 - **Correction:** rewrite the affected bytes as proper UTF-8; content otherwise unchanged.
-- **Status:** **Confirmed — fix pending** (Stage L).
+- **Status:** **Fixed** (Stage L) — a full byte-level scan found more of the same corruption
+  class than originally recorded: the MD carried 3 double-encoded arrows (`â†’` → `→`),
+  12 double-encoded em-dashes and 1 double-encoded en-dash (`â€”`/`â€œ` → `—`/`–`); all 16
+  sequences repaired byte-wise, plus the JSON's raw CP1252 0x97 → `—`. Both files now decode
+  as strict UTF-8 (exception-fallback decoder); remaining non-ASCII runs are exactly the
+  intended `→`/`—`/`–` code points. Commit in §8.
 
 ## 6. P3 observations (recorded, not fixed)
 

@@ -1,6 +1,6 @@
-# SAM â†’ OpenStudio Analytical Translation Coverage
+# SAM → OpenStudio Analytical Translation Coverage
 
-Status: reviewed 2026-07-19 (programme *SAM â†’ OpenStudio Analytical Completeness v1*, milestone C0).
+Status: reviewed 2026-07-19 (programme *SAM → OpenStudio Analytical Completeness v1*, milestone C0).
 
 This document is the complete audit of the `SAM.Analytical.AnalyticalModel` data surface
 against the native OpenStudio translation in this repository. It is **generated from and kept
@@ -23,7 +23,7 @@ Every SAM property or concept with potential energy-model semantics is classifie
 | **NA** | No translation applies: display/compliance metadata, result-only slots, derived classifications OpenStudio computes itself, or concepts with no SAM source data. |
 
 The **Milestone** column names where the final mapping lands: `MVP` = merged PR #7;
-`C1`â€“`C5` = this programme's milestones; `C0` marks rows whose classification (NA/Deferred)
+`C1`–`C5` = this programme's milestones; `C0` marks rows whose classification (NA/Deferred)
 *is* the outcome. Rows are updated as milestones complete.
 
 ## Explicitly deferred domains
@@ -34,15 +34,15 @@ the TAS-versus-EnergyPlus validation harness; AI-assisted QA.
 
 ## Reclassifications agreed at programme approval
 
-- **Glazing dividers/muntins â€” NA**: SAM has no divider geometry model (`AperturePart` is Pane|Frame only).
-- **Aperture blinds/shades (`IsBlind`, `FeatureShade`) â€” Unsupported** with diagnostic: SAM carries no slat/shade geometry, so fabricating `WindowMaterial:Blind` inputs would be invention.
-- **Opening properties (openable fraction, discharge coefficient) â€” Unsupported** under Ideal Loads (AirflowNetwork territory), deferred to the HVAC programme.
-- **STAT-file ground temperatures â€” deferred**: no STAT parser exists in the SAM ecosystem; SAM `WeatherData` and the EPW header cover the need.
-- **SAM hourly `DesignDay` â†’ parametric `SizingPeriod:DesignDay` â€” Approximated** (documented fit), downgradeable to a diagnostic if unsafe; deterministic DDY import is the primary design-day path.
-- **Subhourly profiles â€” NA**: SAM `Profile` stores are hour-indexed; no subhourly source data exists.
-- **Daylight saving â€” Approximated, default off** (energy-model convention); SAM carries no DST data, the EPW header is the only source.
-- **Emitter radiant proportions â€” Deferred**: Ideal Loads is a purely convective air system.
-- **Pollutant profiles â€” Unsupported** (EnergyPlus generic-contaminant modelling out of scope).
+- **Glazing dividers/muntins — NA**: SAM has no divider geometry model (`AperturePart` is Pane|Frame only).
+- **Aperture blinds/shades (`IsBlind`, `FeatureShade`) — Unsupported** with diagnostic: SAM carries no slat/shade geometry, so fabricating `WindowMaterial:Blind` inputs would be invention.
+- **Opening properties (openable fraction, discharge coefficient) — Unsupported** under Ideal Loads (AirflowNetwork territory), deferred to the HVAC programme.
+- **STAT-file ground temperatures — deferred**: no STAT parser exists in the SAM ecosystem; SAM `WeatherData` and the EPW header cover the need.
+- **SAM hourly `DesignDay` → parametric `SizingPeriod:DesignDay` — Approximated** (documented fit), downgradeable to a diagnostic if unsafe; deterministic DDY import is the primary design-day path.
+- **Subhourly profiles — NA**: SAM `Profile` stores are hour-indexed; no subhourly source data exists.
+- **Daylight saving — Approximated, default off** (energy-model convention); SAM carries no DST data, the EPW header is the only source.
+- **Emitter radiant proportions — Deferred**: Ideal Loads is a purely convective air system.
+- **Pollutant profiles — Unsupported** (EnergyPlus generic-contaminant modelling out of scope).
 
 ## Coverage tables
 
@@ -485,11 +485,11 @@ the referenced SAM assemblies and fails when:
 
 Concept rows (ids not backed by an enum member, e.g. `Profile.LeapYear8784`,
 `Aperture.PaneFrameGeometry`, `Simulation.*`, `Result.*`) are maintained by review; they exist so
-that behavioural semantics â€” not just parameter slots â€” are classified.
+that behavioural semantics — not just parameter slots — are classified.
 
 ## Counts at C0 (before implementation)
 
-Generated from the manifest: 277 entries â€” Native 135, Derived 28, Approximated 21,
+Generated from the manifest: 277 entries — Native 135, Derived 28, Approximated 21,
 Unsupported 20, Deferred 17, NA 56. Milestones: MVP 90, C1 3, C2 37, C3 23, C4 26, C5 36,
 classification-only (C0) 62.
 
