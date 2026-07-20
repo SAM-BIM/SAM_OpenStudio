@@ -33,7 +33,7 @@ Three P1 findings were confirmed by reproduction — all three in the newest (C2
 | P2-02 | P2 | `OutputVariableFrequency` ≠ Hourly silently mis-scales extracted peaks (fixed 3600 s interval assumption) | **Mitigated** (Stage L, §8); frequency-aware extraction stays follow-up |
 | P2-03 | P2 | SAM `Location` site override writes non-finite/out-of-range coordinates into `OS:Site` unvalidated | **Fixed** (Stage L, §8) |
 | P2-04 | P2 | Standalone `Run(path, …)` ignores `UseUniqueRunDirectory` for `.osw` inputs and has no collision lock on that path | **Open (follow-up)** — needs an OSW-rewrite design; not fixed here |
-| P2-05 | P2 | Grasshopper: removing the component or closing the document does not cancel a running simulation; the completion callback can target a disposed document | Confirmed — fix pending (needs human Rhino confirmation) |
+| P2-05 | P2 | Grasshopper: removing the component or closing the document does not cancel a running simulation; the completion callback can target a disposed document | **Fixed** (Stage L, §8) — compile-verified; runtime on the human Rhino checklist (§10 step 5) |
 | P2-06 | P2 | Encoding corruption: coverage Markdown carries double-encoded arrows (`â†’`); the JSON manifest carries a raw CP1252 byte (invalid UTF-8) | Confirmed — fix pending |
 
 No P0 finding exists: nothing crashes, corrupts an *annual* result in the shipped default
@@ -274,8 +274,12 @@ None.
 - **Files:** `Grasshopper/SAM.Analytical.Grasshopper.OpenStudio/Component/GH_SamAsyncComponent.cs`.
 - **Correction:** override `RemovedFromDocument` and `DocumentContextChanged` (close) to cancel
   the token; guard the completion continuation.
-- **Status:** **Confirmed — fix pending** (Stage L). Headless tests cannot exercise Grasshopper: this
-  specific behaviour is on the human Rhino checklist (§10, step 5).
+- **Status:** **Fixed** (Stage L) — `RemovedFromDocument` cancels the running task (process
+  tree dies via the runner's kill path); `DocumentContextChanged` cancels on `Close` only
+  (lock/unload/document-switch leave the run alive); the completion continuation re-resolves
+  `OnPingDocument()` and never schedules into a removed/disposed document (exception-guarded).
+  Full solution (incl. GH project) builds clean; headless tests cannot exercise the Grasshopper
+  runtime — human confirmation is §10 step 5. Commit in §8.
 
 ### P2-06 — Encoding corruption in the coverage files
 

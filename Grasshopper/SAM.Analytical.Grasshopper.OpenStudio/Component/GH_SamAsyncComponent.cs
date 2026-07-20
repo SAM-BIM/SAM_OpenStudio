@@ -116,6 +116,45 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>Harvests a completed task onto the outputs (UI thread).</summary>
         protected abstract void Harvest(Task task, IGH_DataAccess dataAccess);
 
+        /// <summary>
+        /// Deleting the component mid-run must not leave openstudio.exe / energyplus.exe
+        /// executing to completion (review P2-05): the token is cancelled and the runner kills
+        /// the whole process tree — the same path as the cancel_ input and the timeout.
+        /// </summary>
+        public override void RemovedFromDocument(GH_Document document)
+        {
+            CancelRunningTask();
+            base.RemovedFromDocument(document);
+        }
+
+        /// <summary>Closing the document cancels a running simulation (review P2-05); other context changes (lock, unload, document switch) leave the run alive.</summary>
+        public override void DocumentContextChanged(GH_Document document, GH_DocumentContext context)
+        {
+            if (context == GH_DocumentContext.Close)
+            {
+                CancelRunningTask();
+            }
+
+            base.DocumentContextChanged(document, context);
+        }
+
+        private void CancelRunningTask()
+        {
+            if (task == null || task.IsCompleted)
+            {
+                return;
+            }
+
+            try
+            {
+                cancellationTokenSource?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // the source was disposed by a newer solve — that run is no longer ours to stop
+            }
+        }
+
         private void ScheduleCompletion(Task runningTask)
         {
             GH_Document document = OnPingDocument();
@@ -124,7 +163,25 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 return;
             }
 
-            runningTask.ContinueWith(completedTask => document.ScheduleSolution(10, scheduleDocument => ExpireSolution(false)));
+            runningTask.ContinueWith(completedTask =>
+            {
+                // Review P2-05: by completion time the component may have been deleted or the
+                // document closed — re-resolve the document and never schedule into a dead one.
+                GH_Document currentDocument = OnPingDocument();
+                if (currentDocument == null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    currentDocument.ScheduleSolution(10, scheduleDocument => ExpireSolution(false));
+                }
+                catch (Exception)
+                {
+                    // the document is disposing/closed — the completed run is dropped by design
+                }
+            });
         }
 
         private void ClearOutputs(IGH_DataAccess dataAccess)
