@@ -395,9 +395,11 @@ namespace SAM.Analytical.OpenStudio
 
         /// <summary>
         /// Reads the annual (summed) energy per key for one report variable from the EnergyPlus
-        /// SQLite output, converted J → kWh. All queries are parameterised
-        /// (System.Data.SQLite) — zone/key names are never string-concatenated into SQL, so
-        /// names containing quotes or SQL syntax cannot break or inject a query.
+        /// SQLite output, converted J → kWh, restricted to the weather-file RunPeriod
+        /// environment (EnvironmentType 3) so imported design days never double-count into the
+        /// annual totals. All queries are parameterised (System.Data.SQLite) — zone/key names
+        /// are never string-concatenated into SQL, so names containing quotes or SQL syntax
+        /// cannot break or inject a query.
         /// </summary>
         /// <param name="sqlPath">Path to eplusout.sql.</param>
         /// <param name="variableName">ReportDataDictionary variable name.</param>
@@ -419,6 +421,19 @@ namespace SAM.Analytical.OpenStudio
             using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection(connectionStringBuilder.ConnectionString))
             {
                 connection.Open();
+
+                // Environment filter: sum weather-run rows only. Falls back to unfiltered when
+                // no weather-run environment row exists (defensive — E+ always writes one).
+                bool filterEnvironment = false;
+                using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'EnvironmentPeriods'";
+                    if ((long)command.ExecuteScalar() > 0)
+                    {
+                        command.CommandText = "SELECT COUNT(*) FROM EnvironmentPeriods WHERE EnvironmentType = 3";
+                        filterEnvironment = (long)command.ExecuteScalar() > 0;
+                    }
+                }
 
                 List<string> keys = new List<string>();
                 using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
@@ -444,7 +459,9 @@ namespace SAM.Analytical.OpenStudio
 
                     using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
                     {
-                        command.CommandText = "SELECT SUM(rd.Value) FROM ReportData rd JOIN ReportDataDictionary rdd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex WHERE rdd.Name = @name AND rdd.KeyValue = @key";
+                        command.CommandText = filterEnvironment
+                            ? "SELECT SUM(rd.Value) FROM ReportData rd JOIN ReportDataDictionary rdd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex JOIN Time t ON rd.TimeIndex = t.TimeIndex WHERE rdd.Name = @name AND rdd.KeyValue = @key AND t.EnvironmentPeriodIndex IN (SELECT EnvironmentPeriodIndex FROM EnvironmentPeriods WHERE EnvironmentType = 3)"
+                            : "SELECT SUM(rd.Value) FROM ReportData rd JOIN ReportDataDictionary rdd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex WHERE rdd.Name = @name AND rdd.KeyValue = @key";
                         command.Parameters.AddWithValue("@name", variableName);
                         command.Parameters.AddWithValue("@key", key);
 

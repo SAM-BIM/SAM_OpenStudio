@@ -12,7 +12,7 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C1 | Core adapter hardening (P3 items, disposal, statistics, SQL, VersionTranslator) | **Done** | — |
 | C2 | Internal conditions, schedules, conditioning modes (latent, humidistat, single-mode) | **Done** | — |
 | C3 | Fenestration, frames, constructions (FrameAndDivider, doors, hole diagnostics) | **Done** | — |
-| C4 | Site, weather, DDY, simulation settings (north, ground temps, run period, calendar) | Pending | — |
+| C4 | Site, weather, DDY, simulation settings (north, ground temps, run period, calendar) | **Done** | — |
 | C5 | Results extraction and SAM result mapping (engine-neutral schema, units authority) | Pending | — |
 | C6 | Cancellation, asynchronous execution, Grasshopper UX | Pending | — |
 | C7 | Full regression suite, completeness enforcement, documentation | Pending | — |
@@ -105,6 +105,38 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 - Docs: MATERIAL_MAPPING updated.
 - Tests: +10 (`tests/.../C3/FenestrationTests.cs`) — 104 → **114**.
 
+## C4 — Site, weather, design days, simulation settings (done)
+
+- `SimulationSettings.cs` — north axis from `AnalyticalModelParameter.NorthAngle`
+  (**radians → degrees**, convention resolved from SAM_Tas `ToT3D/ToTBD Building.cs`; explicit
+  `NorthAngleDegrees` option overrides); explicit RunPeriod; timestep option; solar
+  distribution (via `SimulationControl` — OpenStudio exposes the E+ Building field there);
+  `ShadowCalculation` frequency option; YearDescription (first day of week from the run
+  calendar, calendar year, leap year — flattened onto `Model` in the C# wrapper); DST option,
+  **default off** (object removed when present); sizing control enabled when design days are
+  imported (`RunSizingPeriods` overrides).
+- `Weather.cs` — SAM Location takes precedence over the EPW site coordinates (information
+  diagnostic; time zone stays with the EPW). Ground temperatures: SAM WeatherData
+  (nearest-to-surface set) → EPW header via **SAM.Weather's native parser** (verified:
+  OpenStudio's `setWeatherFile` does NOT import them) → warning naming the E+ 18 °C default.
+- `Query/DesignDays.cs` — stub completed (IdfFile → EnergyPlusReverseTranslator).
+  New `Convert/ToOpenStudio/DesignDays.cs` — DDY import with 99.6%/0.4% name filter
+  (`ImportAllDesignDays` option; fallback to all + warning); `OpenStudioRunOptions.DdyPath`
+  wired (takes precedence over the conversion option).
+- `OpenStudioSimulationRunner.ReadAnnualEnergy` — annual sums restricted to the weather-run
+  environment (EnvironmentType 3) so imported design days never double-count; defensive
+  fallback when the table/row is absent.
+- `Profile.cs` — leap-year schedule generation (8784 values: ≥8784 stores pass through,
+  8760 stores repeat 31 Dec, day-composed profiles tile 366 days).
+- `OpenStudioConversionOptions` — new options (NorthAngleDegrees, RunPeriod*, TimestepsPerHour,
+  SolarDistribution, ShadowCalculationFrequencyDays, CalendarYear, IsLeapYear,
+  DaylightSavingsTime, DdyPath, ImportAllDesignDays, RunSizingPeriods, OutputVariableFrequency).
+- Binding probes passed at build: `ZoneControlHumidistat` (C2), `WindowPropertyFrameAndDivider`
+  (C3), `SiteGroundTemperatureBuildingSurface`, `YearDescription` (on Model),
+  `RunPeriodControlDaylightSavingTime`, `ShadowCalculation`, `DesignDay`/
+  `EnergyPlusReverseTranslator`, `SimulationControl.setSolarDistribution`.
+- Tests: +10 (`tests/.../C4/SiteWeatherSettingsTests.cs`) — 114 → **124**.
+
 ## Gates log
 
 | Milestone | Build | Tests | EnergyPlus gate |
@@ -114,3 +146,4 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C1 | clean (0 errors) | 93/93 | Full suite re-run incl. SingleBox/AirGap/TwoBoxes + CLI timeout |
 | C2 | clean (0 errors; GH project excluded — Rhino running) | 104/104 | Latent + humidistat end-to-end (humidity output present, sane %RH range) |
 | C3 | clean (0 errors; GH project excluded — Rhino running) | 114/114 | Framed window end-to-end (frame in IDF; E+ glass area = pane area 2.47 m²) |
+| C4 | clean (0 errors; GH project excluded — Rhino running) | 124/124 | Design-day run (sizing on): annual results unchanged vs baseline (environment filter proven); north rotation 0°→180° shifts heating/cooling as expected |

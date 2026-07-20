@@ -59,5 +59,79 @@ namespace SAM.Core.OpenStudio
         /// When null the caller must provide paths explicitly at save/run time.
         /// </summary>
         public string OutputDirectory { get; set; }
+
+        /// <summary>
+        /// Building rotation [degrees clockwise from true North, the TAS/EnergyPlus convention]
+        /// applied to OS:Building North Axis. When null (default) the SAM model's
+        /// AnalyticalModelParameter.NorthAngle (stored in radians) is used; when neither exists
+        /// the North Axis is left at the OpenStudio default (0).
+        /// </summary>
+        public double? NorthAngleDegrees { get; set; }
+
+        /// <summary>Run-period begin month (default 1).</summary>
+        public int? RunPeriodBeginMonth { get; set; }
+
+        /// <summary>Run-period begin day of month (default 1).</summary>
+        public int? RunPeriodBeginDay { get; set; }
+
+        /// <summary>Run-period end month (default 12).</summary>
+        public int? RunPeriodEndMonth { get; set; }
+
+        /// <summary>Run-period end day of month (default 31).</summary>
+        public int? RunPeriodEndDay { get; set; }
+
+        /// <summary>Timesteps per hour (default null → 6, the documented MVP value).</summary>
+        public int? TimestepsPerHour { get; set; }
+
+        /// <summary>
+        /// OS:Building Solar Distribution value (e.g. "FullExterior", "FullInteriorAndExterior").
+        /// Null (default) leaves the OpenStudio default untouched.
+        /// </summary>
+        public string SolarDistribution { get; set; }
+
+        /// <summary>
+        /// OS:ShadowCalculation Calculation Frequency [days]. Null (default) leaves the
+        /// OpenStudio default untouched.
+        /// </summary>
+        public int? ShadowCalculationFrequencyDays { get; set; }
+
+        /// <summary>OS:YearDescription Calendar Year. Null (default) leaves it unset.</summary>
+        public int? CalendarYear { get; set; }
+
+        /// <summary>
+        /// When true the run calendar is a leap year: OS:YearDescription Is Leap Year is set and
+        /// schedules are generated with 8784 values (explicit ≥8784 profile stores pass through;
+        /// 8760 stores repeat 31 Dec; day-composed profiles tile 366 days). Null/false (default)
+        /// keeps the documented 365-day policy.
+        /// </summary>
+        public bool? IsLeapYear { get; set; }
+
+        /// <summary>
+        /// Daylight saving time. Default false (energy-model convention; SAM carries no DST
+        /// data): any RunPeriodControlDaylightSavingTime object is removed. When true the object
+        /// is ensured (EnergyPlus default dates).
+        /// </summary>
+        public bool DaylightSavingsTime { get; set; } = false;
+
+        /// <summary>
+        /// DDY design-day file imported into the model (heating 99.6% / cooling 0.4% by name
+        /// convention unless <see cref="ImportAllDesignDays"/>). An explicit
+        /// OpenStudioRunOptions.DdyPath takes precedence over this value. When design days are
+        /// imported, sizing-period runs are enabled (see <see cref="RunSizingPeriods"/>).
+        /// </summary>
+        public string DdyPath { get; set; }
+
+        /// <summary>When true every design day in the DDY is imported; default false imports only the 99.6% heating / 0.4% cooling pair (by name convention).</summary>
+        public bool ImportAllDesignDays { get; set; } = false;
+
+        /// <summary>
+        /// Sizing-period execution: null (default) runs sizing periods when design days were
+        /// imported; explicit true/false overrides. Annual results always exclude sizing periods
+        /// (environment-period filter in the runner).
+        /// </summary>
+        public bool? RunSizingPeriods { get; set; }
+
+        /// <summary>Reporting frequency for the requested output variables. Default "Hourly".</summary>
+        public string OutputVariableFrequency { get; set; } = "Hourly";
     }
 }

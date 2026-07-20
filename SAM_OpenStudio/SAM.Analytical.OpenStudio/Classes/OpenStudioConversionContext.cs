@@ -55,6 +55,9 @@ namespace SAM.Analytical.OpenStudio
         /// </summary>
         public int FirstDayOfWeekOffset { get; set; }
 
+        /// <summary>True when design days were imported into the target model (drives sizing-period enablement).</summary>
+        public bool DesignDaysImported { get; set; }
+
         /// <summary>Creates a conversion context.</summary>
         /// <param name="analyticalModel">Source SAM analytical model (null only in contract tests).</param>
         /// <param name="model">Target OpenStudio model; required.</param>

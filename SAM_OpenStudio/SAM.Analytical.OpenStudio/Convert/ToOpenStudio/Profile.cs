@@ -180,6 +180,11 @@ namespace SAM.Analytical.OpenStudio
 
         private static double[] AnnualHourlyValues(Profile profile, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
         {
+            // Leap-year runs (OpenStudioConversionOptions.IsLeapYear) generate 8784-value
+            // schedules: explicit ≥8784 stores pass through (or truncate with a warning),
+            // explicit 8760 stores repeat 31 Dec, day-composed profiles tile 366 days.
+            int targetLength = openStudioConversionContext.Options.IsLeapYear == true ? 8784 : 8760;
+
             double[] profileValues = ProfileValues(profile);
             if (profileValues.Length == 0)
             {
@@ -187,19 +192,30 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
-            if (profileValues.Length == 8760)
+            if (profileValues.Length == targetLength)
             {
                 return CheckedAnnualValues(profile, profileValues, openStudioObjectName, openStudioConversionContext);
             }
 
-            if (profileValues.Length > 8760)
+            if (profileValues.Length > targetLength)
             {
-                // Leap-year (8784) or longer profiles: schedules are 365-day by documented MVP
-                // policy — keep the first 8760 hours; never average the year into one day.
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Profile has {0} values; the first 8760 hours are used (365-day non-leap schedule policy)", profileValues.Length), profile, openStudioObjectName);
-                double[] truncated = new double[8760];
-                Array.Copy(profileValues, truncated, 8760);
+                // Longer profiles (e.g. 8784 leap-year values in a 365-day run): keep the first
+                // targetLength hours; never average the year into one day.
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Profile has {0} values; the first {1} hours are used ({2}-day schedule policy)", profileValues.Length, targetLength, targetLength / 24), profile, openStudioObjectName);
+                double[] truncated = new double[targetLength];
+                Array.Copy(profileValues, truncated, targetLength);
                 return CheckedAnnualValues(profile, truncated, openStudioObjectName, openStudioConversionContext);
+            }
+
+            if (profileValues.Length == 8760 && targetLength == 8784)
+            {
+                // Explicit non-leap annual store in a leap-year run: repeat 31 Dec (the last
+                // 24 hours) — values are never stretched or interpolated.
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Profile has 8760 values in a leap-year run; 31 December is repeated for day 366", profile, openStudioObjectName);
+                double[] extended = new double[8784];
+                Array.Copy(profileValues, extended, 8760);
+                Array.Copy(profileValues, 8736, extended, 8760, 24);
+                return CheckedAnnualValues(profile, extended, openStudioObjectName, openStudioConversionContext);
             }
 
             List<Profile> subProfiles = null;
@@ -215,7 +231,7 @@ namespace SAM.Analytical.OpenStudio
                 // SAM's own yearly expansion (Profile.GetYearlyValues / the wrapping indexer):
                 // the sequence tiles hour-for-hour at its own period — a 24-hour day repeats
                 // daily, a 168-hour week repeats weekly; nothing is stretched or averaged.
-                double[] tiled = new double[8760];
+                double[] tiled = new double[targetLength];
                 for (int i = 0; i < tiled.Length; i++)
                 {
                     tiled[i] = profile[i];
@@ -243,9 +259,9 @@ namespace SAM.Analytical.OpenStudio
                 index++;
             }
 
-            double[] annual = new double[8760];
+            double[] annual = new double[targetLength];
             int firstDayOfWeekOffset = openStudioConversionContext.FirstDayOfWeekOffset;
-            for (int dayIndex = 0; dayIndex < 365; dayIndex++)
+            for (int dayIndex = 0; dayIndex < targetLength / 24; dayIndex++)
             {
                 // Rotate the Monday-first week onto the run calendar: day 0 of the year maps to
                 // the sub-profile of its actual weekday (Monday = 0 … Sunday = 6).

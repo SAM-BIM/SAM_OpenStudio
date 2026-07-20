@@ -49,6 +49,12 @@ namespace SAM.Analytical.OpenStudio
             }
 
             context.ToOpenStudio_Weather(epwPath);
+
+            // Design days: an explicit run-option DDY takes precedence over the conversion
+            // option; sizing periods are enabled by the settings step when days were imported.
+            string ddyPath = !string.IsNullOrWhiteSpace(openStudioRunOptions?.DdyPath) ? openStudioRunOptions.DdyPath : openStudioConversionOptions?.DdyPath;
+            context.ToOpenStudio_DesignDays(ddyPath);
+
             context.ToOpenStudio_SimulationSettings();
             return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions, run);
         }
