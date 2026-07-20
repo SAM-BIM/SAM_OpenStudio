@@ -84,6 +84,11 @@ LoadIndex, UnmetHours) and the design-day `ZoneSizes` family (DesignLoad) when s
   receives two results related to the same panel — values are never summed across surfaces.
   Surface values available without sizing runs: area, zone identity, panel linkage; inside/
   outside conduction at the space peak is added per load type when `ZoneSizes` data exists.
+- **Subsurfaces**: the EnergyPlus `Surfaces` table lists subsurfaces alongside base surfaces,
+  and a `SAM_SubSurface_<name>_<guid8>` name carries the **Aperture** Guid, never a panel Guid.
+  Apertures are not standalone `AdjacencyCluster` objects, so a window result is related to the
+  panel **hosting** that aperture, keeping its own SQL name and `SurfaceIndex` reference. A
+  glazed panel therefore carries one result for its opaque surface plus one per hosted aperture.
 - **Rerun**: identical results (type, name, reference, load type) already present from the
   same source are not duplicated; the space/panel relation is ensured.
 - The Grasshopper output name `panelSimulationResults` is retained for compatibility; the SAM

@@ -312,6 +312,17 @@ namespace SAM.Analytical.OpenStudio
                 {
                     return panel;
                 }
+
+                // EnergyPlus lists subsurfaces in the same Surfaces table as the base surfaces,
+                // and a SAM_SubSurface name carries the APERTURE Guid (never a panel Guid) - the
+                // window result belongs to the panel hosting that aperture. Apertures are not
+                // standalone AdjacencyCluster objects, so the host panel is the only valid
+                // relation target; the result keeps its own SQL name and surface reference.
+                Panel panel_Aperture = panels.Find(x => x != null && x.HasApertures && x.Apertures.Find(y => y != null && Query.GuidSuffix(y) == suffix) != null);
+                if (panel_Aperture != null)
+                {
+                    return panel_Aperture;
+                }
             }
 
             // Legacy naming: "<name>__<panel Guid>".

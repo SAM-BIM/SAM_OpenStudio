@@ -151,6 +151,11 @@ namespace SAM.Analytical.OpenStudio.Tests
             return Core.OpenStudio.Query.OpenStudioName("Surface", string.Format("{0}_{1}", panel.Name, spaceIndex), panel.Guid).ToUpperInvariant();
         }
 
+        private static string SubSurfaceName(Aperture aperture, int spaceIndex)
+        {
+            return Core.OpenStudio.Query.OpenStudioName("SubSurface", string.Format("{0}_{1}", aperture.Name, spaceIndex), aperture.Guid).ToUpperInvariant();
+        }
+
         [Test]
         public void OneZone_SpaceAndPanelResults_AttachedAndRelated()
         {
@@ -193,6 +198,47 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(unmet, Is.EqualTo(1.0).Within(1e-9));
 
             Assert.That(diagnostics.Count(d => d.Contains("matched no SAM")), Is.EqualTo(0), "Every SQL name resolved: " + string.Join(" | ", diagnostics));
+        }
+
+        [Test]
+        public void SubSurfaceResults_AttachToHostPanel()
+        {
+            // Human-Rhino validation: every window row of the live eplusout.sql
+            // (SAM_SUBSURFACE_<name>_<guid8>) was reported as "matched no SAM panel; left
+            // unattached" — the EnergyPlus Surfaces table lists subsurfaces alongside base
+            // surfaces, and a subsurface carries the APERTURE Guid, which no panel Guid can
+            // ever equal. The window result belongs to the panel hosting the aperture.
+            AnalyticalModel analyticalModel = AnalyticalModelFixtures.SingleBox();
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster(analyticalModel.AdjacencyCluster);
+            Space space = adjacencyCluster.GetSpaces().Single();
+            List<Panel> panels = adjacencyCluster.GetPanels();
+            Panel glazedPanel = panels.Single(x => x.HasApertures);
+            Aperture aperture = glazedPanel.Apertures.Single();
+
+            List<(string SurfaceName, double Area, int ZoneIndex)> surfaces = panels.Select((p, i) => (SurfaceName(p, 0), 20.0 - i, 1)).ToList();
+            surfaces.Add((SubSurfaceName(aperture, 0), 2.64, 1));
+
+            string sqlPath = CreateResultsSql(
+                "c5_addresults_subsurface.sql",
+                new[] { (ZoneName(space), IdealLoadsKey(space), 20.0, 60.0) },
+                surfaces,
+                3_600_000.0, 7_200_000.0, false);
+
+            List<Result> results = Modify.AddResults(adjacencyCluster, sqlPath, out List<string> diagnostics);
+
+            Assert.That(diagnostics.Where(d => d.Contains("matched no SAM panel")), Is.Empty, "A window row is not an orphan: " + string.Join(" | ", diagnostics));
+
+            List<SurfaceSimulationResult> glazedResults = adjacencyCluster.GetResults<SurfaceSimulationResult>(glazedPanel);
+            Assert.That(glazedResults, Is.Not.Null.And.Count.EqualTo(2), "The host panel keeps its own opaque surface result AND the hosted window result");
+            Assert.That(glazedResults.Any(x => x.Name == SubSurfaceName(aperture, 0)), Is.True, "The window result is related to the panel hosting the aperture, its SQL identity preserved");
+
+            // Never leaks onto a neighbouring panel: only the host receives it.
+            foreach (Panel panel in panels.Where(x => !x.HasApertures))
+            {
+                Assert.That(adjacencyCluster.GetResults<SurfaceSimulationResult>(panel), Is.Not.Null.And.Count.EqualTo(1), $"Panel {panel.Name} keeps only its own surface result");
+            }
+
+            Assert.That(results.Count(x => x is SurfaceSimulationResult), Is.EqualTo(panels.Count + 1), "One result per engine surface, subsurfaces included");
         }
 
         [Test]
