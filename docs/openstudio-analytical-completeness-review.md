@@ -395,24 +395,61 @@ None.
 
 ## 8. Corrections implemented (Stage L)
 
-*Completed after the Stage L corrections — commit SHAs and regression tests are recorded here
-once each fix lands. Planned commits, one per finding:*
+One commit per finding, each preceded by a failing regression test, followed by the focused
+test, the full suite and (for semantic changes) the relevant EnergyPlus simulation. The
+original C0–C7 commits are untouched.
 
 | Commit | Finding | Regression tests |
 | --- | --- | --- |
-| pending | P1-01 | declared-diagnostic tests (one per emission site) + clean-fixture silence |
-| pending | P1-02 | exact heating/cooling pair from the pinned DDY; no `Hum_n`/`Wind` days; sizing rerun |
-| pending | P1-03 | synthetic leap-year SQL: distinct Feb 28/29 hour indices |
-| pending | P2-01 | stale-manifest-id detection |
-| pending | P2-02 | non-hourly frequency warning |
-| pending | P2-03 | invalid Location keeps the EPW site with a warning |
-| pending | P2-05 | compile-time only (GH runtime is human-validated; §10 step 5) |
-| pending | P2-06 | byte-level encoding verification |
+| `dda59b0` | P1-01 | `C7/DeclaredDiagnosticsTests` — 8 tests, one per emission site (view coefficients, control function, emitter/exhaust deferrals, internal-shadow flags on aperture-construction and construction, panel feature shade, vapour diffusion factor, divergent internal optics), incl. once-per-object enforcement and matching-optics silence; `CleanFixture_DropsNothing` still green |
+| `600ef2b` | P1-02 | C4 import test names the exact heating 99.6% + cooling .4% pair, rejects `Hum_n`/`Wind`; heating-only DDY imports 1 day + missing-cooling warning; end-to-end sizing run proves exactly one heating and one cooling sizing environment (SQL `EnvironmentPeriods`) with annual totals identical to baseline |
+| `ec7123f` | P1-03 | `C5/LeapYearIndexingTests` — synthetic leap SQL: 50 distinct indices, Feb 28 @1392 / Feb 29 @1416 / Mar 1 @1440 / Dec 31 @8783; non-leap dataset unchanged (Mar 1 @1416, Dec 31 @8759) |
+| `e5e72ff` | P2-01 | `Manifest_HasNoStaleIds` (reverse check) — caught **2 real stale rows** (`AnalyticalMaterialParameter.TypeName`/`.Description`, commented out in SAM); manifest and MD corrected to **277 entries / NA 56 / C0 62**; ghost-id injection reproduced the failure mode |
+| `ff93d89` | P2-02 | C4 non-hourly frequency test — one `SAM-OS-RUN-003` warning for "Timestep", request still honoured, hourly default silent |
+| `d631e18` | P2-03 | C4 — NaN latitude and longitude 200 keep the EPW site with a warning naming the values; NaN elevation keeps the EPW elevation while valid coordinates override |
+| `68adfa4` | P2-05 | compile-verified against the full solution (GH runtime is human-validated; §10 step 5) |
+| `68d09f5` | P2-06 | strict exception-fallback UTF-8 decode of both files; byte scan shows only the intended `→`/`—`/`–` sequences (16 MD repairs — 13 more of the same corruption class than originally recorded — plus the JSON 0x97) |
+
+P2-04 (standalone `.osw` run isolation) remains **open as a recorded follow-up** by design —
+it needs an OSW-rewrite design and does not affect the default GH/API paths.
 
 ## 9. Final validation (Stage M)
 
-*To be completed after the corrections: final build, full suite count, post-fix driver rerun
-(five scenarios + special validations) and coverage totals.*
+Executed on the branch head after all Stage L corrections (2026-07-20):
+
+- **Build:** `dotnet build SAM_OpenStudio.sln -c Debug -p:Platform=x64 -m:1` — full solution
+  including the Grasshopper project (Rhino closed): **0 errors**, only the two pre-existing
+  benign MSB3277 System.Memory warnings.
+- **Suite:** `dotnet test … -c Debug -p:Platform=x64` — **170/170 passed, 0 skipped**
+  (~2 m 08 s): the 146 reproduced baseline + 9 tests from the two pre-review fix commits
+  (`1b8cbc0` SQLite deployment, `e48352b` wind-panel normals) + **15 Stage L regression
+  tests**.
+- **Coverage manifest:** **277 entries — Native 135, Derived 28, Approximated 21,
+  Unsupported 20, Deferred 17, NA 56** (post-P2-01); all four manifest-enforcement tests green
+  (structural, live→manifest, manifest→live, diagnostic-code existence).
+
+### Post-fix simulation validation (suite evidence, same fixtures as §2)
+
+| # | Scenario (test) | Result | Evidence |
+| --- | --- | --- | --- |
+| 1 | Latent + humidistat (`LatentAndHumidistat_EndToEnd_EnergyPlusRun`) | pass, 4 s | humidity-band semantics asserted in-test (§2 run 1 reproduced the physics: min RH 2.6 % → 29.1 %, max capped 60.5 %) |
+| 2 | Framed window (`FramedWindow_EndToEnd_EnergyPlusRun`) | pass, 5 s | EnergyPlus glass area **2.470 m²** + frame 0.330 m² = SAM aperture 2.80 m² (EnvelopeSummary row asserted) |
+| 3 | Design days + sizing (`DesignDaysRun_AnnualResultsExcludeSizingPeriods`) | pass, 8 s (2 runs) | annual totals identical with and without design days: **H 2924.807 / C 1758.028 kWh** both; sizing environments now exactly `ANN HTG 99.6% CONDNS DB` + `ANN CLG .4% CONDNS DB=>MWB` (P1-02 fixed — was 3 heating-type days, no cooling) |
+| 4 | North rotation (`NorthRotation_ShiftsSolarGains_EndToEnd`) | pass, 8 s (2 runs) | 0° → 180°: heating 2924.8 → **3407.0 kWh**, cooling 1758.0 → **1380.7 kWh** — sign convention intact post-fixes |
+| 5 | Rich extraction (`AnnualEnergy_Peaks_UnmetHours_Gains_AndSeries_Extracted`, TwoAdjacentBoxes) | pass, 4 s | per-zone energies/peaks, unmet hours, gains, enclosure solar, 8760-value series; coincident ≤ Σ zone peaks |
+
+### Special validations (all green)
+
+`Cancel_DuringRun_TerminatesProcessTree_NoSurvivingProcess` (927 ms),
+`Cancelled_BeforeStart_NoCli_NoSurvivingProcess`, `Parallel_UniqueRunDirectories_BothSucceed`
+(two concurrent EnergyPlus runs), `SameDirectory_NonUnique_SecondRunGetsCollisionDiagnostic`,
+`SequentialRuns_RepeatedConversionAndDisposal`, `ProgressStages_AreReportedInOrder`,
+`RepeatedConversion_AndDisposal_DoesNotLeakOrThrow` (5-iteration loop),
+`Conversion_IsDeterministic` (sorted semantic object-set comparison),
+`Manifest_IsStructurallySound` / `Manifest_CoversEveryLiveEnumMember` /
+`Manifest_HasNoStaleIds` / `Manifest_DeclaredDiagnosticCodes_Exist` (coverage enforcement),
+`Performance_ConversionAndRun_AreMeasured` and `TwoBoxes_EndToEnd_EnergyPlusRun_BothZonesProduceLoads`
+(largest available synthetic fixture, TwoAdjacentBoxes).
 
 ## 10. Rhino 8 validation procedure (human)
 
@@ -447,5 +484,15 @@ extraction behind P2-02.
 
 ## 12. Recommendation
 
-*Pending Stage L/M completion — issued once every confirmed P0/P1 is resolved with regression
-tests and the final validation evidence is recorded above.*
+**READY** — for human Rhino 8 validation now, and for a pull request once that validation
+passes.
+
+- Every confirmed P0/P1 is resolved with regression tests (no P0 existed; P1-01…P1-03 fixed).
+- Every small in-scope P2 is fixed or mitigated (P2-01, P2-02 mitigation, P2-03, P2-05,
+  P2-06); P2-04 and frequency-aware peak extraction are recorded follow-ups outside the
+  default paths.
+- Final validation: clean full-solution build, **170/170 tests, 0 skipped**, five post-fix
+  EnergyPlus scenarios and all special validations green (§9).
+- The one thing no headless environment can prove is the Grasshopper runtime behaviour —
+  §10 (including the new step 5 for P2-05) is the mandatory human gate before the PR.
+- No pull request has been opened, per the programme instructions.

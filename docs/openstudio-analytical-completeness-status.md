@@ -244,10 +244,32 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C5 | clean (0 errors; GH project excluded — Rhino running) | 130/130 | Extraction validated on annual + sizing-enabled runs (peaks, unmet, gains, series, units, design-day exclusion) |
 | C6 | clean (0 errors, **full solution incl. GH** — Rhino closed) | 136/136 | Cancel-before/cancel-during (tree kill, no surviving process), parallel unique dirs, same-dir collision, sequential, progress stages |
 | C7 | clean (0 errors, full solution) | **146/146** | Full suite (~30 E+ simulations), manifest completeness enforcement, determinism, disposal, performance |
+| Review fixes (pre-Stage-C) | clean | 155/155 | `1b8cbc0` System.Data.SQLite deployment (Ideal Loads results readable); `e48352b` wind-panel outward normals |
+| Stage L (review corrections) | clean (0 errors, full solution incl. GH — Rhino closed) | **170/170, 0 skipped** | Five post-fix scenario simulations (latent/humidistat, framed window, design days, north rotation, rich extraction) + cancellation tree-kill, parallel runs, disposal loop, determinism, coverage enforcement, largest fixture — all green |
+
+## Stage L — independent review corrections (2026-07-20)
+
+The independent review ([openstudio-analytical-completeness-review.md](openstudio-analytical-completeness-review.md))
+confirmed no P0, three P1 and six P2 findings; every P1 and every small in-scope P2 is fixed
+in its own commit with a failing-first regression test:
+
+| Commit | Finding | Correction |
+|---|---|---|
+| `dda59b0` | P1-01 | 18 declared-but-never-emitted coverage diagnostics now fire at the InternalCondition / Aperture / Construction / Panel / Material conversion sites (8 new tests) |
+| `600ef2b` | P1-02 | Default DDY import selects exactly the ASHRAE heating 99.6% + cooling .4% pair (the cooling day was never matched before; `Hum_n`/`Wind` days leaked in) |
+| `ec7123f` | P1-03 | SQL hour-of-year follows the run calendar in leap years (Feb 29 no longer collapses onto Feb 28; coincident peaks no longer double-count) |
+| `e5e72ff` | P2-01 | Stale-manifest-id reverse check — immediately caught 2 real stale rows; manifest corrected to **277 entries / NA 56** |
+| `ff93d89` | P2-02 | `SAM-OS-RUN-003` warning when a non-hourly output frequency would mis-scale extracted peaks (frequency-aware extraction stays follow-up) |
+| `d631e18` | P2-03 | SAM Location site override validated (NaN/out-of-range keeps the EPW site with a warning) |
+| `68adfa4` | P2-05 | Grasshopper cancels the simulation on component removal and document close; completion continuation never targets a disposed document (human Rhino step 5) |
+| `68d09f5` | P2-06 | Coverage MD/JSON encoding repaired (16 double-encoded sequences + 1 invalid byte) — both strict UTF-8 |
+
+P2-04 (standalone `.osw` run-directory isolation) is a recorded follow-up.
 
 ## Final summary
 
-- Tests: 82 (MVP) → **146**; every milestone gated by x64 Debug build + full suite + E+ runs.
+- Tests: 82 (MVP) → 146 (C7) → **170 after the Stage L review corrections** (0 skipped);
+  every milestone and every review fix gated by x64 Debug build + full suite + E+ runs.
 - Coverage (277 manifest entries after review P2-01 removed two stale rows): **Native 135,
   Derived 28, Approximated 21, Unsupported 20, Deferred 17, NA 56**. Translated-or-diagnosed:
   every entry with energy semantics has a Native/Derived/Approximated mapping or a declared
@@ -256,5 +278,8 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 - Known limitations: dividers/muntins N/A (no SAM data); blinds/shades and opening properties
   unsupported (no geometry; HVAC domain); SAM hourly design days approximated (DDY import is
   the deterministic path); emitter characteristics and exhaust flows deferred to the HVAC
-  programme; STAT parsing deferred; DST default off; Ideal Loads remains the simulation system.
-- Branch `feature/openstudio-analytical-completeness`; no PR opened.
+  programme (now reported with SAM-OS-HVAC-001 deferral diagnostics); STAT parsing deferred;
+  DST default off; Ideal Loads remains the simulation system. Review follow-ups: standalone
+  `.osw` run-directory isolation (P2-04) and frequency-aware peak extraction (P2-02).
+- Branch `feature/openstudio-analytical-completeness`; no PR opened. Review recommendation:
+  **READY** for human Rhino validation (checklist in the review document §10), then PR.
