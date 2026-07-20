@@ -63,6 +63,46 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void Location_InvalidCoordinates_KeepEpwSite_AndWarn()
+        {
+            // Review P2-03: a SAM Location carrying NaN or out-of-range coordinates must not
+            // reach OS:Site — the EPW site is kept and the rejection is named in a warning.
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), null, out OpenStudioConversionResult baseline);
+            double epwLatitude = baseline.Model.getSite().latitude();
+            double epwLongitude = baseline.Model.getSite().longitude();
+
+            AnalyticalModel nanModel = new AnalyticalModel(AnalyticalModelFixtures.SingleBox(), new Location("NaN Location", -0.1278, double.NaN, 11.0));
+            Convert_NoRun(nanModel, null, out OpenStudioConversionResult nanResult);
+
+            Assert.That(nanResult.Model.getSite().latitude(), Is.EqualTo(epwLatitude).Within(1e-9), "NaN latitude: the EPW site is kept");
+            Assert.That(nanResult.Model.getSite().longitude(), Is.EqualTo(epwLongitude).Within(1e-9));
+            Assert.That(nanResult.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("Location") && d.Message.Contains("NaN")), Is.True, "The rejected values are named");
+            Assert.That(nanResult.Diagnostics.Any(d => d.Message.Contains("Site coordinates taken from the SAM model Location")), Is.False, "No override-info diagnostic for a rejected Location");
+
+            AnalyticalModel outOfRangeModel = new AnalyticalModel(AnalyticalModelFixtures.SingleBox(), new Location("Out Of Range", 200.0, 51.5074, 11.0));
+            Convert_NoRun(outOfRangeModel, null, out OpenStudioConversionResult outOfRangeResult);
+
+            Assert.That(outOfRangeResult.Model.getSite().longitude(), Is.EqualTo(epwLongitude).Within(1e-9), "Longitude 200 is out of range: the EPW site is kept");
+            Assert.That(outOfRangeResult.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("200")), Is.True);
+        }
+
+        [Test]
+        public void Location_NonFiniteElevation_KeepsEpwElevation_ButOverridesCoordinates()
+        {
+            // Valid latitude/longitude with a NaN elevation: coordinates override, the EPW
+            // elevation stays (never a NaN into OS:Site), and the message says so.
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), null, out OpenStudioConversionResult baseline);
+            double epwElevation = baseline.Model.getSite().elevation();
+
+            AnalyticalModel model = new AnalyticalModel(AnalyticalModelFixtures.SingleBox(), new Location("No Elevation", -0.1278, 51.5074, double.NaN));
+            Convert_NoRun(model, null, out OpenStudioConversionResult result);
+
+            Assert.That(result.Model.getSite().latitude(), Is.EqualTo(51.5074).Within(1e-9), "Valid coordinates still override");
+            Assert.That(result.Model.getSite().elevation(), Is.EqualTo(epwElevation).Within(1e-9), "NaN elevation: the EPW elevation is kept");
+            Assert.That(result.Diagnostics.Any(d => d.Message.Contains("SAM model Location") && d.Message.Contains("elevation kept from the EPW header")), Is.True);
+        }
+
+        [Test]
         public void GroundTemperatures_ComeFromEpwHeader_WhenNoSamWeatherData()
         {
             Convert_NoRun(AnalyticalModelFixtures.SingleBox(), null, out OpenStudioConversionResult result);

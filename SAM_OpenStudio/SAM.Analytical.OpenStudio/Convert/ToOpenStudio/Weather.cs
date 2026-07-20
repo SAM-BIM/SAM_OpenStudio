@@ -56,17 +56,42 @@ namespace SAM.Analytical.OpenStudio
             site.setTimeZone(epwFile.timeZone());
             site.setElevation(epwFile.elevation());
 
+            // Review P2-03: the SAM Location override is validated — NaN or out-of-range
+            // coordinates never reach OS:Site (EnergyPlus would run them). Invalid coordinates
+            // keep the EPW site with a warning naming the rejected values; a non-finite
+            // elevation keeps the EPW elevation while valid coordinates still override.
             Core.Location location = openStudioConversionContext.Source?.Location;
             if (location != null)
             {
-                site.setLatitude(location.Latitude);
-                site.setLongitude(location.Longitude);
-                site.setElevation(location.Elevation);
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Site coordinates taken from the SAM model Location (lat {0}, lon {1}, elevation {2} m), overriding the EPW header; the time zone stays with the EPW", location.Latitude, location.Longitude, location.Elevation));
+                bool validLatitude = IsFinite(location.Latitude) && location.Latitude >= -90 && location.Latitude <= 90;
+                bool validLongitude = IsFinite(location.Longitude) && location.Longitude >= -180 && location.Longitude <= 180;
+
+                if (validLatitude && validLongitude)
+                {
+                    site.setLatitude(location.Latitude);
+                    site.setLongitude(location.Longitude);
+
+                    bool validElevation = IsFinite(location.Elevation);
+                    if (validElevation)
+                    {
+                        site.setElevation(location.Elevation);
+                    }
+
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Site coordinates taken from the SAM model Location (lat {0}, lon {1}, elevation {2}), overriding the EPW header; the time zone stays with the EPW", location.Latitude, location.Longitude, validElevation ? location.Elevation + " m" : string.Format("kept from the EPW header — SAM value {0} is not finite", location.Elevation)));
+                }
+                else
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("SAM model Location has invalid coordinates (lat {0} [-90..90], lon {1} [-180..180]); the EPW site is kept", location.Latitude, location.Longitude));
+                }
             }
 
             ApplyGroundTemperatures(openStudioConversionContext, epwPath);
             return true;
+        }
+
+        private static bool IsFinite(double value)
+        {
+            return !double.IsNaN(value) && !double.IsInfinity(value);
         }
 
         /// <summary>

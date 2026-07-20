@@ -31,7 +31,7 @@ Three P1 findings were confirmed by reproduction — all three in the newest (C2
 | P1-03 | P1 | Leap-year runs: SQL hour-of-year uses a fixed non-leap reference year, so Feb 29 rows clamp onto Feb 28 (duplicate hour keys double-count the coincident peak) and all post-February peak hours shift by one day | **Fixed** (Stage L, §8) |
 | P2-01 | P2 | The C7 completeness test does not implement the stale-manifest-id detection the coverage document claims | **Fixed** (Stage L, §8) — the new check immediately caught 2 real stale rows |
 | P2-02 | P2 | `OutputVariableFrequency` ≠ Hourly silently mis-scales extracted peaks (fixed 3600 s interval assumption) | **Mitigated** (Stage L, §8); frequency-aware extraction stays follow-up |
-| P2-03 | P2 | SAM `Location` site override writes non-finite/out-of-range coordinates into `OS:Site` unvalidated | Confirmed — fix pending |
+| P2-03 | P2 | SAM `Location` site override writes non-finite/out-of-range coordinates into `OS:Site` unvalidated | **Fixed** (Stage L, §8) |
 | P2-04 | P2 | Standalone `Run(path, …)` ignores `UseUniqueRunDirectory` for `.osw` inputs and has no collision lock on that path | **Open (follow-up)** — needs an OSW-rewrite design; not fixed here |
 | P2-05 | P2 | Grasshopper: removing the component or closing the document does not cancel a running simulation; the completion callback can target a disposed document | Confirmed — fix pending (needs human Rhino confirmation) |
 | P2-06 | P2 | Encoding corruption: coverage Markdown carries double-encoded arrows (`â†’`); the JSON manifest carries a raw CP1252 byte (invalid UTF-8) | Confirmed — fix pending |
@@ -246,7 +246,10 @@ None.
 - **Correction:** override only when latitude ∈ [−90, 90], longitude ∈ [−180, 180] and both
   finite (elevation finite, else 0-defaulted by OS); otherwise keep the EPW site and raise a
   warning naming the rejected values.
-- **Status:** **Confirmed — fix pending** (Stage L).
+- **Status:** **Fixed** (Stage L) — invalid coordinates keep the EPW site with a SAM-OS-RUN-002
+  warning naming the rejected values; a non-finite elevation keeps the EPW elevation (never a
+  NaN into OS:Site) while valid coordinates still override, and the override message says so.
+  Regression tests: NaN latitude, longitude 200 and NaN elevation (C4). Commit in §8.
 
 ### P2-04 — Standalone `Run(path, …)` collision behaviour for `.osw` inputs
 
