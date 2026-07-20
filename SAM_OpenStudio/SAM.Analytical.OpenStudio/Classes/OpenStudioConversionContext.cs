@@ -58,6 +58,13 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>True when design days were imported into the target model (drives sizing-period enablement).</summary>
         public bool DesignDaysImported { get; set; }
 
+        /// <summary>
+        /// The effective EPW path for the run (OSW weather file), resolved by the weather step:
+        /// the explicit path when supplied and valid, otherwise the temp EPW exported from the
+        /// embedded AnalyticalModel WeatherData, otherwise null (no annual weather source).
+        /// </summary>
+        public string EpwPath { get; set; }
+
         /// <summary>Keys already used through <see cref="RegisterOnce"/> in this conversion.</summary>
         private readonly HashSet<string> onceKeys = new HashSet<string>();
 

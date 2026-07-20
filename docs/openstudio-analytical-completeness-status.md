@@ -266,10 +266,64 @@ in its own commit with a failing-first regression test:
 
 P2-04 (standalone `.osw` run-directory isolation) is a recorded follow-up.
 
+## Human-Rhino validation corrections — embedded weather/design days (done)
+
+Grasshopper validation showed the conversion only ever used explicit file inputs: the
+`SAMAnalytical.ToOpenStudio` component passed `null` options and required `_epwPath`, and the
+`AnalyticalModelParameter.HeatingDesignDays`/`CoolingDesignDays` collections had no code
+consumer at all. Source-resolution policy implemented (one coherent contract):
+
+```
+Explicit EPW/DDY path
+    overrides
+AnalyticalModel embedded WeatherData/design days
+    overrides
+documented fallback or blocking diagnostic
+```
+
+- `Query/EmbeddedAnnualWeatherPath.cs` — SAM WeatherData retains no source EPW path, but the
+  existing `Weather.Convert.ToEPW` export is verified and used when the embedded WeatherData
+  carries weather years (deterministic content-hash temp file, reused across runs).
+- `Convert/ToOpenStudio/AnalyticalModel.cs` — weather/design-day source resolution with
+  Information diagnostics naming the selected source ("Annual weather source: explicit EPW /
+  AnalyticalModel WeatherData"; "Design-day source: explicit DDY / AnalyticalModel
+  heating/cooling design days / no design-day source supplied"). Explicit and embedded design
+  days are never merged. A supplied-but-unusable explicit path falls back to the embedded
+  source with a warning naming the rejected path. `OpenStudioConversionContext.EpwPath` carries
+  the effective path to the OSW/runner.
+- `Convert/ToOpenStudio/DesignDays.cs` — embedded SAM hourly design days →
+  `SizingPeriod:DesignDay`: month/day validated; max dry bulb and daily range from the 24 h
+  profile; humidity approximated as a constant dew point at the max-dry-bulb hour (Magnus);
+  mean wind speed + circular-mean direction; daily-mean barometric pressure; ASHRAEClearSky
+  with clearness 0.0 (heating/WinterDesignDay) / 1.0 (cooling/SummerDesignDay). Every
+  approximation is a named warning — a day without a dry-bulb profile is skipped, never
+  silently downgraded.
+- `Convert/ToOpenStudio/Weather.cs` — run-aware weather assignment: a missing annual EPW
+  source is a blocking **error** only when `_run = true`; conversion-only saves OSM/OSW with a
+  warning. Without any EPW the embedded WeatherData still supplies site location/elevation/time
+  zone and ground temperatures (an explicit EPW wins over this metadata; the SAM model Location
+  still overrides any weather source, P2-03 unchanged).
+- `Query/EmbeddedWeatherFingerprint.cs` — deterministic content fingerprint (SAM JSON with
+  volatile Guids stripped → SHA-256) of the embedded WeatherData + design days; the
+  Grasshopper async signature keys on it, so changing embedded content on the same model Guid
+  triggers a new conversion.
+- `SAMAnalytical.ToOpenStudio` (component 1.2.0): `_epwPath` now optional; new optional
+  `ddyPath_` input appended after `cancel_` (archived documents pair inputs by position —
+  appending keeps existing wiring); real `OpenStudioConversionOptions` with `DdyPath` is passed
+  instead of null; signature = model Guid + EPW + DDY + output + run + embedded fingerprint.
+- SAM-core note (separate change required, **not** fixed here):
+  `SAMAnalytical.CreateAnalyticalModelByAdjacencyCluster` persists `weatherData_`,
+  `coolingDesignDays_`, `heatingDesignDays_` only when `_saveWeatherData_ = true`
+  (persistent default **false**), so models saved with defaults carry no embedded weather. The
+  required SAM change is to default `_saveWeatherData_` to true (or persist whenever the inputs
+  are supplied) — see the PR discussion.
+- Tests: +11 (`tests/.../C4/EmbeddedWeatherDesignDaysTests.cs`) — 170 → **181**.
+
 ## Final summary
 
-- Tests: 82 (MVP) → 146 (C7) → **170 after the Stage L review corrections** (0 skipped);
-  every milestone and every review fix gated by x64 Debug build + full suite + E+ runs.
+- Tests: 82 (MVP) ��' 146 (C7) ��' 170 (Stage L) ��' **181 after the human-Rhino validation
+  corrections** (0 skipped); every milestone and every review fix gated by x64 Debug build +
+  full suite + E+ runs.
 - Coverage (277 manifest entries after review P2-01 removed two stale rows): **Native 135,
   Derived 28, Approximated 21, Unsupported 20, Deferred 17, NA 56**. Translated-or-diagnosed:
   every entry with energy semantics has a Native/Derived/Approximated mapping or a declared

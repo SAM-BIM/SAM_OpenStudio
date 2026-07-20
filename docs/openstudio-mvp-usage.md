@@ -9,7 +9,27 @@ Companion to [SAM_OpenStudio_MVP_Implementation_Plan.md](SAM_OpenStudio_MVP_Impl
   `openstudio.exe` on PATH → direct installations (`C:\openstudio-*`, `%ProgramFiles%\OpenStudio*`)
   → Ladybug Tools bundle (`%ProgramFiles%\ladybug_tools\openstudio`). Verified against
   **3.10.0** (matching the NuGet SDK).
-- An EPW weather file (explicit input — SAM weather data is not consulted in the MVP).
+- An EPW weather file, **or** WeatherData with hourly weather years embedded in the
+  AnalyticalModel (`SAMAnalytical.CreateAnalyticalModelByAdjacencyCluster` with
+  `_saveWeatherData_ = true`). Source precedence (never merged, always named in a diagnostic):
+
+  ```
+  Explicit EPW/DDY path
+      overrides
+  AnalyticalModel embedded WeatherData/design days
+      overrides
+  documented fallback or blocking diagnostic
+  ```
+
+  Annual weather: an explicit EPW wins; otherwise the embedded WeatherData is exported through
+  SAM.Weather's `ToEPW` API (only when it carries weather years); otherwise its metadata
+  (location, elevation/time zone, ground temperatures) is still used and a run reports the
+  missing EPW as a blocking error while conversion-only stays valid with a warning.
+  Design days: an explicit DDY (`OpenStudioConversionOptions.DdyPath`, overridden by
+  `OpenStudioRunOptions.DdyPath`, or the Grasshopper `ddyPath_` input) wins; otherwise the
+  embedded heating/cooling design days are translated (approximations are named in warnings);
+  otherwise no design days. An explicit path that is supplied but unusable falls back to the
+  embedded source with a warning naming the rejected path.
 - Prebuilt SAM assemblies in `..\SAM\build\` (HintPath references).
 
 ## C# API
@@ -72,7 +92,7 @@ using (result) { /* result owns the OpenStudio model — dispose when done */ }
 
 | Component | Purpose |
 | --- | --- |
-| `SAMAnalytical.ToOpenStudio` | AnalyticalModel + EPW + output folder (+`_run`) → OSM/OSW paths, SQL path, heating/cooling kWh, diagnostics, success |
+| `SAMAnalytical.ToOpenStudio` | AnalyticalModel + output folder (+ optional `_epwPath`, `ddyPath_`, `_run`) → OSM/OSW paths, SQL path, heating/cooling kWh, diagnostics, success. Weather/design-day sources: explicit paths override embedded model data |
 | `OpenStudio.RunModel` | Existing OSM/OSW (+EPW for OSM) → run, SQL path, heating/cooling kWh, diagnostics |
 | `OpenStudio.CreateSpaceSimulationResultsBySQL` (pre-existing) | SQL → SAM `SpaceSimulationResult` objects |
 | `OpenStudioCreateDesignDaysBySQL`, `SAMAnalyticalAddResultsBySQL` (pre-existing) | Design days / result attachment from SQL |
@@ -108,8 +128,10 @@ in unique directories.
   detailed-HVAC programme (SAM-OS-HVAC-001/SAM-OS-IC-001 diagnostics).
 - STAT ground-temperature parsing: deferred (SAM WeatherData → EPW header → named 18 °C default).
 - Daylight saving: option-driven, default OFF (SAM carries no DST data).
-- SAM hourly design days → parametric `SizingPeriod:DesignDay` is an approximation; the DDY
-  import is the deterministic primary path.
+- SAM hourly design days → parametric `SizingPeriod:DesignDay` is an approximation (used when
+  no DDY path exists: daily range from the 24 h spread, constant dew point at the max-dry-bulb
+  hour, mean wind/pressure, ASHRAEClearSky with clearness 0.0 heating / 1.0 cooling — every
+  approximation is named in a warning); the DDY import is the deterministic primary path.
 - Self-intersecting polygons are rejected with a diagnostic (never auto-repaired).
 - Glazing optical sides follow the EnergyPlus definition (Front = side opposite the zone):
   SAM `External*` → Front, `Internal*` → Back — deliberately different from the SAM_LadybugTools

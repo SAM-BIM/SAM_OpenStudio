@@ -44,13 +44,13 @@ namespace SAM.Analytical.OpenStudio
         /// <returns>Conversion result including RunResult and Loads; null when input is null.</returns>
         public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
-            OpenStudioConversionContext context = ToOpenStudio_ContextWithSite(analyticalModel, epwPath, openStudioConversionOptions, openStudioRunOptions);
+            OpenStudioConversionContext context = ToOpenStudio_ContextWithSite(analyticalModel, epwPath, openStudioConversionOptions, openStudioRunOptions, run);
             if (context == null)
             {
                 return null;
             }
 
-            return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions, run, progress, cancellationToken);
+            return OpenStudioSimulationRunner.Run(context, context.EpwPath ?? epwPath, outputDirectory, openStudioRunOptions, run, progress, cancellationToken);
         }
 
         /// <summary>
@@ -61,29 +61,83 @@ namespace SAM.Analytical.OpenStudio
         /// </summary>
         public static System.Threading.Tasks.Task<OpenStudioConversionResult> ToOpenStudioAsync(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
-            OpenStudioConversionContext context = ToOpenStudio_ContextWithSite(analyticalModel, epwPath, openStudioConversionOptions, openStudioRunOptions);
+            OpenStudioConversionContext context = ToOpenStudio_ContextWithSite(analyticalModel, epwPath, openStudioConversionOptions, openStudioRunOptions, run);
             if (context == null)
             {
                 return System.Threading.Tasks.Task.FromResult<OpenStudioConversionResult>(null);
             }
 
-            return OpenStudioSimulationRunner.RunAsync(context, epwPath, outputDirectory, openStudioRunOptions, run, progress, cancellationToken);
+            return OpenStudioSimulationRunner.RunAsync(context, context.EpwPath ?? epwPath, outputDirectory, openStudioRunOptions, run, progress, cancellationToken);
         }
 
-        private static OpenStudioConversionContext ToOpenStudio_ContextWithSite(AnalyticalModel analyticalModel, string epwPath, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions)
+        private static OpenStudioConversionContext ToOpenStudio_ContextWithSite(AnalyticalModel analyticalModel, string epwPath, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions, bool run)
         {
-            OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions, FirstDayOfWeekOffset(epwPath, openStudioConversionOptions));
+            // Annual weather source precedence (documented contract):
+            //   1. the explicit EPW path, when supplied and valid;
+            //   2. WeatherData embedded in the AnalyticalModel, exported through the existing
+            //      SAM.Weather ToEPW API when it carries hourly weather years;
+            //   3. otherwise a blocking diagnostic when an annual run was requested (a
+            //      conversion-only run stays valid with a warning).
+            // The source is resolved before the context is built: the run-calendar offset must
+            // be known before any profile is converted.
+            string epwPath_Effective = !string.IsNullOrWhiteSpace(epwPath) && System.IO.File.Exists(epwPath) ? epwPath : null;
+            bool embeddedWeatherSource = false;
+            bool invalidExplicitEpwPath = false;
+            if (epwPath_Effective == null)
+            {
+                invalidExplicitEpwPath = !string.IsNullOrWhiteSpace(epwPath);
+                epwPath_Effective = analyticalModel.EmbeddedAnnualWeatherPath();
+                embeddedWeatherSource = epwPath_Effective != null;
+            }
+
+            OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions, FirstDayOfWeekOffset(epwPath_Effective, openStudioConversionOptions));
             if (context == null)
             {
                 return null;
             }
 
-            context.ToOpenStudio_Weather(epwPath);
+            if (invalidExplicitEpwPath)
+            {
+                context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The explicit EPW path is not usable: {0}; falling back to the AnalyticalModel WeatherData", epwPath));
+            }
 
-            // Design days: an explicit run-option DDY takes precedence over the conversion
-            // option; sizing periods are enabled by the settings step when days were imported.
+            context.EpwPath = epwPath_Effective;
+
+            context.ToOpenStudio_Weather(epwPath_Effective, run, embeddedWeatherSource);
+
+            // Design-day source precedence (documented contract):
+            //   1. an explicit DDY path (run option takes precedence over the conversion option);
+            //   2. HeatingDesignDays/CoolingDesignDays embedded in the AnalyticalModel;
+            //   3. no design days. Explicit DDY and embedded design days are never merged.
             string ddyPath = !string.IsNullOrWhiteSpace(openStudioRunOptions?.DdyPath) ? openStudioRunOptions.DdyPath : openStudioConversionOptions?.DdyPath;
-            context.ToOpenStudio_DesignDays(ddyPath);
+            if (!string.IsNullOrWhiteSpace(ddyPath) && System.IO.File.Exists(ddyPath))
+            {
+                context.ToOpenStudio_DesignDays(ddyPath);
+                context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Design-day source: explicit DDY ({0}); embedded AnalyticalModel design days are not merged", System.IO.Path.GetFileName(ddyPath)));
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(ddyPath))
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The explicit DDY path is not usable: {0}; falling back to the AnalyticalModel design days", ddyPath));
+                }
+
+                Core.SAMCollection<DesignDay> heatingDesignDays = null;
+                context.Source?.TryGetValue(AnalyticalModelParameter.HeatingDesignDays, out heatingDesignDays);
+
+                Core.SAMCollection<DesignDay> coolingDesignDays = null;
+                context.Source?.TryGetValue(AnalyticalModelParameter.CoolingDesignDays, out coolingDesignDays);
+
+                int embeddedCount = context.ToOpenStudio_DesignDays(heatingDesignDays, coolingDesignDays);
+                if (embeddedCount > 0)
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Design-day source: AnalyticalModel heating/cooling design days ({0} imported)", embeddedCount));
+                }
+                else
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "No design-day source supplied; sizing-period runs stay disabled unless OpenStudioConversionOptions.RunSizingPeriods overrides");
+                }
+            }
 
             context.ToOpenStudio_SimulationSettings();
             return context;
