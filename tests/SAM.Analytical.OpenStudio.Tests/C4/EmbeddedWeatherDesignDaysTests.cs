@@ -225,6 +225,56 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        [Category("Simulation")]
+        public void EmbeddedWeatherAndDesignDays_EndToEnd_RunAndResults()
+        {
+            // The human Rhino route, fully embedded: no _epwPath, no ddyPath_ — WeatherData
+            // and heating/cooling design days come from the AnalyticalModel only.
+            AnalyticalModel analyticalModel = ModelWithEmbeddedWeather();
+
+            string outputDirectory = OutputDirectory("embedded_endtoend");
+            OpenStudioConversionResult result = analyticalModel.ToOpenStudio(null, outputDirectory, run: true);
+
+            Assert.That(result.RunResult?.Success, Is.True, "The run succeeds with the exported EPW: " + string.Join(" | ", result.Diagnostics.Where(d => d.Severity >= Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning).Select(d => d.Message)));
+            Assert.That(result.Diagnostics.Any(d => d.Message.Contains("Annual weather source: AnalyticalModel WeatherData")), Is.True);
+            Assert.That(result.Diagnostics.Any(d => d.Message.Contains("Design-day source: AnalyticalModel heating/cooling design days")), Is.True);
+
+            System.Collections.Generic.List<string> environments = new System.Collections.Generic.List<string>();
+            using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection("Data Source=" + result.RunResult.SqlPath + ";Read Only=True"))
+            {
+                connection.Open();
+                using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT EnvironmentName, EnvironmentType FROM EnvironmentPeriods";
+                    using (System.Data.SQLite.SQLiteDataReader reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            environments.Add(reader.GetString(0) + " [type " + reader.GetInt32(1) + "]");
+                        }
+                    }
+                }
+            }
+
+            TestContext.Out.WriteLine(string.Join("\n", environments));
+            Assert.That(environments.Count(x => x.Contains("[type 3]")), Is.EqualTo(1), "One annual environment");
+            Assert.That(environments.Count(x => x.IndexOf("HTG", StringComparison.OrdinalIgnoreCase) >= 0), Is.EqualTo(1), "The embedded heating day was simulated");
+            Assert.That(environments.Count(x => x.IndexOf("CLG", StringComparison.OrdinalIgnoreCase) >= 0), Is.EqualTo(1), "The embedded cooling day was simulated");
+
+            // The SQL design-day reader (fix 2) reads those same environments without a
+            // DateTime exception, and the results attachment (fix 3) maps the annual family.
+            System.Collections.Generic.List<DesignDay> designDays = Create.DesignDays(result.RunResult.SqlPath, out System.Collections.Generic.List<string> designDayDiagnostics);
+            Assert.That(designDays, Is.Not.Null.And.Count.EqualTo(2), "Create.DesignDays round-trips the embedded days: " + string.Join(" | ", designDayDiagnostics));
+
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster(analyticalModel.AdjacencyCluster);
+            System.Collections.Generic.List<Result> results = Modify.AddResults(adjacencyCluster, result.RunResult.SqlPath, out System.Collections.Generic.List<string> resultDiagnostics);
+            Assert.That(results.Count(x => x is SpaceSimulationResult), Is.GreaterThanOrEqualTo(2), "Annual space results attached");
+            Assert.That(results.Count(x => x is SurfaceSimulationResult), Is.GreaterThanOrEqualTo(6), "Surface results attached");
+            Assert.That(adjacencyCluster.GetResults<SpaceSimulationResult>(adjacencyCluster.GetSpaces().Single()), Is.Not.Null.And.Count.GreaterThanOrEqualTo(2), "The space carries its results");
+            TestContext.Out.WriteLine(string.Join("\n", resultDiagnostics));
+        }
+
+        [Test]
         public void EmbeddedFingerprint_ChangesWithContent_SameModelGuid()
         {
             AnalyticalModel analyticalModel = AnalyticalModelFixtures.SingleBox();

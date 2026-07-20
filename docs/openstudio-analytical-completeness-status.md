@@ -387,13 +387,15 @@ AnalyticalModel path additionally mutated the source model's cluster in place.
 - Tests: +9 (`tests/.../C5/AddResultsBySqlTests.cs`: one-zone attach+relate, two-zone internal
   panel identity, duplicate sanitized names, zero-vs-missing, rerun dedup, annual+design-day
   separation, save/reload serialization, non-mutating component path, real-fixture gate) —
-  199 → **208**. Result-mapping doc updated with the attachment/aggregation rules.
+  199 → **208**. Plus one end-to-end EnergyPlus gate (embedded weather + embedded design days
+  → run → SQL → results) — **209**. Result-mapping doc updated with the
+  attachment/aggregation rules.
 
 ## Final summary
 
-- Tests: 82 (MVP) ��' 146 (C7) ��' 170 (Stage L) ��' **208 after the human-Rhino validation
-  corrections** (0 skipped); every milestone and every review fix gated by x64 Debug build +
-  full suite + E+ runs.
+- Tests: 82 (MVP) ��' 146 (C7) ��' 170 (Stage L) ��' **209 after the human-Rhino validation
+  corrections** (0 skipped, 2 environment-gated); every milestone and every review fix gated
+  by x64 Debug build + full suite + E+ runs.
 - Coverage (277 manifest entries after review P2-01 removed two stale rows): **Native 135,
   Derived 28, Approximated 21, Unsupported 20, Deferred 17, NA 56**. Translated-or-diagnosed:
   every entry with energy semantics has a Native/Derived/Approximated mapping or a declared
