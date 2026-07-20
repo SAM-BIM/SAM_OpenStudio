@@ -59,15 +59,16 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
-        public void Infiltration_UsesFlowPerExteriorAreaBasis()
+        public void Infiltration_UsesNativeAirChangesPerHourBasis()
         {
             Assert.That(model.getSpaceInfiltrationDesignFlowRates().Count, Is.EqualTo(1));
 
-            global::OpenStudio.OptionalDouble flow = model.getSpaceInfiltrationDesignFlowRates()[0].flowperExteriorSurfaceArea();
-            Assert.That(flow != null && !flow.isNull(), "Basis must be FlowPerExteriorSurfaceArea");
-
-            double expected = 0.5 * 60.0 / 3600.0 / 62.0;
-            Assert.That(flow.get(), Is.EqualTo(expected).Within(1e-9), "0.5 ACH × 60 m³ ÷ 3600 ÷ 62 m² sun-exposed area");
+            // C2: the condition carries ACH → the native ACH field is used (coverage manifest:
+            // InternalConditionParameter.InfiltrationAirChangesPerHour); the MVP
+            // flow-per-exterior-area approximation no longer applies.
+            global::OpenStudio.OptionalDouble airChanges = model.getSpaceInfiltrationDesignFlowRates()[0].airChangesperHour();
+            Assert.That(airChanges != null && !airChanges.isNull(), "Basis must be AirChangesPerHour");
+            Assert.That(airChanges.get(), Is.EqualTo(0.5).Within(1e-9));
         }
 
         [Test]

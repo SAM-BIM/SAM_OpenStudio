@@ -504,6 +504,7 @@ namespace SAM.Analytical.OpenStudio
                     global::OpenStudio.ThermalZone thermalZone = optionalThermalZone.get();
 
                     global::OpenStudio.ThermostatSetpointDualSetpoint thermostat = space.ToOpenStudio_Thermostat(thermalZone, context);
+                    space.ToOpenStudio_Humidistat(thermalZone, context);
                     if (thermostat != null && options.AssignIdealLoads)
                     {
                         thermalZone.ToOpenStudio_IdealLoads(space, context);

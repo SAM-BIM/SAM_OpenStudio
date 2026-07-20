@@ -7,9 +7,12 @@ namespace SAM.Analytical.OpenStudio
     {
         /// <summary>
         /// Creates a dual-setpoint thermostat for a conditioned space's thermal zone from the
-        /// InternalCondition's Heating and Cooling profiles. A conditioned zone missing either
-        /// setpoint profile raises SAM-OS-HVAC-001 (error). Heating exceeding cooling at any hour
-        /// raises SAM-OS-HVAC-001 (error) — there is no override in the MVP.
+        /// InternalCondition's Heating and Cooling profiles. Single-mode zones are supported:
+        /// with only one setpoint profile, only that schedule is set (forward-translation turns
+        /// the object into EnergyPlus SingleHeating/SingleCooling control — no invented extreme
+        /// setpoints). A conditioned zone missing BOTH setpoint profiles raises SAM-OS-HVAC-001
+        /// (error). Heating exceeding cooling at any hour (dual mode only) raises
+        /// SAM-OS-HVAC-001 (error) — there is no override.
         /// </summary>
         /// <param name="space">Conditioned SAM space.</param>
         /// <param name="thermalZone">The zone created for the space.</param>
@@ -30,14 +33,14 @@ namespace SAM.Analytical.OpenStudio
             Profile heatingProfile = internalCondition == null || profileLibrary == null ? null : internalCondition.GetProfile(ProfileType.Heating, profileLibrary);
             Profile coolingProfile = internalCondition == null || profileLibrary == null ? null : internalCondition.GetProfile(ProfileType.Cooling, profileLibrary);
 
-            if (heatingProfile == null || coolingProfile == null)
+            if (heatingProfile == null && coolingProfile == null)
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Conditioned space is missing {0} setpoint profile(s); no thermostat was created", heatingProfile == null && coolingProfile == null ? "heating and cooling" : heatingProfile == null ? "heating" : "cooling"), space, name);
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Conditioned space is missing heating and cooling setpoint profiles; no thermostat was created", space, name);
                 return null;
             }
 
-            double[] heatingValues = AnnualHourlyValues(heatingProfile, name, openStudioConversionContext);
-            double[] coolingValues = AnnualHourlyValues(coolingProfile, name, openStudioConversionContext);
+            double[] heatingValues = heatingProfile == null ? null : AnnualHourlyValues(heatingProfile, name, openStudioConversionContext);
+            double[] coolingValues = coolingProfile == null ? null : AnnualHourlyValues(coolingProfile, name, openStudioConversionContext);
             if (heatingValues != null && coolingValues != null)
             {
                 for (int i = 0; i < heatingValues.Length && i < coolingValues.Length; i++)
@@ -50,17 +53,24 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
-            global::OpenStudio.Schedule heatingSchedule = heatingProfile.ToOpenStudio(ProfileType.Heating, openStudioConversionContext);
-            global::OpenStudio.Schedule coolingSchedule = coolingProfile.ToOpenStudio(ProfileType.Cooling, openStudioConversionContext);
-            if (heatingSchedule == null || coolingSchedule == null)
+            global::OpenStudio.Schedule heatingSchedule = heatingProfile?.ToOpenStudio(ProfileType.Heating, openStudioConversionContext);
+            global::OpenStudio.Schedule coolingSchedule = coolingProfile?.ToOpenStudio(ProfileType.Cooling, openStudioConversionContext);
+            if ((heatingProfile != null && heatingSchedule == null) || (coolingProfile != null && coolingSchedule == null))
             {
                 return null;
             }
 
             global::OpenStudio.ThermostatSetpointDualSetpoint result = new global::OpenStudio.ThermostatSetpointDualSetpoint(openStudioConversionContext.Target);
             result.setName(name);
-            result.setHeatingSetpointTemperatureSchedule(heatingSchedule);
-            result.setCoolingSetpointTemperatureSchedule(coolingSchedule);
+            if (heatingSchedule != null)
+            {
+                result.setHeatingSetpointTemperatureSchedule(heatingSchedule);
+            }
+
+            if (coolingSchedule != null)
+            {
+                result.setCoolingSetpointTemperatureSchedule(coolingSchedule);
+            }
 
             thermalZone.setThermostatSetpointDualSetpoint(result);
             return result;

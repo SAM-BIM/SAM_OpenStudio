@@ -45,6 +45,7 @@ namespace SAM.Analytical.OpenStudio
                 "Zone Ideal Loads Supply Air Sensible Cooling Energy",
                 "Zone Mean Air Temperature",
                 "Zone Operative Temperature",
+                "Zone Air Relative Humidity",
             };
 
             foreach (string variableName in variableNames)

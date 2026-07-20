@@ -47,13 +47,15 @@ namespace SAM.Analytical.OpenStudio
             }
 
             bool temperature = profileType == ProfileType.Heating || profileType == ProfileType.Cooling;
+            bool percent = profileType == ProfileType.Humidification || profileType == ProfileType.Dehumidification;
             if (!temperature)
             {
+                double upper = percent ? 100 : 1;
                 foreach (double value in annualValues)
                 {
-                    if (value < 0 || value > 1)
+                    if (value < 0 || value > upper)
                     {
-                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Fraction profile contains value {0} outside [0,1]; not clamped", value), profile, name);
+                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("{0} profile contains value {1} outside [0,{2}]; not clamped", percent ? "Percent" : "Fraction", value, upper), profile, name);
                         break;
                     }
                 }
@@ -62,7 +64,7 @@ namespace SAM.Analytical.OpenStudio
             global::OpenStudio.ScheduleFixedInterval result = new global::OpenStudio.ScheduleFixedInterval(openStudioConversionContext.Target);
             result.setName(name);
             result.setInterpolatetoTimestep(false);
-            result.setScheduleTypeLimits(ScheduleTypeLimits(openStudioConversionContext.Target, temperature ? "Temperature" : "Fractional"));
+            result.setScheduleTypeLimits(ScheduleTypeLimits(openStudioConversionContext.Target, temperature ? "Temperature" : percent ? "Percent" : "Fractional"));
 
             global::OpenStudio.Vector vector = new global::OpenStudio.Vector((uint)annualValues.Length);
             for (int i = 0; i < annualValues.Length; i++)
@@ -135,6 +137,12 @@ namespace SAM.Analytical.OpenStudio
                     result.setLowerLimitValue(0);
                     result.setUpperLimitValue(1);
                     result.setUnitType("Dimensionless");
+                    break;
+
+                case "Percent":
+                    result.setLowerLimitValue(0);
+                    result.setUpperLimitValue(100);
+                    result.setUnitType("Percent");
                     break;
 
                 case "Temperature":

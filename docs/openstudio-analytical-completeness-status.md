@@ -10,7 +10,7 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 |---|---|---|---|
 | C0 | Complete SAM analytical coverage audit (Markdown + machine-readable manifest) | **Done** | — |
 | C1 | Core adapter hardening (P3 items, disposal, statistics, SQL, VersionTranslator) | **Done** | — |
-| C2 | Internal conditions, schedules, conditioning modes (latent, humidistat, single-mode) | Pending | — |
+| C2 | Internal conditions, schedules, conditioning modes (latent, humidistat, single-mode) | **Done** | — |
 | C3 | Fenestration, frames, constructions (FrameAndDivider, doors, hole diagnostics) | Pending | — |
 | C4 | Site, weather, DDY, simulation settings (north, ground temps, run period, calendar) | Pending | — |
 | C5 | Results extraction and SAM result mapping (engine-neutral schema, units authority) | Pending | — |
@@ -58,6 +58,30 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
   instead of being rejected); binding probe passed at build time.
 - Tests: +11 (`tests/.../C1/AdapterHardeningTests.cs`) — 82 → **93**.
 
+## C2 — Internal conditions, schedules, conditioning (done)
+
+- `InternalCondition.cs` — latent equipment as a dedicated `ElectricEquipment` instance
+  (Fraction Latent = 1, own schedule); infiltration uses the native ACH field when the
+  condition carries `InfiltrationAirChangesPerHour` (flow-per-exterior-area remains the
+  fallback); SpaceType `DesignSpecificationOutdoorAir` (method Sum, per-person/per-area/ACH/
+  absolute supply parameters) with the ventilation profile as the outdoor-air schedule —
+  `SpaceParameter.OutsideSupplyAirFlow` keeps precedence via the EnergyPlus space-over-type
+  rule; pollutant and TAS ventilation-function data raise structured diagnostics.
+- `Thermostat.cs` — single-mode thermostats: only the existing setpoint schedule is set
+  (EnergyPlus SingleHeating/SingleCooling; no invented setpoints); both-missing stays an error.
+- New `Convert/ToOpenStudio/Humidistat.cs` — `ZoneControlHumidistat` from the
+  Humidification/Dehumidification profiles (Percent type limits 0–100); named-but-unresolved
+  profile → SAM-OS-SCH-001 error.
+- `IdealLoads.cs` — humidity control types set to Humidistat where the matching schedule
+  exists; documented EnergyPlus defaults otherwise.
+- `Profile.cs` — Percent schedule type limits; per-type range warnings.
+- `SimulationSettings.cs` — `Zone Air Relative Humidity` added to the requested outputs.
+- Docs: INTERNAL_CONDITION_MAPPING updated; the M5 infiltration test was updated to the native
+  ACH basis (manifest-bound change).
+- Note: builds currently exclude the Grasshopper project while Rhino is running on this
+  machine (post-build copy to `%APPDATA%\SAM` locks); the analytical/test chain builds clean.
+- Tests: +11 (`tests/.../C2/InternalConditionCompletenessTests.cs`) — 93 → **104**.
+
 ## Gates log
 
 | Milestone | Build | Tests | EnergyPlus gate |
@@ -65,3 +89,4 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | Baseline | clean (0 errors) | 82/82 | SingleBox/AirGap/TwoBoxes end-to-end + CLI timeout kill |
 | C0 | clean (docs only) | 82/82 | n/a (no code change) |
 | C1 | clean (0 errors) | 93/93 | Full suite re-run incl. SingleBox/AirGap/TwoBoxes + CLI timeout |
+| C2 | clean (0 errors; GH project excluded — Rhino running) | 104/104 | Latent + humidistat end-to-end (humidity output present, sane %RH range) |
