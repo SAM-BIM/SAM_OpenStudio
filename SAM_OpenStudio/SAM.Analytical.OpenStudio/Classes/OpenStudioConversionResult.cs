@@ -31,6 +31,9 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>Annual Ideal Loads energy extracted from the run, when available.</summary>
         public OpenStudioLoadSummary Loads { get; internal set; }
 
+        /// <summary>Engine-neutral simulation result set (annual energies, peaks, unmet hours, gains, optional series), when extracted.</summary>
+        public OpenStudioSimulationResultSet Results { get; internal set; }
+
         /// <summary>Diagnostics recorded up to the moment this result was created.</summary>
         public IReadOnlyList<Core.OpenStudio.OpenStudioDiagnostic> Diagnostics { get; }
 

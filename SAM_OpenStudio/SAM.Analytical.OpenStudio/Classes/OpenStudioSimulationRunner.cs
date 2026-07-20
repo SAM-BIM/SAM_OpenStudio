@@ -94,7 +94,10 @@ namespace SAM.Analytical.OpenStudio
             }
 
             int exitCode;
+            Stopwatch stopwatch = Stopwatch.StartNew();
             string output = ExecuteCli(cliPath, oswPath, directory, runOptions.TimeoutSeconds, out exitCode);
+            stopwatch.Stop();
+            double runtimeSeconds = stopwatch.Elapsed.TotalSeconds;
 
             string runDirectory = Path.Combine(directory, "run");
             string errorFilePath = Path.Combine(runDirectory, "eplusout.err");
@@ -102,6 +105,7 @@ namespace SAM.Analytical.OpenStudio
 
             List<string> severeErrors = new List<string>();
             List<string> fatalErrors = new List<string>();
+            int warningCount = 0;
             if (File.Exists(errorFilePath))
             {
                 string[] errorLines;
@@ -128,6 +132,10 @@ namespace SAM.Analytical.OpenStudio
                         {
                             fatalErrors.Add(line.Trim());
                         }
+                        else if (line.Contains("** Warning"))
+                        {
+                            warningCount++;
+                        }
                     }
                 }
             }
@@ -153,6 +161,7 @@ namespace SAM.Analytical.OpenStudio
             }
 
             OpenStudioLoadSummary loadSummary = null;
+            OpenStudioSimulationResultSet resultSet = null;
             if (success)
             {
                 loadSummary = ExtractLoads(sqlPath);
@@ -161,6 +170,10 @@ namespace SAM.Analytical.OpenStudio
                     openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Ideal Loads results could not be extracted from the SQLite output");
                     success = false;
                 }
+                else
+                {
+                    resultSet = ExtractResultSet(sqlPath, loadSummary, runOptions.ExtractTimeSeries, runtimeSeconds, warningCount, severeErrors.Count, fatalErrors.Count);
+                }
             }
 
             result = new OpenStudioConversionResult(openStudioConversionContext);
@@ -168,6 +181,7 @@ namespace SAM.Analytical.OpenStudio
             result.OswPath = oswPath;
             result.RunResult = new Core.OpenStudio.OpenStudioRunResult(success, exitCode, osmPath, oswPath, sqlExists ? sqlPath : null, File.Exists(errorFilePath) ? errorFilePath : null, severeErrors, fatalErrors);
             result.Loads = loadSummary;
+            result.Results = resultSet;
             return result;
         }
 
@@ -394,6 +408,396 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
+        /// Builds the engine-neutral result set (C5): per-zone peaks with hour-of-year,
+        /// building-level coincident peaks, unmet hours, annual gains breakdown and —
+        /// when requested — the hourly temperature/operative/humidity series. All SQL is
+        /// parameterised and restricted to the weather-run environment.
+        /// </summary>
+        private static OpenStudioSimulationResultSet ExtractResultSet(string sqlPath, OpenStudioLoadSummary loadSummary, bool extractTimeSeries, double runtimeSeconds, int warningCount, int severeCount, int fatalCount)
+        {
+            try
+            {
+                Dictionary<string, List<KeyValuePair<int, double>>> heatingSeries = ReadHourlyEnergySeries(sqlPath, "Zone Ideal Loads Supply Air Total Heating Energy");
+                Dictionary<string, List<KeyValuePair<int, double>>> coolingSeries = ReadHourlyEnergySeries(sqlPath, "Zone Ideal Loads Supply Air Total Cooling Energy");
+
+                Dictionary<string, double> peakHeatingLoad = new Dictionary<string, double>();
+                Dictionary<string, double> peakCoolingLoad = new Dictionary<string, double>();
+                Dictionary<string, int> peakHeatingHour = new Dictionary<string, int>();
+                Dictionary<string, int> peakCoolingHour = new Dictionary<string, int>();
+
+                FillPeaks(heatingSeries, peakHeatingLoad, peakHeatingHour);
+                FillPeaks(coolingSeries, peakCoolingLoad, peakCoolingHour);
+
+                double peakHeatingLoadTotal;
+                int peakHeatingHourTotal;
+                CoincidentPeak(heatingSeries, out peakHeatingLoadTotal, out peakHeatingHourTotal);
+
+                double peakCoolingLoadTotal;
+                int peakCoolingHourTotal;
+                CoincidentPeak(coolingSeries, out peakCoolingLoadTotal, out peakCoolingHourTotal);
+
+                Dictionary<string, double> unmetHeatingHours = ReadAnnualSum(sqlPath, "Zone Heating Setpoint Not Met Time", 1.0);
+                Dictionary<string, double> unmetCoolingHours = ReadAnnualSum(sqlPath, "Zone Cooling Setpoint Not Met Time", 1.0);
+
+                Dictionary<string, double> infiltrationGains = ReadAnnualEnergy(sqlPath, "Zone Infiltration Sensible Heat Gain Energy");
+                Dictionary<string, double> infiltrationLosses = ReadAnnualEnergy(sqlPath, "Zone Infiltration Sensible Heat Loss Energy");
+                if (infiltrationGains != null && infiltrationLosses != null)
+                {
+                    foreach (KeyValuePair<string, double> keyValuePair in infiltrationLosses)
+                    {
+                        infiltrationGains[keyValuePair.Key] = (infiltrationGains.TryGetValue(keyValuePair.Key, out double gain) ? gain : 0) - keyValuePair.Value;
+                    }
+                }
+
+                Dictionary<string, double[]> temperatureSeries = null;
+                Dictionary<string, double[]> operativeTemperatureSeries = null;
+                Dictionary<string, double[]> relativeHumiditySeries = null;
+                if (extractTimeSeries)
+                {
+                    temperatureSeries = ToSeries(ReadHourlyValueSeries(sqlPath, "Zone Mean Air Temperature"));
+                    operativeTemperatureSeries = ToSeries(ReadHourlyValueSeries(sqlPath, "Zone Operative Temperature"));
+                    relativeHumiditySeries = ToSeries(ReadHourlyValueSeries(sqlPath, "Zone Air Relative Humidity"));
+                }
+
+                // Zone identity normalisation: Ideal Loads variables key on the system name,
+                // zone-level variables on the ThermalZone name, enclosure variables on the
+                // Space name — all end with the same deterministic SAM Guid suffix. Every
+                // per-zone dictionary is remapped onto the energy key so the result set has
+                // ONE zone identity.
+                List<string> zoneKeys = new List<string>(loadSummary.ZoneHeating.Keys);
+
+                return new OpenStudioSimulationResultSet(
+                    loadSummary.ZoneHeating,
+                    loadSummary.ZoneCooling,
+                    peakHeatingLoad,
+                    peakCoolingLoad,
+                    peakHeatingHour,
+                    peakCoolingHour,
+                    peakHeatingLoadTotal,
+                    peakHeatingHourTotal,
+                    peakCoolingLoadTotal,
+                    peakCoolingHourTotal,
+                    NormalizeKeys(unmetHeatingHours, zoneKeys),
+                    NormalizeKeys(unmetCoolingHours, zoneKeys),
+                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone People Total Heating Energy"), zoneKeys),
+                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone Lights Total Heating Energy"), zoneKeys),
+                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone Electric Equipment Total Heating Energy"), zoneKeys),
+                    // Zone-window-solar variables are Enclosure-scoped in current EnergyPlus
+                    // ("Zone Windows ..." was renamed).
+                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Enclosure Windows Total Transmitted Solar Radiation Energy"), zoneKeys),
+                    NormalizeKeys(infiltrationGains, zoneKeys),
+                    ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Outdoor Air Sensible Heating Energy"),
+                    ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Outdoor Air Sensible Cooling Energy"),
+                    NormalizeKeys(temperatureSeries, zoneKeys),
+                    NormalizeKeys(operativeTemperatureSeries, zoneKeys),
+                    NormalizeKeys(relativeHumiditySeries, zoneKeys),
+                    runtimeSeconds,
+                    warningCount,
+                    severeCount,
+                    fatalCount);
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Remaps report keys onto the energy-dictionary zone keys by their shared deterministic
+        /// SAM Guid suffix (last 8 characters, case-insensitive): Ideal Loads variables key on
+        /// the system name, zone-level variables on the ThermalZone name, enclosure variables on
+        /// the Space name — the result set exposes ONE zone identity. Unmatched keys pass
+        /// through unchanged.
+        /// </summary>
+        private static Dictionary<string, double> NormalizeKeys(Dictionary<string, double> source, List<string> zoneKeys)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            Dictionary<string, double> result = new Dictionary<string, double>();
+            foreach (KeyValuePair<string, double> keyValuePair in source)
+            {
+                result[NormalizeKey(keyValuePair.Key, zoneKeys)] = keyValuePair.Value;
+            }
+
+            return result;
+        }
+
+        private static Dictionary<string, double[]> NormalizeKeys(Dictionary<string, double[]> source, List<string> zoneKeys)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            Dictionary<string, double[]> result = new Dictionary<string, double[]>();
+            foreach (KeyValuePair<string, double[]> keyValuePair in source)
+            {
+                result[NormalizeKey(keyValuePair.Key, zoneKeys)] = keyValuePair.Value;
+            }
+
+            return result;
+        }
+
+        private static string NormalizeKey(string key, List<string> zoneKeys)
+        {
+            if (key == null || zoneKeys == null || zoneKeys.Count == 0 || key.Length < 8)
+            {
+                return key;
+            }
+
+            string suffix = key.Substring(key.Length - 8);
+            foreach (string zoneKey in zoneKeys)
+            {
+                if (zoneKey != null && zoneKey.Length >= 8 && string.Equals(zoneKey.Substring(zoneKey.Length - 8), suffix, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return zoneKey;
+                }
+            }
+
+            return key;
+        }
+
+        private static void FillPeaks(Dictionary<string, List<KeyValuePair<int, double>>> series, Dictionary<string, double> peakLoad, Dictionary<string, int> peakHour)        {
+            if (series == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, List<KeyValuePair<int, double>>> keyValuePair in series)
+            {
+                double peakJoules = double.MinValue;
+                int peakHourOfYear = -1;
+                foreach (KeyValuePair<int, double> point in keyValuePair.Value)
+                {
+                    if (point.Value > peakJoules)
+                    {
+                        peakJoules = point.Value;
+                        peakHourOfYear = point.Key;
+                    }
+                }
+
+                if (peakHourOfYear >= 0)
+                {
+                    peakLoad[keyValuePair.Key] = Core.OpenStudio.Query.JoulesPerIntervalToWatts(peakJoules) / 1000.0;
+                    peakHour[keyValuePair.Key] = peakHourOfYear;
+                }
+            }
+        }
+
+        private static void CoincidentPeak(Dictionary<string, List<KeyValuePair<int, double>>> series, out double peakLoad, out int peakHour)
+        {
+            peakLoad = 0;
+            peakHour = -1;
+            if (series == null)
+            {
+                return;
+            }
+
+            SortedDictionary<int, double> totals = new SortedDictionary<int, double>();
+            foreach (KeyValuePair<string, List<KeyValuePair<int, double>>> keyValuePair in series)
+            {
+                foreach (KeyValuePair<int, double> point in keyValuePair.Value)
+                {
+                    totals.TryGetValue(point.Key, out double current);
+                    totals[point.Key] = current + point.Value;
+                }
+            }
+
+            double peakJoules = double.MinValue;
+            foreach (KeyValuePair<int, double> keyValuePair in totals)
+            {
+                if (keyValuePair.Value > peakJoules)
+                {
+                    peakJoules = keyValuePair.Value;
+                    peakHour = keyValuePair.Key;
+                }
+            }
+
+            if (peakHour >= 0)
+            {
+                peakLoad = Core.OpenStudio.Query.JoulesPerIntervalToWatts(peakJoules) / 1000.0;
+            }
+        }
+
+        private static Dictionary<string, double[]> ToSeries(Dictionary<string, List<KeyValuePair<int, double>>> hourlyValues)
+        {
+            if (hourlyValues == null)
+            {
+                return null;
+            }
+
+            Dictionary<string, double[]> result = new Dictionary<string, double[]>();
+            foreach (KeyValuePair<string, List<KeyValuePair<int, double>>> keyValuePair in hourlyValues)
+            {
+                List<KeyValuePair<int, double>> points = keyValuePair.Value;
+                if (points.Count == 0)
+                {
+                    continue;
+                }
+
+                double[] values = new double[points.Count];
+                for (int i = 0; i < points.Count; i++)
+                {
+                    values[i] = points[i].Value;
+                }
+
+                result[keyValuePair.Key] = values;
+            }
+
+            return result;
+        }
+
+        /// <summary>Sums any report variable per key over the weather-run environment with an explicit scale factor (no unit conversion).</summary>
+        private static Dictionary<string, double> ReadAnnualSum(string sqlPath, string variableName, double factor)
+        {
+            if (string.IsNullOrWhiteSpace(sqlPath) || !File.Exists(sqlPath))
+            {
+                return null;
+            }
+
+            try
+            {
+                using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection(new System.Data.SQLite.SQLiteConnectionStringBuilder { DataSource = sqlPath, ReadOnly = true, FailIfMissing = true }.ConnectionString))
+                {
+                    connection.Open();
+                    bool filterEnvironment = HasWeatherRunEnvironment(connection);
+
+                    List<string> keys = ReadKeys(connection, variableName);
+                    Dictionary<string, double> result = new Dictionary<string, double>();
+                    foreach (string key in keys)
+                    {
+                        using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                        {
+                            command.CommandText = filterEnvironment
+                                ? "SELECT SUM(rd.Value) FROM ReportData rd JOIN ReportDataDictionary rdd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex JOIN Time t ON rd.TimeIndex = t.TimeIndex WHERE rdd.Name = @name AND rdd.KeyValue = @key AND t.EnvironmentPeriodIndex IN (SELECT EnvironmentPeriodIndex FROM EnvironmentPeriods WHERE EnvironmentType = 3)"
+                                : "SELECT SUM(rd.Value) FROM ReportData rd JOIN ReportDataDictionary rdd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex WHERE rdd.Name = @name AND rdd.KeyValue = @key";
+                            command.Parameters.AddWithValue("@name", variableName);
+                            command.Parameters.AddWithValue("@key", key);
+
+                            object value = command.ExecuteScalar();
+                            if (value != null && value != System.DBNull.Value)
+                            {
+                                result[key] = System.Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture) * factor;
+                            }
+                        }
+                    }
+
+                    return result;
+                }
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Hourly energy [J] series per key over the weather-run environment: zone key → (hour-of-year, value) pairs in time order.</summary>
+        private static Dictionary<string, List<KeyValuePair<int, double>>> ReadHourlyEnergySeries(string sqlPath, string variableName)
+        {
+            return ReadHourlyValueSeries(sqlPath, variableName);
+        }
+
+        /// <summary>Hourly series per key over the weather-run environment (raw values, no conversion): zone key → (hour-of-year, value) pairs in time order.</summary>
+        private static Dictionary<string, List<KeyValuePair<int, double>>> ReadHourlyValueSeries(string sqlPath, string variableName)
+        {
+            if (string.IsNullOrWhiteSpace(sqlPath) || !File.Exists(sqlPath))
+            {
+                return null;
+            }
+
+            try
+            {
+                using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection(new System.Data.SQLite.SQLiteConnectionStringBuilder { DataSource = sqlPath, ReadOnly = true, FailIfMissing = true }.ConnectionString))
+                {
+                    connection.Open();
+                    bool filterEnvironment = HasWeatherRunEnvironment(connection);
+
+                    List<string> keys = ReadKeys(connection, variableName);
+                    Dictionary<string, List<KeyValuePair<int, double>>> result = new Dictionary<string, List<KeyValuePair<int, double>>>();
+                    foreach (string key in keys)
+                    {
+                        List<KeyValuePair<int, double>> points = new List<KeyValuePair<int, double>>();
+                        using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                        {
+                            command.CommandText = "SELECT t.Month, t.Day, t.Hour, rd.Value FROM ReportData rd JOIN ReportDataDictionary rdd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex JOIN Time t ON rd.TimeIndex = t.TimeIndex WHERE rdd.Name = @name AND rdd.KeyValue = @key"
+                                + (filterEnvironment ? " AND t.EnvironmentPeriodIndex IN (SELECT EnvironmentPeriodIndex FROM EnvironmentPeriods WHERE EnvironmentType = 3)" : string.Empty)
+                                + " ORDER BY t.TimeIndex";
+                            command.Parameters.AddWithValue("@name", variableName);
+                            command.Parameters.AddWithValue("@key", key);
+
+                            using (System.Data.SQLite.SQLiteDataReader reader = command.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    int month = reader.GetInt32(0);
+                                    int day = reader.GetInt32(1);
+                                    int hour = reader.GetInt32(2);
+                                    double value = reader.GetDouble(3);
+
+                                    int monthClamped = System.Math.Max(1, System.Math.Min(12, month));
+                                    int dayClamped = System.Math.Max(1, System.Math.Min(System.DateTime.DaysInMonth(2023, monthClamped), day));
+                                    int dayOfYear = new System.DateTime(2023, monthClamped, dayClamped).DayOfYear;
+                                    points.Add(new KeyValuePair<int, double>((dayOfYear - 1) * 24 + (hour - 1), value));
+                                }
+                            }
+                        }
+
+                        if (points.Count > 0)
+                        {
+                            result[key] = points;
+                        }
+                    }
+
+                    return result;
+                }
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
+        }
+
+        private static bool HasWeatherRunEnvironment(System.Data.SQLite.SQLiteConnection connection)
+        {
+            using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'EnvironmentPeriods'";
+                if ((long)command.ExecuteScalar() == 0)
+                {
+                    return false;
+                }
+
+                command.CommandText = "SELECT COUNT(*) FROM EnvironmentPeriods WHERE EnvironmentType = 3";
+                return (long)command.ExecuteScalar() > 0;
+            }
+        }
+
+        private static List<string> ReadKeys(System.Data.SQLite.SQLiteConnection connection, string variableName)
+        {
+            List<string> result = new List<string>();
+            using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT DISTINCT rdd.KeyValue FROM ReportDataDictionary rdd WHERE rdd.Name = @name";
+                command.Parameters.AddWithValue("@name", variableName);
+                using (System.Data.SQLite.SQLiteDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (!reader.IsDBNull(0))
+                        {
+                            result.Add(reader.GetString(0));
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Reads the annual (summed) energy per key for one report variable from the EnergyPlus
         /// SQLite output, converted J → kWh, restricted to the weather-file RunPeriod
         /// environment (EnvironmentType 3) so imported design days never double-count into the
@@ -471,7 +875,7 @@ namespace SAM.Analytical.OpenStudio
                             continue;
                         }
 
-                        result[key] = System.Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture) / 3600000.0;
+                        result[key] = Core.OpenStudio.Query.JoulesToKilowattHours(System.Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture));
                     }
                 }
 

@@ -1,0 +1,69 @@
+# SAM → OpenStudio result mapping
+
+**Status:** Binding for C5. Covers extraction from the EnergyPlus SQLite output into the
+engine-neutral `OpenStudioSimulationResultSet` and the mapping into SAM result classes.
+
+## Unit authority
+
+One converter family in `SAM.Core.OpenStudio.Query.ConvertUnit`:
+
+| Helper | Conversion | Used for |
+| --- | --- | --- |
+| `JoulesToKilowattHours` | J ÷ 3 600 000 → kWh | all annual energies |
+| `JoulesPerIntervalToWatts` | J ÷ interval seconds → W | peaks (hour-average power) and at-peak gains |
+| `ConvertUnit(DataTable, …)` | ReportDataDictionary.Units authority ("J" → `JoulesPerIntervalToWatts`) | the legacy SpaceSimulationResult DataTable path |
+
+No extraction path divides by a local constant. The historical divergence (÷3.6e6 vs ÷3600)
+is resolved: ÷3.6e6 is kWh (annual), ÷3600 is hour-average watts (at-peak); both route through
+the helpers above.
+
+## Zone identity
+
+EnergyPlus report keys vary by variable class: Ideal Loads variables key on the **system
+name**, zone-level variables on the **ThermalZone name**, enclosure variables on the **Space
+name**. All three carry the deterministic SAM Guid suffix (first 8 hex digits of the space
+Guid), so extraction normalises every per-zone dictionary onto the Ideal Loads system key —
+the result set has ONE zone identity, matched back to SAM spaces through
+`Core.OpenStudio.Query.OpenStudioName` (case-insensitively).
+
+## Extraction (SQL, parameterised, weather-run environment only)
+
+All queries use parameterised `System.Data.SQLite` commands and are restricted to the
+weather-run environment (`EnvironmentPeriods.EnvironmentType = 3`) — imported design days
+never double-count into annual totals or peaks.
+
+| Result-set member | EnergyPlus source | Conversion |
+| --- | --- | --- |
+| AnnualHeating/CoolingEnergy | `Zone Ideal Loads Supply Air Total Heating/Cooling Energy` [J], SUM | J → kWh |
+| PeakHeating/CoolingLoad + Hour | same variables, hourly series max | hour-average W → kW; hour-of-year from the Time table |
+| PeakHeating/CoolingLoadTotal + HourTotal | hourly series summed across zones (coincident) | hour-average W → kW |
+| UnmetHeating/CoolingHours | `Zone Heating/Cooling Setpoint Not Met Time` [h], SUM | none |
+| PeopleGains | `Zone People Total Heating Energy` [J], SUM | J → kWh |
+| LightingGains | `Zone Lights Total Heating Energy` [J], SUM | J → kWh |
+| EquipmentGains | `Zone Electric Equipment Total Heating Energy` [J], SUM | J → kWh |
+| WindowSolarGains | `Enclosure Windows Total Transmitted Solar Radiation Energy` [J], SUM (Enclosure-scoped in current EnergyPlus; the `Zone Windows …` name was retired) | J → kWh |
+| InfiltrationGains | `Zone Infiltration Sensible Heat Gain/Loss Energy` [J], net (gain − loss) | J → kWh |
+| VentilationHeating/CoolingEnergy | `Zone Ideal Loads Outdoor Air Sensible Heating/Cooling Energy` [J], SUM | J → kWh |
+| TemperatureSeries / OperativeTemperatureSeries / RelativeHumiditySeries | `Zone Mean Air Temperature` / `Zone Operative Temperature` / `Zone Air Relative Humidity`, hourly | none; only when `OpenStudioRunOptions.ExtractTimeSeries` |
+| RuntimeSeconds / WarningCount / SevereCount / FatalCount | CLI wall-clock; eplusout.err counts | none |
+
+Zero-vs-missing: a zone absent from the report (unconditioned, no Ideal Loads) is absent from
+every dictionary — never zero-filled. A variable with no rows for a key produces no entry.
+
+## SAM mapping (`Convert/ToSAM/SimulationResults.cs`)
+
+| SAM slot | Source | Notes |
+| --- | --- | --- |
+| `AnalyticalModelSimulationResultParameter.ConsumptionHeating/Cooling` [kWh] | TotalAnnualHeating/Cooling | |
+| `.PeakHeating/CoolingLoad` [kW] | coincident totals | |
+| `.PeakHeating/CoolingHour` [h] | hour-of-year of the coincident peak | |
+| `.FloorArea` / `.Volume` [m²/m³] | Σ `SpaceParameter.Area` / `.Volume` | Derived |
+| `SpaceSimulationResultParameter.Load` [W] | per-zone peak load × 1000 | one result per LoadType (Heating/Cooling), SAM pattern |
+| `.LoadIndex` [h] | hour-of-year of the zone peak | |
+| `.UnmetHours` [h] | per-zone not-met hours | |
+
+At-peak gain slots (solar, lighting, equipment, occupancy, infiltration W-values) and surface
+results stay with the established design-day `ZoneSizes` SQLite path
+(`Create/SpaceSimulationResults.cs`, `Create/SurfaceSimulationResults.cs`), which requires
+sizing runs (C4 DDY import). Time series do not fit SAM parameter bags; they live in the
+result set only.

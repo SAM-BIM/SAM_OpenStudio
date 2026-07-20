@@ -13,7 +13,7 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C2 | Internal conditions, schedules, conditioning modes (latent, humidistat, single-mode) | **Done** | — |
 | C3 | Fenestration, frames, constructions (FrameAndDivider, doors, hole diagnostics) | **Done** | — |
 | C4 | Site, weather, DDY, simulation settings (north, ground temps, run period, calendar) | **Done** | — |
-| C5 | Results extraction and SAM result mapping (engine-neutral schema, units authority) | Pending | — |
+| C5 | Results extraction and SAM result mapping (engine-neutral schema, units authority) | **Done** | — |
 | C6 | Cancellation, asynchronous execution, Grasshopper UX | Pending | — |
 | C7 | Full regression suite, completeness enforcement, documentation | Pending | — |
 
@@ -137,6 +137,32 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
   `EnergyPlusReverseTranslator`, `SimulationControl.setSolarDistribution`.
 - Tests: +10 (`tests/.../C4/SiteWeatherSettingsTests.cs`) — 114 → **124**.
 
+## C5 — Results extraction and SAM mapping (done)
+
+- New `Classes/OpenStudioSimulationResultSet.cs` — engine-neutral result set: annual energies
+  [kWh], per-zone and coincident building peaks [kW] with hour-of-year, unmet hours, gains
+  breakdown (people/lighting/equipment/window-solar/net-infiltration/ventilation), optional
+  hourly temperature/operative/humidity series (`OpenStudioRunOptions.ExtractTimeSeries`),
+  CLI runtime, warning/severe/fatal counts.
+- `OpenStudioSimulationRunner.cs` — `ExtractResultSet`: parameterised SQL throughout,
+  weather-run environment filtering (peaks included), runtime measured, err-warning counts.
+  **Zone identity normalisation**: Ideal Loads variables key on the system name, zone-level
+  variables on the ThermalZone name, enclosure variables on the Space name — all remapped onto
+  the energy key by the shared SAM Guid suffix (verified against the live SQL).
+- `SAM.Core.OpenStudio/Query/ConvertUnit.cs` — one unit authority: `JoulesToKilowattHours`
+  (annual), `JoulesPerIntervalToWatts` (peaks/at-peak); the ÷3.6e6-vs-÷3600 divergence is
+  resolved by role, not by convention.
+- `SimulationSettings.cs` — output variables for unmet hours, gains and window solar
+  (`Enclosure Windows Total Transmitted Solar Radiation Energy` — the `Zone Windows …` name
+  was retired in current EnergyPlus; found via eplusout.rdd inspection).
+- New `Convert/ToSAM/SimulationResults.cs` — `AnalyticalModelSimulationResult`
+  (consumption/peaks/area/volume) and per-space per-LoadType `SpaceSimulationResult`
+  (Load [W], LoadIndex [h], UnmetHours) with case-insensitive deterministic-name matching.
+- New `docs/SAM_OPENSTUDIO_RESULT_MAPPING.md`.
+- Bug found by the gate: an hour-of-year day-clamp (29–31 → 28) inflated coincident peaks;
+  fixed with `DaysInMonth`.
+- Tests: +6 (`tests/.../C5/ResultsExtractionTests.cs`) — 124 → **130**.
+
 ## Gates log
 
 | Milestone | Build | Tests | EnergyPlus gate |
@@ -147,3 +173,4 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C2 | clean (0 errors; GH project excluded — Rhino running) | 104/104 | Latent + humidistat end-to-end (humidity output present, sane %RH range) |
 | C3 | clean (0 errors; GH project excluded — Rhino running) | 114/114 | Framed window end-to-end (frame in IDF; E+ glass area = pane area 2.47 m²) |
 | C4 | clean (0 errors; GH project excluded — Rhino running) | 124/124 | Design-day run (sizing on): annual results unchanged vs baseline (environment filter proven); north rotation 0°→180° shifts heating/cooling as expected |
+| C5 | clean (0 errors; GH project excluded — Rhino running) | 130/130 | Extraction validated on annual + sizing-enabled runs (peaks, unmet, gains, series, units, design-day exclusion) |

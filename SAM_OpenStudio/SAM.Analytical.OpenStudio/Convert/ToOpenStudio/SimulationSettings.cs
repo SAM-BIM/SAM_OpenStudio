@@ -116,9 +116,21 @@ namespace SAM.Analytical.OpenStudio
                 "Zone Ideal Loads Supply Air Total Cooling Energy",
                 "Zone Ideal Loads Supply Air Sensible Heating Energy",
                 "Zone Ideal Loads Supply Air Sensible Cooling Energy",
+                "Zone Ideal Loads Outdoor Air Sensible Heating Energy",
+                "Zone Ideal Loads Outdoor Air Sensible Cooling Energy",
                 "Zone Mean Air Temperature",
                 "Zone Operative Temperature",
                 "Zone Air Relative Humidity",
+                "Zone Heating Setpoint Not Met Time",
+                "Zone Cooling Setpoint Not Met Time",
+                "Zone Heating Setpoint Not Met While Occupied Time",
+                "Zone Cooling Setpoint Not Met While Occupied Time",
+                "Zone People Total Heating Energy",
+                "Zone Lights Total Heating Energy",
+                "Zone Electric Equipment Total Heating Energy",
+                "Enclosure Windows Total Transmitted Solar Radiation Energy",
+                "Zone Infiltration Sensible Heat Gain Energy",
+                "Zone Infiltration Sensible Heat Loss Energy",
             };
 
             foreach (string variableName in variableNames)
