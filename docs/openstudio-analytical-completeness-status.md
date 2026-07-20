@@ -355,9 +355,43 @@ rows unmodified).
   sizing-environment SQL end-to-end, annual-only SQL with the live edge rows, plus the real
   30 MB reproduction fixture gated on `SAM_OPENSTUDIO_TEST_SQL`) — 181 → **199**.
 
+## Human-Rhino validation corrections — AddResultsBySQL result mapping (done)
+
+`SAMAnalytical.AddResultsBySQL` returned no space/panel results. Three confirmed defects:
+(1) the annual family was never read — only design-day `ZoneSizes` data was mapped, so an
+annual-only SQL produced area/volume-only results; (2) `Create.SurfaceSimulationResults`
+replaced the per-surface list with an empty one whenever no space result carried a load time
+index (always the case without sizing runs); (3) EnergyPlus names
+(`SAM_ThermalZone_..._<guid8>`, `SAM_Surface_..._<guid8>`) were matched against full
+32-character Guids, so nothing ever related back to a SAM space or panel. The Grasshopper
+AnalyticalModel path additionally mutated the source model's cluster in place.
+
+- `Modify.AddResults(AdjacencyCluster, path, out diagnostics)` rewritten: the annual family
+  goes through the single authoritative C5 reader (`OpenStudioSimulationRunner.ExtractResultSet`
+  → `ToSAM_SpaceSimulationResults`, new `IEnumerable<Space>` overload — no second SQL
+  implementation); the design-day `ZoneSizes` family is kept when sizing ran; surface results
+  keep one `SurfaceSimulationResult` per engine surface (an internal panel's two engine
+  surfaces produce two results on the same panel — never summed). Zone/surface names resolve
+  by deterministic Guid suffix (`Query.TryGetGuidSuffix`/`GuidSuffix`), then full-Guid
+  reference, then sanitized name — never by display name alone.
+- Zero-vs-missing: a genuine zero peak stays a valid result; only a zone absent from the SQL
+  is diagnosed. Unmatched SQL zones/surfaces and result-less SAM spaces/panels are both
+  reported through structured diagnostics surfaced as Grasshopper warnings.
+- Rerun safety: identical results (type, name, reference, load type) from the same source are
+  not duplicated; relations are ensured.
+- `SAMAnalytical.AddResultsBySQL` (component 1.0.5): clones the input cluster before attaching
+  (non-mutating convention); `panelSimulationResults` output name retained (SAM class
+  `SurfaceSimulationResult`, documented); diagnostics surfaced; version bump.
+- `Create/PanelSimulationResults.cs`: the per-surface base list survives when no space result
+  carries a load time index (the empty-list defect).
+- Tests: +9 (`tests/.../C5/AddResultsBySqlTests.cs`: one-zone attach+relate, two-zone internal
+  panel identity, duplicate sanitized names, zero-vs-missing, rerun dedup, annual+design-day
+  separation, save/reload serialization, non-mutating component path, real-fixture gate) —
+  199 → **208**. Result-mapping doc updated with the attachment/aggregation rules.
+
 ## Final summary
 
-- Tests: 82 (MVP) ��' 146 (C7) ��' 170 (Stage L) ��' **199 after the human-Rhino validation
+- Tests: 82 (MVP) ��' 146 (C7) ��' 170 (Stage L) ��' **208 after the human-Rhino validation
   corrections** (0 skipped); every milestone and every review fix gated by x64 Debug build +
   full suite + E+ runs.
 - Coverage (277 manifest entries after review P2-01 removed two stale rows): **Native 135,

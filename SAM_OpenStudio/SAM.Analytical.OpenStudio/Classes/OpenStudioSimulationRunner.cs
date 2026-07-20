@@ -658,7 +658,7 @@ namespace SAM.Analytical.OpenStudio
         /// when requested — the hourly temperature/operative/humidity series. All SQL is
         /// parameterised and restricted to the weather-run environment.
         /// </summary>
-        private static OpenStudioSimulationResultSet ExtractResultSet(string sqlPath, OpenStudioLoadSummary loadSummary, bool extractTimeSeries, double runtimeSeconds, int warningCount, int severeCount, int fatalCount)
+        internal static OpenStudioSimulationResultSet ExtractResultSet(string sqlPath, OpenStudioLoadSummary loadSummary, bool extractTimeSeries, double runtimeSeconds, int warningCount, int severeCount, int fatalCount)
         {
             try
             {

@@ -67,3 +67,25 @@ results stay with the established design-day `ZoneSizes` SQLite path
 (`Create/SpaceSimulationResults.cs`, `Create/SurfaceSimulationResults.cs`), which requires
 sizing runs (C4 DDY import). Time series do not fit SAM parameter bags; they live in the
 result set only.
+
+## `SAMAnalytical.AddResultsBySQL` attachment rules (human-Rhino fix 3)
+
+`Modify.AddResults(AdjacencyCluster, path)` now combines both families: the annual
+engine-neutral result set above (per-LoadType `SpaceSimulationResult` with Load [W],
+LoadIndex, UnmetHours) and the design-day `ZoneSizes` family (DesignLoad) when sizing ran.
+
+- **Zone/panel resolution**: EnergyPlus names (`SAM_<type>_<name>_<guid8>`) are matched to SAM
+  objects by their deterministic 8-hex Guid suffix, then by full-Guid reference, then by
+  sanitized name — never by display name alone. Unmatched SQL zones/surfaces and SAM
+  spaces/panels with no result are both reported as structured diagnostics (a reported zero
+  stays a valid result; only absence is diagnosed).
+- **Surface aggregation rule**: one `SurfaceSimulationResult` per engine surface (identity:
+  SQL `SurfaceIndex` in `Reference`). An internal panel represented by two engine surfaces
+  receives two results related to the same panel — values are never summed across surfaces.
+  Surface values available without sizing runs: area, zone identity, panel linkage; inside/
+  outside conduction at the space peak is added per load type when `ZoneSizes` data exists.
+- **Rerun**: identical results (type, name, reference, load type) already present from the
+  same source are not duplicated; the space/panel relation is ensured.
+- The Grasshopper output name `panelSimulationResults` is retained for compatibility; the SAM
+  class is `SurfaceSimulationResult`. The component clones the input before attaching results
+  (non-mutating convention).

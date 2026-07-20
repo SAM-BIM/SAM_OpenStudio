@@ -93,7 +93,7 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
-            if(spaceSimulationResults != null)
+            if (spaceSimulationResults != null && result != null)
             {
                 DataTable dataTable_ReportDataDictionary = Core.SQLite.Query.DataTable(sQLiteConnection, "ReportDataDictionary", "ReportDataDictionaryIndex", "KeyValue", "Name", "Units");
                 DataTable dataTable_ReportData = Core.SQLite.Query.DataTable(sQLiteConnection, "ReportData", "ReportDataDictionaryIndex", "TimeIndex", "Value");
@@ -164,7 +164,13 @@ namespace SAM.Analytical.OpenStudio
                     }
                 }
 
-                result = result_Temp;
+                // Only the peak-enriched copies replace the base list — when no space result
+                // carries a load time index (an annual-only SQL, no sizing periods) the
+                // per-surface base results must survive: area, zone identity, panel linkage.
+                if (result_Temp.Count != 0)
+                {
+                    result = result_Temp;
+                }
             }
 
             return result;

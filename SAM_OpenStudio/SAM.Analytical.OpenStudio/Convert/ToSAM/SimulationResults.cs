@@ -84,10 +84,27 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
+            return ToSAM_SpaceSimulationResults(openStudioSimulationResultSet, analyticalModel?.AdjacencyCluster?.GetSpaces());
+        }
+
+        /// <summary>
+        /// Maps an engine-neutral result set to per-space SAM SpaceSimulationResults, one per
+        /// load type (Heating/Cooling), for the given spaces. Zones that match no space are
+        /// reported keyed-but-unmapped only when <paramref name="spaces"/> is null.
+        /// </summary>
+        /// <param name="openStudioSimulationResultSet">Extracted result set.</param>
+        /// <param name="spaces">Spaces to map zone keys onto; null emits unmapped results per zone key.</param>
+        /// <returns>Per-space results (possibly empty), or null when the result set is null.</returns>
+        public static List<SpaceSimulationResult> ToSAM_SpaceSimulationResults(this OpenStudioSimulationResultSet openStudioSimulationResultSet, IEnumerable<Space> spaces)
+        {
+            if (openStudioSimulationResultSet == null)
+            {
+                return null;
+            }
+
             string source = Query.Source();
             List<SpaceSimulationResult> result = new List<SpaceSimulationResult>();
 
-            List<Space> spaces = analyticalModel?.AdjacencyCluster?.GetSpaces();
             if (spaces == null)
             {
                 // No source model: emit keyed-but-unmapped results per energy zone key.

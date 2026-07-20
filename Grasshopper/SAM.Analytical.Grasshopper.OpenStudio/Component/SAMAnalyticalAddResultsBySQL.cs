@@ -18,7 +18,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.0.4";
+        public override string LatestComponentVersion => "1.0.5";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -64,7 +64,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 List<GH_SAMParam> result = new List<GH_SAMParam>();
                 result.Add(new GH_SAMParam(new GooAnalyticalObjectParam() { Name = "analytical", NickName = "analytical", Description = "SAM Analytical Object such as AdjacencyCluster or AnalyticalModel", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 result.Add(new GH_SAMParam(new GooResultParam() { Name = "spaceSimulationResults", NickName = "spaceSimulationResults", Description = "SAM Analytical SpaceSimulationResults", Access = GH_ParamAccess.list }, ParamVisibility.Binding));
-                result.Add(new GH_SAMParam(new GooResultParam() { Name = "panelSimulationResults", NickName = "panelSimulationResults", Description = "SAM Analytical PanelSimulationResults", Access = GH_ParamAccess.list }, ParamVisibility.Binding));
+                result.Add(new GH_SAMParam(new GooResultParam() { Name = "panelSimulationResults", NickName = "panelSimulationResults", Description = "SAM Analytical panel simulation results (the SAM class is SurfaceSimulationResult; the output name is kept for compatibility)", Access = GH_ParamAccess.list }, ParamVisibility.Binding));
                 result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_Boolean() { Name = "Successful", NickName = "Successful", Description = "Correctly saved?", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 return result.ToArray();
             }
@@ -103,19 +103,22 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
             }
 
             List<Core.Result> results = null;
+            List<string> diagnostics = null;
 
-            if(!string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path))
+            if (!string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path))
             {
                 if (analyticalObject is AdjacencyCluster)
                 {
                     AdjacencyCluster adjacencyCluster = new AdjacencyCluster((AdjacencyCluster)analyticalObject);
-                    results = Analytical.OpenStudio.Modify.AddResults(adjacencyCluster, path);
+                    results = Analytical.OpenStudio.Modify.AddResults(adjacencyCluster, path, out diagnostics);
                     analyticalObject = adjacencyCluster;
                 }
                 else if (analyticalObject is AnalyticalModel)
                 {
-                    AdjacencyCluster adjacencyCluster = ((AnalyticalModel)analyticalObject).AdjacencyCluster;
-                    results = Analytical.OpenStudio.Modify.AddResults(adjacencyCluster, path);
+                    // Non-mutating convention: the source model's cluster is cloned before any
+                    // result is attached (previously the original cluster was modified in place).
+                    AdjacencyCluster adjacencyCluster = new AdjacencyCluster(((AnalyticalModel)analyticalObject).AdjacencyCluster);
+                    results = Analytical.OpenStudio.Modify.AddResults(adjacencyCluster, path, out diagnostics);
                     analyticalObject = new AnalyticalModel((AnalyticalModel)analyticalObject, adjacencyCluster);
 
                 }
@@ -124,6 +127,18 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                     BuildingModel buildingModel = new BuildingModel((BuildingModel)analyticalObject);
                     results = Analytical.OpenStudio.Modify.AddResults(buildingModel, path);
                     analyticalObject = buildingModel;
+                }
+            }
+            else
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, string.Format("SQL file not found: {0}", path));
+            }
+
+            if (diagnostics != null)
+            {
+                foreach (string diagnostic in diagnostics)
+                {
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, diagnostic);
                 }
             }
 
