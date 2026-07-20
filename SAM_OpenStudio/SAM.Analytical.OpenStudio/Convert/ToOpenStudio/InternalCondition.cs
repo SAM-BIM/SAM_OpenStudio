@@ -311,6 +311,68 @@ namespace SAM.Analytical.OpenStudio
                 openStudioConversionContext.RegisterSkip();
             }
 
+            // TAS view coefficients and the lighting control function (coverage manifest,
+            // Unsupported SAM-OS-IC-001 info; review P1-01): OS:People and OS:ElectricEquipment
+            // have no visible-fraction field, and the TAS control expression has no
+            // deterministic daylighting-control mapping. Reported per SpaceType.
+            if (!double.IsNaN(ParameterValue(internalCondition, InternalConditionParameter.OccupancyViewCoefficient)))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Occupancy view coefficient is not converted — OS:People has no visible-fraction field", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            if (!double.IsNaN(ParameterValue(internalCondition, InternalConditionParameter.EquipmentViewCoefficient)))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Equipment view coefficient is not converted — OS:ElectricEquipment has no visible-fraction field", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            if (!string.IsNullOrWhiteSpace(internalCondition.GetValue<string>(InternalConditionParameter.LightingControlFunction)))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Lighting control function (TAS control expression) is not converted — no deterministic daylighting-control mapping", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            // Deferred detailed-HVAC data (coverage manifest, Deferred SAM-OS-HVAC-001 info;
+            // review P1-01): Ideal Loads is a purely convective air system without fan/air-loop
+            // equipment, so emitter characteristics and exhaust flows wait for the HVAC
+            // programme. One diagnostic per group, naming every present parameter.
+            List<string> emitterParameterNames = PresentParameterNames(internalCondition,
+                InternalConditionParameter.HeatingEmitterRadiantProportion,
+                InternalConditionParameter.HeatingEmitterCoefficient,
+                InternalConditionParameter.CoolingEmitterRadiantProportion,
+                InternalConditionParameter.CoolingEmitterCoefficient);
+            if (emitterParameterNames.Count > 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Emitter characteristics ({0}) are not converted — Ideal Loads is a purely convective air system; emitters are deferred to the detailed-HVAC programme", string.Join(", ", emitterParameterNames)), internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            List<string> exhaustParameterNames = PresentParameterNames(internalCondition,
+                InternalConditionParameter.ExhaustAirFlowPerPerson,
+                InternalConditionParameter.ExhaustAirChangesPerHour,
+                InternalConditionParameter.ExhaustAirFlowPerArea,
+                InternalConditionParameter.ExhaustAirFlow);
+            if (exhaustParameterNames.Count > 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Exhaust air flows ({0}) are not converted — exhaust needs fan/air-loop equipment, deferred to the detailed-HVAC programme", string.Join(", ", exhaustParameterNames)), internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            return result;
+        }
+
+        private static List<string> PresentParameterNames(InternalCondition internalCondition, params InternalConditionParameter[] internalConditionParameters)
+        {
+            List<string> result = new List<string>();
+            foreach (InternalConditionParameter internalConditionParameter in internalConditionParameters)
+            {
+                if (!double.IsNaN(ParameterValue(internalCondition, internalConditionParameter)))
+                {
+                    result.Add(internalConditionParameter.ToString());
+                }
+            }
+
             return result;
         }
 

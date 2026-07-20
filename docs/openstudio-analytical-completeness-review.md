@@ -26,7 +26,7 @@ Three P1 findings were confirmed by reproduction — all three in the newest (C2
 
 | ID | Priority | Finding | Status |
 | --- | --- | --- | --- |
-| P1-01 | P1 | Eighteen coverage-manifest rows declare structured diagnostics that no converter ever emits (false completeness: view coefficients, lighting control function, internal-shadow flags, panel feature shades, vapour diffusion factor, opaque internal-optics divergence, emitter and exhaust parameters) | Confirmed — fix pending |
+| P1-01 | P1 | Eighteen coverage-manifest rows declare structured diagnostics that no converter ever emits (false completeness: view coefficients, lighting control function, internal-shadow flags, panel feature shades, vapour diffusion factor, opaque internal-optics divergence, emitter and exhaust parameters) | **Fixed** (Stage L, §8) |
 | P1-02 | P1 | The default DDY design-day filter (`"99.6%"`/`"0.4%"`) imports **no cooling design day** (ASHRAE DDYs name them `Ann Clg .4% …`) and wrongly imports humidification (`Hum_n`) and wind (`Htg Wind`) 99.6% days | Confirmed — fix pending |
 | P1-03 | P1 | Leap-year runs: SQL hour-of-year uses a fixed non-leap reference year, so Feb 29 rows clamp onto Feb 28 (duplicate hour keys double-count the coincident peak) and all post-February peak hours shift by one day | Confirmed — fix pending |
 | P2-01 | P2 | The C7 completeness test does not implement the stale-manifest-id detection the coverage document claims | Confirmed — fix pending |
@@ -123,7 +123,13 @@ None.
   warning severity exactly as declared; no conversion behaviour changes otherwise.
 - **Regression tests:** one per emission site asserting the declared code fires when the data is
   present, and the clean-fixture test still drops nothing.
-- **Status:** **Confirmed — fix pending** (Stage L).
+- **Status:** **Fixed** (Stage L) — declared diagnostics emitted at all five converter sites
+  (InternalCondition: view coefficients, control function, emitter/exhaust deferrals;
+  Aperture + Construction: internal-shadow flags; Panel: feature shade; Material: vapour
+  diffusion factor and opaque internal-optics divergence, each once per source object via the
+  new `OpenStudioConversionContext.RegisterOnce`); the SAM-OS-HVAC-001 summary widened to cover
+  the deferral usage (P3-05). Regression suite `C7/DeclaredDiagnosticsTests` (8 tests, incl.
+  once-per-object and matching-optics-silence); clean fixture still drops nothing. Commit in §8.
 
 ### P1-02 — Default DDY import selects no cooling design day (and wrong 99.6% days)
 

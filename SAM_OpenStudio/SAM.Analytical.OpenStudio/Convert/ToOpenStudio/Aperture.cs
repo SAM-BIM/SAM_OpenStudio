@@ -298,6 +298,12 @@ namespace SAM.Analytical.OpenStudio
                     openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Frame additional heat transfer (TAS % U-adjustment) is not converted", aperture, openStudioObjectName);
                     openStudioConversionContext.RegisterSkip();
                 }
+
+                if (apertureConstruction.TryGetValue(ApertureConstructionParameter.IsInternalShadow, out bool isInternalShadow) && isInternalShadow)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Internal-shadow flag (TAS) on the aperture construction is not converted — no deterministic EnergyPlus mapping", aperture, openStudioObjectName);
+                    openStudioConversionContext.RegisterSkip();
+                }
             }
         }
     }

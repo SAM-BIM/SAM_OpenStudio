@@ -148,6 +148,16 @@ namespace SAM.Analytical.OpenStudio
             {
                 openStudioConversionContext.PrimarySurfaceMap[panel.Guid] = result;
                 openStudioConversionContext.RegisterModelObject(panel, result);
+
+                // Panel-level feature shade (coverage manifest PanelParameter.FeatureShade,
+                // Unsupported SAM-OS-CON-002 info; review P1-01): SAM carries no shade/slat
+                // geometry to build shading surfaces or WindowShadingControl. Reported once per
+                // panel (with the primary side).
+                if (panel.GetValue<FeatureShade>(PanelParameter.FeatureShade) != null)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Panel feature shade is not converted — SAM carries no shade/slat geometry to build shading surfaces or WindowShadingControl", panel, name);
+                    openStudioConversionContext.RegisterSkip();
+                }
             }
 
             List<Aperture> apertures = panel.Apertures;

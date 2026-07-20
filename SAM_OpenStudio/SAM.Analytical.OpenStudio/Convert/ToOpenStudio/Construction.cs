@@ -28,6 +28,16 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
+            // TAS internal-shadow flag (coverage manifest ConstructionParameter.IsInternalShadow,
+            // Unsupported SAM-OS-CON-002 info; review P1-01): no deterministic EnergyPlus
+            // mapping. Reported once per construction, however many panels or directions use it.
+            if (construction.TryGetValue(ConstructionParameter.IsInternalShadow, out bool isInternalShadow) && isInternalShadow
+                && openStudioConversionContext.RegisterOnce("SAM-OS-CON-002:IsInternalShadow:" + construction.Guid.ToString("N")))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Internal-shadow flag (TAS) on the construction is not converted — no deterministic EnergyPlus mapping", construction);
+                openStudioConversionContext.RegisterSkip();
+            }
+
             return ToOpenStudio_Construction(construction, construction.ConstructionLayers, forward, null, OpenStudioMaterialUsage.OpaqueConstruction, openStudioConversionContext);
         }
 

@@ -58,6 +58,9 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>True when design days were imported into the target model (drives sizing-period enablement).</summary>
         public bool DesignDaysImported { get; set; }
 
+        /// <summary>Keys already used through <see cref="RegisterOnce"/> in this conversion.</summary>
+        private readonly HashSet<string> onceKeys = new HashSet<string>();
+
         /// <summary>Creates a conversion context.</summary>
         /// <param name="analyticalModel">Source SAM analytical model (null only in contract tests).</param>
         /// <param name="model">Target OpenStudio model; required.</param>
@@ -123,6 +126,26 @@ namespace SAM.Analytical.OpenStudio
                 {
                     Statistics.UnsupportedObjects++;
                 }
+            }
+        }
+
+        /// <summary>
+        /// True the first time the given key is seen in this conversion. Converters use it to
+        /// emit a per-source-object diagnostic exactly once when the same SAM object flows
+        /// through several cache paths (forward/reverse directions, per-thickness material
+        /// variants, opaque/fenestration usages).
+        /// </summary>
+        /// <param name="key">Stable key, conventionally "code:topic:guid"; null returns false.</param>
+        public bool RegisterOnce(string key)
+        {
+            if (key == null)
+            {
+                return false;
+            }
+
+            lock (onceKeys)
+            {
+                return onceKeys.Add(key);
             }
         }
 

@@ -36,7 +36,7 @@ namespace SAM.Core.OpenStudio
         /// <summary>Unsupported internal-condition parameter.</summary>
         public const string InternalConditionUnsupportedParameter = "SAM-OS-IC-001";
 
-        /// <summary>Conditioned zone missing setpoints.</summary>
+        /// <summary>Conditioned zone missing setpoints, or HVAC-dependent data (emitter characteristics, exhaust flows) deferred to the detailed-HVAC programme.</summary>
         public const string HvacMissingSetpoints = "SAM-OS-HVAC-001";
 
         /// <summary>OpenStudio CLI failed.</summary>
