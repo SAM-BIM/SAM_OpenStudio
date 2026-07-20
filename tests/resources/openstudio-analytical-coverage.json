@@ -191,7 +191,7 @@
     { "id": "PanelParameter.PilkingtonShadingLongWavelengthCoefficient", "unit": null, "os": null, "status": "NA", "milestone": "C0" },
     { "id": "PanelParameter.Adiabatic", "unit": null, "os": "Adiabatic outside boundary condition", "status": "Native", "milestone": "C1", "notes": "C1 verifies the flag is honoured by OutsideBoundaryCondition." },
     { "id": "PanelParameter.FeatureShade", "unit": null, "os": null, "status": "Unsupported", "milestone": "C3", "diagnostic": "SAM-OS-CON-002 info" },
-    { "id": "Panel.InternalEdgeHoles", "unit": null, "os": null, "status": "Unsupported", "milestone": "C3", "diagnostic": "SAM-OS-GEO-002 warning with panel GUID and hole geometry summary; holes are never fabricated into windows" },
+    { "id": "Panel.InternalEdgeHoles", "unit": null, "os": null, "status": "Unsupported", "milestone": "C3", "diagnostic": "SAM-OS-GEO-001 warning with panel GUID and hole geometry summary (count, per-hole and total area); holes are never fabricated into windows" },
 
     { "id": "PanelType.Undefined", "unit": null, "os": "surface type from normal orientation", "status": "Derived", "milestone": "MVP" },
     { "id": "PanelType.Ceiling", "unit": null, "os": "Surface RoofCeiling, internal adjacency", "status": "Native", "milestone": "MVP" },

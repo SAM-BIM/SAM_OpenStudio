@@ -34,6 +34,26 @@ namespace SAM.Analytical.OpenStudio.Tests
             new ConstructionLayer("Glass", 0.006),
         });
 
+        /// <summary>
+        /// Framed window construction (C3): the fixture glazing panes plus one PVC frame layer
+        /// (50 mm, λ = 0.17 W/mK → U = 3.4 W/m²K) and an explicit 50 mm DefaultFrameWidth.
+        /// Requires the "Frame PVC" material — see <see cref="CreateMaterialLibrary(bool)"/>.
+        /// </summary>
+        public static ApertureConstruction CreateFramedWindowConstruction(string frameMaterialName = "Frame PVC", double frameWidth = 0.05)
+        {
+            ApertureConstruction result = new ApertureConstruction(new Guid("22222222-3333-3333-3333-333333333333"), "Fixture Framed Window", ApertureType.Window, new List<ConstructionLayer>
+            {
+                new ConstructionLayer("Glass", 0.006),
+                new ConstructionLayer("Air", 0.012),
+                new ConstructionLayer("Glass", 0.006),
+            }, new List<ConstructionLayer>
+            {
+                new ConstructionLayer(frameMaterialName, frameWidth),
+            });
+            result.SetValue(ApertureConstructionParameter.DefaultFrameWidth, frameWidth);
+            return result;
+        }
+
         /// <summary>Opaque wall construction with a gas cavity, layers inside → outside: Plasterboard 12.5 mm, Air Cavity 50 mm (h = 1.25 W/m²K → R = 0.8 m²K/W), Brick 100 mm.</summary>
         public static readonly Construction CavityWallConstruction = new Construction(new Guid("11111111-2222-2222-2222-222222222222"), "Fixture Cavity Wall", new List<ConstructionLayer>
         {
@@ -64,9 +84,10 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// <summary>
         /// Material library backing the fixture constructions: Brick, Insulation, Plasterboard
         /// (opaque), Glass (transparent), Air (gas). Values are round, physically plausible and
-        /// asserted by the M4 tests.
+        /// asserted by the M4 tests. <paramref name="includeFrameMaterial"/> adds the PVC frame
+        /// material (λ = 0.17 W/mK, solar/light reflectance 0.4) used by the framed window.
         /// </summary>
-        public static MaterialLibrary CreateMaterialLibrary()
+        public static MaterialLibrary CreateMaterialLibrary(bool includeFrameMaterial = false)
         {
             OpaqueMaterial brick = new OpaqueMaterial(new Guid("33333333-0000-0000-0000-000000000001"), "Brick", "Brick", "Fixture brick", 0.84, 1700, 800);
             brick.SetValue(OpaqueMaterialParameter.ExternalEmissivity, 0.9);
@@ -101,6 +122,16 @@ namespace SAM.Analytical.OpenStudio.Tests
             result.Add(plasterboard);
             result.Add(glass);
             result.Add(air);
+
+            if (includeFrameMaterial)
+            {
+                OpaqueMaterial frame = new OpaqueMaterial(new Guid("33333333-0000-0000-0000-000000000007"), "Frame PVC", "Frame", "Fixture PVC frame", 0.17, 1400, 900);
+                frame.SetValue(OpaqueMaterialParameter.ExternalEmissivity, 0.9);
+                frame.SetValue(OpaqueMaterialParameter.ExternalSolarReflectance, 0.4);
+                frame.SetValue(OpaqueMaterialParameter.ExternalLightReflectance, 0.4);
+                result.Add(frame);
+            }
+
             return result;
         }
 
@@ -165,7 +196,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// <paramref name="spaceBUnconditioned"/>), 11 panels (12 OpenStudio surfaces once the
         /// shared wall is duplicated per side), 1 aperture, full material and profile libraries.
         /// </summary>
-        public static AnalyticalModel TwoAdjacentBoxes(bool spaceBUnconditioned = false, double? spaceBVolume = null)
+        public static AnalyticalModel TwoAdjacentBoxes(bool spaceBUnconditioned = false, double? spaceBVolume = null, bool sharedWallWindow = false)
         {
             AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
 
@@ -203,6 +234,11 @@ namespace SAM.Analytical.OpenStudio.Tests
             Aperture window = AnalyticalCreate.Aperture(WindowConstruction, F(P(1, 0, 0.8), P(3, 0, 0.8), P(3, 0, 2.2), P(1, 0, 2.2)));
             wallSouthA.AddAperture(window);
 
+            if (sharedWallWindow)
+            {
+                wallShared.AddAperture(AnalyticalCreate.Aperture(WindowConstruction, F(P(5, 1, 0.8), P(5, 3, 0.8), P(5, 3, 2.2), P(5, 1, 2.2))));
+            }
+
             List<Panel> panelsA = new List<Panel> { floorA, roofA, wallSouthA, wallWestA, wallNorthA, wallShared };
             List<Panel> panelsB = new List<Panel> { floorB, roofB, wallSouthB, wallEastB, wallNorthB, wallShared };
 
@@ -230,7 +266,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// given construction (fixture default when null). Used by simulation and failure-policy
         /// tests.
         /// </summary>
-        public static AnalyticalModel SingleBox(Construction wallConstruction = null, bool includeWindow = true, bool withProfiles = true, InternalCondition internalConditionOverride = null, ProfileLibrary profileLibraryOverride = null)
+        public static AnalyticalModel SingleBox(Construction wallConstruction = null, bool includeWindow = true, bool withProfiles = true, InternalCondition internalConditionOverride = null, ProfileLibrary profileLibraryOverride = null, ApertureConstruction apertureConstructionOverride = null, bool includeFrameMaterial = false)
         {
             Construction construction = wallConstruction ?? WallConstruction;
 
@@ -255,7 +291,7 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             if (includeWindow)
             {
-                panels[2].AddAperture(AnalyticalCreate.Aperture(WindowConstruction, F(P(1, 0, 0.8), P(3, 0, 0.8), P(3, 0, 2.2), P(1, 0, 2.2))));
+                panels[2].AddAperture(AnalyticalCreate.Aperture(apertureConstructionOverride ?? WindowConstruction, F(P(1, 0, 0.8), P(3, 0, 0.8), P(3, 0, 2.2), P(1, 0, 2.2))));
             }
 
             foreach (Panel panel in panels)
@@ -264,7 +300,7 @@ namespace SAM.Analytical.OpenStudio.Tests
                 adjacencyCluster.AddRelation(space, panel);
             }
 
-            return new AnalyticalModel("Single Box Model", "MVP one-zone box fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), withProfiles ? (profileLibraryOverride ?? CreateProfileLibrary()) : new ProfileLibrary("Empty Profile Library"));
+            return new AnalyticalModel("Single Box Model", "MVP one-zone box fixture", null, null, adjacencyCluster, CreateMaterialLibrary(includeFrameMaterial), withProfiles ? (profileLibraryOverride ?? CreateProfileLibrary()) : new ProfileLibrary("Empty Profile Library"));
         }
 
         /// <summary>

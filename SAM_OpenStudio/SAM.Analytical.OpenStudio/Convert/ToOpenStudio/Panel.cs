@@ -68,7 +68,43 @@ namespace SAM.Analytical.OpenStudio
             List<IClosedPlanar3D> internalEdges = face3D.GetInternalEdge3Ds();
             if (internalEdges != null && internalEdges.Count > 0)
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Panel face has {0} internal edge(s) (holes); holes are not converted in the MVP — only the external boundary is used", internalEdges.Count), panel, name);
+                // Holes are never fabricated into windows: the external boundary only is used,
+                // reported with the panel Guid (attached to the diagnostic) and a geometry
+                // summary (count, per-hole and total area).
+                System.Text.StringBuilder stringBuilder = new System.Text.StringBuilder();
+                double totalHoleArea = 0;
+                int reportedHoles = 0;
+                foreach (IClosedPlanar3D internalEdge in internalEdges)
+                {
+                    if (internalEdge == null)
+                    {
+                        continue;
+                    }
+
+                    double holeArea = double.NaN;
+                    try
+                    {
+                        holeArea = internalEdge.GetArea();
+                    }
+                    catch (System.Exception)
+                    {
+                        // geometry kernel failure — report the hole without its area
+                    }
+
+                    if (!double.IsNaN(holeArea))
+                    {
+                        totalHoleArea += holeArea;
+                        if (reportedHoles < 5)
+                        {
+                            stringBuilder.Append(string.Format(" hole{0}={1:G4} m²;", reportedHoles + 1, holeArea));
+                        }
+                    }
+
+                    reportedHoles++;
+                }
+
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Panel face has {0} internal edge(s) (holes, total area {1:G4} m²):{2}{3} holes are not converted — only the external boundary is used", internalEdges.Count, totalHoleArea, stringBuilder.ToString(), reportedHoles > 5 ? string.Format(" (+{0} more);", reportedHoles - 5) : string.Empty), panel, name);
+                openStudioConversionContext.RegisterSkip();
             }
 
             global::OpenStudio.Point3dVector point3dVector = face3D.ToOpenStudio(openStudioConversionContext.Options.DistanceTolerance, openStudioConversionContext.Options.AngleTolerance);

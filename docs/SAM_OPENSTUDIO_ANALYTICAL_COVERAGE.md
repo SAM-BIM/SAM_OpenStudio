@@ -263,7 +263,7 @@ diagnostic code and/or note recorded in the manifest.
 
 | SAM property | Unit | OpenStudio / EnergyPlus representation | Status | Milestone | Conversion / policy |
 |---|---|---|---|---|---|
-| `Panel.InternalEdgeHoles` | - | - | Unsupported | C3 | SAM-OS-GEO-002 warning with panel GUID and hole geometry summary; holes are never fabricated into windows |
+| `Panel.InternalEdgeHoles` | - | - | Unsupported | C3 | SAM-OS-GEO-001 warning with panel GUID and hole geometry summary (count, per-hole and total area); holes are never fabricated into windows |
 
 ### Panel types (`SAM.Analytical.PanelType`)
 

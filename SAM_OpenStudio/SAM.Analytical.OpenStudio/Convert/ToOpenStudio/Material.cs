@@ -109,6 +109,11 @@ namespace SAM.Analytical.OpenStudio
                     return null;
                 }
 
+                if (sAMObject.TryGetValue(TransparentMaterialParameter.IsBlind, out bool isBlind) && isBlind)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Material is flagged as a blind but SAM carries no slat geometry — converted as plain glazing (no WindowMaterial:Blind fabricated)", sAMObject, name);
+                }
+
                 global::OpenStudio.StandardGlazing standardGlazing = new global::OpenStudio.StandardGlazing(openStudioConversionContext.Target);
                 standardGlazing.setThickness(thickness);
                 standardGlazing.setThermalConductivity(transparentMaterial.ThermalConductivity);

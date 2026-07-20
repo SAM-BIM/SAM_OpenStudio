@@ -11,7 +11,7 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C0 | Complete SAM analytical coverage audit (Markdown + machine-readable manifest) | **Done** | — |
 | C1 | Core adapter hardening (P3 items, disposal, statistics, SQL, VersionTranslator) | **Done** | — |
 | C2 | Internal conditions, schedules, conditioning modes (latent, humidistat, single-mode) | **Done** | — |
-| C3 | Fenestration, frames, constructions (FrameAndDivider, doors, hole diagnostics) | Pending | — |
+| C3 | Fenestration, frames, constructions (FrameAndDivider, doors, hole diagnostics) | **Done** | — |
 | C4 | Site, weather, DDY, simulation settings (north, ground temps, run period, calendar) | Pending | — |
 | C5 | Results extraction and SAM result mapping (engine-neutral schema, units authority) | Pending | — |
 | C6 | Cancellation, asynchronous execution, Grasshopper UX | Pending | — |
@@ -82,6 +82,29 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
   machine (post-build copy to `%APPDATA%\SAM` locks); the analytical/test chain builds clean.
 - Tests: +11 (`tests/.../C2/InternalConditionCompletenessTests.cs`) — 93 → **104**.
 
+## C3 — Fenestration, frames, constructions (done)
+
+- `Aperture.cs` — `WindowPropertyFrameAndDivider` from SAM frame data: width from
+  `DefaultFrameWidth` else SAM frame thickness; conductance U = 1/Σ(t/λ) over the frame layers;
+  solar/visible absorptance = 1 − External*Reflectance of the outermost frame layer. With a
+  frame applied the SubSurface polygon becomes the SAM **pane** polygon (EnergyPlus grows the
+  frame outward); area conservation (pane strictly inside the aperture) is validated. Invalid/
+  incomplete frame data → frameless full-polygon fallback + SAM-OS-CON-002 warning (never wrong
+  geometry); frames on opaque doors skipped (info). Opening properties, feature shades and TAS
+  additional-heat-transfer percentages raise structured diagnostics (SAM-OS-CON-002).
+- `Material.cs` — `TransparentMaterialParameter.IsBlind` raises SAM-OS-MAT-002 info; converted
+  as plain glazing (no fabricated `WindowMaterial:Blind`).
+- `Panel.cs` — hole diagnostics carry the panel Guid + geometry summary (count, per-hole and
+  total area); holes are never fabricated into windows. (Manifest row aligned: SAM-OS-GEO-001,
+  not GEO-002.)
+- `SubSurfaceType.cs` — verified: opaque door vs glazed door by pane material family (tests).
+- New diagnostic codes SAM-OS-CON-002 (unsupported construction/aperture parameter) and
+  SAM-OS-MAT-002 (unsupported material parameter).
+- Fixtures: `CreateFramedWindowConstruction`, frame material in `CreateMaterialLibrary(bool)`,
+  `SingleBox(apertureConstructionOverride, includeFrameMaterial)`, `TwoAdjacentBoxes(sharedWallWindow)`.
+- Docs: MATERIAL_MAPPING updated.
+- Tests: +10 (`tests/.../C3/FenestrationTests.cs`) — 104 → **114**.
+
 ## Gates log
 
 | Milestone | Build | Tests | EnergyPlus gate |
@@ -90,3 +113,4 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C0 | clean (docs only) | 82/82 | n/a (no code change) |
 | C1 | clean (0 errors) | 93/93 | Full suite re-run incl. SingleBox/AirGap/TwoBoxes + CLI timeout |
 | C2 | clean (0 errors; GH project excluded — Rhino running) | 104/104 | Latent + humidistat end-to-end (humidity output present, sane %RH range) |
+| C3 | clean (0 errors; GH project excluded — Rhino running) | 114/114 | Framed window end-to-end (frame in IDF; E+ glass area = pane area 2.47 m²) |

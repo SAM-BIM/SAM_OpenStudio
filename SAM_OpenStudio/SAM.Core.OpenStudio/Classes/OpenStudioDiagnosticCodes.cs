@@ -21,8 +21,14 @@ namespace SAM.Core.OpenStudio
         /// <summary>Unsupported material.</summary>
         public const string MaterialUnsupported = "SAM-OS-MAT-001";
 
+        /// <summary>Unsupported material parameter (e.g. blind flag without slat geometry).</summary>
+        public const string MaterialUnsupportedParameter = "SAM-OS-MAT-002";
+
         /// <summary>Missing construction layer.</summary>
         public const string ConstructionMissingLayer = "SAM-OS-CON-001";
+
+        /// <summary>Unsupported construction/aperture parameter (frame, shade, opening data).</summary>
+        public const string ConstructionUnsupportedParameter = "SAM-OS-CON-002";
 
         /// <summary>Missing profile.</summary>
         public const string ScheduleMissingProfile = "SAM-OS-SCH-001";

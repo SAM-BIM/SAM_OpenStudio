@@ -80,19 +80,41 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
-            if (Geometry.OpenStudio.Query.IsClockwise(point3Ds, panel.Normal))
+            ApertureConstruction apertureConstruction = aperture.ApertureConstruction;
+            EmitUnsupportedDiagnostics(aperture, apertureConstruction, name, openStudioConversionContext);
+
+            string subSurfaceType = Query.SubSurfaceType(aperture, openStudioConversionContext.Source?.MaterialLibrary);
+
+            // Frame (C3): when the aperture construction carries frame data, the SubSurface
+            // polygon becomes the PANE polygon (EnergyPlus grows the frame outward from the
+            // glass — coverage manifest: Aperture.PaneFrameGeometry) and a
+            // WindowPropertyFrameAndDivider carries width/conductance/absorptances. Any invalid
+            // or incomplete frame data falls back to the full-polygon frameless conversion with
+            // a structured warning — never wrong geometry.
+            List<Point3D> subSurfacePoint3Ds = point3Ds;
+            global::OpenStudio.WindowPropertyFrameAndDivider frameAndDivider = TryCreateFrameAndDivider(aperture, apertureConstruction, subSurfaceType, face3D, point3Ds, name, openStudioConversionContext, out List<Point3D> panePoint3Ds);
+            if (frameAndDivider != null && panePoint3Ds != null)
             {
-                point3Ds.Reverse();
+                subSurfacePoint3Ds = panePoint3Ds;
             }
 
-            global::OpenStudio.SubSurface result = new global::OpenStudio.SubSurface(point3Ds.ToOpenStudio(), openStudioConversionContext.Target);
+            if (Geometry.OpenStudio.Query.IsClockwise(subSurfacePoint3Ds, panel.Normal))
+            {
+                subSurfacePoint3Ds.Reverse();
+            }
+
+            global::OpenStudio.SubSurface result = new global::OpenStudio.SubSurface(subSurfacePoint3Ds.ToOpenStudio(), openStudioConversionContext.Target);
             result.setName(name);
             result.setSurface(surface);
 
-            string subSurfaceType = Query.SubSurfaceType(aperture, openStudioConversionContext.Source?.MaterialLibrary);
             if (!string.IsNullOrWhiteSpace(subSurfaceType))
             {
                 result.setSubSurfaceType(subSurfaceType);
+            }
+
+            if (frameAndDivider != null)
+            {
+                result.setWindowPropertyFrameAndDivider(frameAndDivider);
             }
 
             if (!openStudioConversionContext.References.Contains(aperture.Guid))
@@ -101,6 +123,182 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Builds a WindowPropertyFrameAndDivider from SAM frame data (coverage manifest:
+        /// ApertureConstruction.FrameConstructionLayers — Approximated): width from
+        /// DefaultFrameWidth else the frame thickness; conductance U = 1/Σ(thickness/conductivity)
+        /// over the frame layers (no film coefficients, documented approximation); solar/visible
+        /// absorptance = 1 − External*Reflectance of the outermost frame layer. Returns null
+        /// (frameless fallback) when there is no frame data, the aperture is an opaque door, or
+        /// any derivation is invalid — a diagnostic explains every non-silent case.
+        /// </summary>
+        private static global::OpenStudio.WindowPropertyFrameAndDivider TryCreateFrameAndDivider(Aperture aperture, ApertureConstruction apertureConstruction, string subSurfaceType, Face3D apertureFace3D, List<Point3D> aperturePoint3Ds, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext, out List<Point3D> panePoint3Ds)
+        {
+            panePoint3Ds = null;
+
+            double frameWidth = double.NaN;
+            if (!apertureConstruction.TryGetValue(ApertureConstructionParameter.DefaultFrameWidth, out frameWidth) || double.IsNaN(frameWidth) || frameWidth <= 0)
+            {
+                frameWidth = apertureConstruction.GetFrameThickness();
+            }
+
+            List<ConstructionLayer> frameLayers = apertureConstruction.FrameConstructionLayers;
+            bool hasFrameData = (!double.IsNaN(frameWidth) && frameWidth > 0) || (frameLayers != null && frameLayers.Count > 0);
+            if (!hasFrameData)
+            {
+                return null;
+            }
+
+            if (subSurfaceType == "Door")
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Frame data on an opaque door is not converted (frames apply to glazed subsurfaces); frameless conversion", aperture, openStudioObjectName);
+                return null;
+            }
+
+            if (double.IsNaN(frameWidth) || frameWidth <= 0 || frameLayers == null || frameLayers.Count == 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Incomplete frame data (width or frame layers missing); frameless conversion", aperture, openStudioObjectName);
+                return null;
+            }
+
+            Core.MaterialLibrary materialLibrary = openStudioConversionContext.Source?.MaterialLibrary;
+            if (materialLibrary == null)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "No MaterialLibrary; frame conductance cannot be derived — frameless conversion", aperture, openStudioObjectName);
+                return null;
+            }
+
+            double resistance = 0;
+            foreach (ConstructionLayer frameLayer in frameLayers)
+            {
+                if (frameLayer == null)
+                {
+                    continue;
+                }
+
+                Core.IMaterial material = materialLibrary.GetMaterial(frameLayer.Name);
+                Core.OpaqueMaterial opaqueMaterial = material as Core.OpaqueMaterial;
+                if (opaqueMaterial == null)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Frame layer material '{0}' is missing or not opaque; frame conductance cannot be derived — frameless conversion", frameLayer.Name), aperture, openStudioObjectName);
+                    return null;
+                }
+
+                double layerThickness = frameLayer.Thickness;
+                if (double.IsNaN(layerThickness) || layerThickness <= 0)
+                {
+                    if (!opaqueMaterial.TryGetValue(Core.MaterialParameter.DefaultThickness, out layerThickness) || double.IsNaN(layerThickness) || layerThickness <= 0)
+                    {
+                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Frame layer '{0}' has no usable thickness; frameless conversion", frameLayer.Name), aperture, openStudioObjectName);
+                        return null;
+                    }
+                }
+
+                if (double.IsNaN(opaqueMaterial.ThermalConductivity) || opaqueMaterial.ThermalConductivity <= 0)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Frame material '{0}' has an invalid conductivity; frameless conversion", frameLayer.Name), aperture, openStudioObjectName);
+                    return null;
+                }
+
+                resistance += layerThickness / opaqueMaterial.ThermalConductivity;
+            }
+
+            if (resistance <= 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Frame layers give zero resistance; frameless conversion", aperture, openStudioObjectName);
+                return null;
+            }
+
+            // Pane geometry from SAM itself (Aperture.GetFace3Ds(AperturePart.Pane) insets by the
+            // frame width), validated against the full aperture polygon.
+            List<Face3D> paneFace3Ds;
+            try
+            {
+                paneFace3Ds = aperture.GetPaneFace3Ds();
+            }
+            catch (System.Exception exception)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Pane geometry could not be computed ({0}); frameless conversion", exception.GetType().Name), aperture, openStudioObjectName);
+                return null;
+            }
+
+            Face3D paneFace3D = paneFace3Ds?.Find(x => x != null);
+            ISegmentable3D paneSegmentable3D = paneFace3D?.GetExternalEdge3D() as ISegmentable3D;
+            List<Point3D> candidatePoint3Ds = paneSegmentable3D?.GetPoints();
+            if (candidatePoint3Ds == null || candidatePoint3Ds.Count < 3)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Pane geometry is degenerate; frameless conversion", aperture, openStudioObjectName);
+                return null;
+            }
+
+            double apertureArea = apertureFace3D.GetArea();
+            double paneArea = paneFace3D.GetArea();
+            if (double.IsNaN(apertureArea) || double.IsNaN(paneArea) || paneArea < openStudioConversionContext.Options.MinimumArea || paneArea >= apertureArea)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Area conservation failed (aperture {0:G4} m², pane {1:G4} m² — the pane must be strictly smaller); frameless conversion", apertureArea, paneArea), aperture, openStudioObjectName);
+                return null;
+            }
+
+            global::OpenStudio.WindowPropertyFrameAndDivider result = new global::OpenStudio.WindowPropertyFrameAndDivider(openStudioConversionContext.Target);
+            result.setName(openStudioObjectName + "_FrameAndDivider");
+            result.setFrameWidth(frameWidth);
+            result.setFrameConductance(1.0 / resistance);
+
+            ConstructionLayer outermostLayer = frameLayers[frameLayers.Count - 1];
+            Core.IMaterial outermostMaterial = outermostLayer == null ? null : materialLibrary.GetMaterial(outermostLayer.Name);
+            Core.SAMObject outermostSAMObject = outermostMaterial as Core.SAMObject;
+            if (outermostSAMObject != null)
+            {
+                if (outermostSAMObject.TryGetValue(OpaqueMaterialParameter.ExternalSolarReflectance, out double externalSolarReflectance) && !double.IsNaN(externalSolarReflectance) && externalSolarReflectance >= 0 && externalSolarReflectance <= 1)
+                {
+                    result.setFrameSolarAbsorptance(1 - externalSolarReflectance);
+                }
+
+                if (outermostSAMObject.TryGetValue(OpaqueMaterialParameter.ExternalLightReflectance, out double externalLightReflectance) && !double.IsNaN(externalLightReflectance) && externalLightReflectance >= 0 && externalLightReflectance <= 1)
+                {
+                    result.setFrameVisibleAbsorptance(1 - externalLightReflectance);
+                }
+            }
+
+            panePoint3Ds = candidatePoint3Ds;
+            return result;
+        }
+
+        /// <summary>
+        /// Structured diagnostics for aperture data with no safe Ideal-Loads representation
+        /// (coverage manifest): opening properties (AirflowNetwork territory), feature shades,
+        /// blind flags and TAS additional-heat-transfer percentages. Never silently dropped.
+        /// </summary>
+        private static void EmitUnsupportedDiagnostics(Aperture aperture, ApertureConstruction apertureConstruction, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
+        {
+            if (aperture.GetValue<IOpeningProperties>(ApertureParameter.OpeningProperties) != null)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Opening properties (openable fraction, discharge coefficient) are not converted — natural ventilation needs AirflowNetwork/ZoneVentilation (deferred to the HVAC programme)", aperture, openStudioObjectName);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            if (aperture.GetValue<FeatureShade>(ApertureParameter.FeatureShade) != null)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Aperture feature shade is not converted — SAM carries no shade/slat geometry to build WindowShadingControl", aperture, openStudioObjectName);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            if (apertureConstruction != null)
+            {
+                if (apertureConstruction.TryGetValue(ApertureConstructionParameter.PaneAdditionalHeatTransfer, out double paneAdditionalHeatTransfer) && !double.IsNaN(paneAdditionalHeatTransfer) && paneAdditionalHeatTransfer != 0)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Pane additional heat transfer (TAS % U-adjustment) is not converted", aperture, openStudioObjectName);
+                    openStudioConversionContext.RegisterSkip();
+                }
+
+                if (apertureConstruction.TryGetValue(ApertureConstructionParameter.FrameAdditionalHeatTransfer, out double frameAdditionalHeatTransfer) && !double.IsNaN(frameAdditionalHeatTransfer) && frameAdditionalHeatTransfer != 0)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Frame additional heat transfer (TAS % U-adjustment) is not converted", aperture, openStudioObjectName);
+                    openStudioConversionContext.RegisterSkip();
+                }
+            }
         }
     }
 }
