@@ -945,8 +945,8 @@ namespace SAM.Analytical.OpenStudio
             return ReadHourlyValueSeries(sqlPath, variableName);
         }
 
-        /// <summary>Hourly series per key over the weather-run environment (raw values, no conversion): zone key → (hour-of-year, value) pairs in time order.</summary>
-        private static Dictionary<string, List<KeyValuePair<int, double>>> ReadHourlyValueSeries(string sqlPath, string variableName)
+        /// <summary>Hourly series per key over the weather-run environment (raw values, no conversion): zone key → (hour-of-year, value) pairs in time order. Internal for the leap-year indexing regression tests (review P1-03).</summary>
+        internal static Dictionary<string, List<KeyValuePair<int, double>>> ReadHourlyValueSeries(string sqlPath, string variableName)
         {
             if (string.IsNullOrWhiteSpace(sqlPath) || !File.Exists(sqlPath))
             {
@@ -959,6 +959,13 @@ namespace SAM.Analytical.OpenStudio
                 {
                     connection.Open();
                     bool filterEnvironment = HasWeatherRunEnvironment(connection);
+
+                    // Review P1-03: hour-of-year must follow the run calendar. With a fixed
+                    // non-leap reference year every Feb 29 row clamps onto Feb 28 (duplicate
+                    // hour keys double-count the coincident peak) and all post-February hours
+                    // land one day early. Feb 29 rows in the read environment select a leap
+                    // reference year; the clamp below stays for genuinely invalid dates.
+                    int referenceYear = HasFebruary29(connection, filterEnvironment) ? 2024 : 2023;
 
                     List<string> keys = ReadKeys(connection, variableName);
                     Dictionary<string, List<KeyValuePair<int, double>>> result = new Dictionary<string, List<KeyValuePair<int, double>>>();
@@ -983,8 +990,8 @@ namespace SAM.Analytical.OpenStudio
                                     double value = reader.GetDouble(3);
 
                                     int monthClamped = System.Math.Max(1, System.Math.Min(12, month));
-                                    int dayClamped = System.Math.Max(1, System.Math.Min(System.DateTime.DaysInMonth(2023, monthClamped), day));
-                                    int dayOfYear = new System.DateTime(2023, monthClamped, dayClamped).DayOfYear;
+                                    int dayClamped = System.Math.Max(1, System.Math.Min(System.DateTime.DaysInMonth(referenceYear, monthClamped), day));
+                                    int dayOfYear = new System.DateTime(referenceYear, monthClamped, dayClamped).DayOfYear;
                                     points.Add(new KeyValuePair<int, double>((dayOfYear - 1) * 24 + (hour - 1), value));
                                 }
                             }
@@ -1016,6 +1023,21 @@ namespace SAM.Analytical.OpenStudio
                 }
 
                 command.CommandText = "SELECT COUNT(*) FROM EnvironmentPeriods WHERE EnvironmentType = 3";
+                return (long)command.ExecuteScalar() > 0;
+            }
+        }
+
+        /// <summary>
+        /// True when the Time rows this reader consumes (the annual weather environment when
+        /// one exists, all rows otherwise) contain a Feb 29 — i.e. the run calendar is a leap
+        /// year and hour-of-year must be computed against a leap reference year (review P1-03).
+        /// </summary>
+        private static bool HasFebruary29(System.Data.SQLite.SQLiteConnection connection, bool filterEnvironment)
+        {
+            using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT COUNT(*) FROM Time t WHERE t.Month = 2 AND t.Day = 29"
+                    + (filterEnvironment ? " AND t.EnvironmentPeriodIndex IN (SELECT EnvironmentPeriodIndex FROM EnvironmentPeriods WHERE EnvironmentType = 3)" : string.Empty);
                 return (long)command.ExecuteScalar() > 0;
             }
         }

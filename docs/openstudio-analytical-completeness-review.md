@@ -28,7 +28,7 @@ Three P1 findings were confirmed by reproduction — all three in the newest (C2
 | --- | --- | --- | --- |
 | P1-01 | P1 | Eighteen coverage-manifest rows declare structured diagnostics that no converter ever emits (false completeness: view coefficients, lighting control function, internal-shadow flags, panel feature shades, vapour diffusion factor, opaque internal-optics divergence, emitter and exhaust parameters) | **Fixed** (Stage L, §8) |
 | P1-02 | P1 | The default DDY design-day filter (`"99.6%"`/`"0.4%"`) imports **no cooling design day** (ASHRAE DDYs name them `Ann Clg .4% …`) and wrongly imports humidification (`Hum_n`) and wind (`Htg Wind`) 99.6% days | **Fixed** (Stage L, §8) |
-| P1-03 | P1 | Leap-year runs: SQL hour-of-year uses a fixed non-leap reference year, so Feb 29 rows clamp onto Feb 28 (duplicate hour keys double-count the coincident peak) and all post-February peak hours shift by one day | Confirmed — fix pending |
+| P1-03 | P1 | Leap-year runs: SQL hour-of-year uses a fixed non-leap reference year, so Feb 29 rows clamp onto Feb 28 (duplicate hour keys double-count the coincident peak) and all post-February peak hours shift by one day | **Fixed** (Stage L, §8) |
 | P2-01 | P2 | The C7 completeness test does not implement the stale-manifest-id detection the coverage document claims | Confirmed — fix pending |
 | P2-02 | P2 | `OutputVariableFrequency` ≠ Hourly silently mis-scales extracted peaks (fixed 3600 s interval assumption) | Confirmed — mitigation pending; full support is follow-up |
 | P2-03 | P2 | SAM `Location` site override writes non-finite/out-of-range coordinates into `OS:Site` unvalidated | Confirmed — fix pending |
@@ -194,7 +194,11 @@ None.
   the day-of-year computation; keep the defensive clamp for genuinely out-of-range values.
 - **Regression test:** synthetic SQL (leap dataset) through the internal reader: 48 distinct
   indices across Feb 28/29, Mar 1 hour 0 at index 1440, no duplicate hour keys.
-- **Status:** **Confirmed — fix pending** (Stage L).
+- **Status:** **Fixed** (Stage L) — the reader now selects the reference year from the data
+  (Feb 29 present in the read environment → leap year 2024, else 2023; the defensive clamp
+  stays for genuinely invalid dates). Regression suite `C5/LeapYearIndexingTests`: leap
+  dataset yields 50 distinct indices (Feb 28 @1392, Feb 29 @1416, Mar 1 @1440, Dec 31 @8783);
+  a non-leap dataset keeps the original indexing (Mar 1 @1416, Dec 31 @8759). Commit in §8.
 
 ## 5. P2 findings
 
