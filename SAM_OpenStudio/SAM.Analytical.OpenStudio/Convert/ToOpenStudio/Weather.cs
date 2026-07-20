@@ -99,7 +99,7 @@ namespace SAM.Analytical.OpenStudio
                 if (nearestToSurface != null)
                 {
                     SetGroundTemperatures(openStudioConversionContext.Target, nearestToSurface.Temperatures);
-                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Ground temperatures taken from the SAM model WeatherData (depth {0} m set, 12 monthly values)", nearestToSurface.Depth));
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Ground temperatures taken from the SAM model WeatherData (depth {0} m set, 12 monthly values)", nearestToSurface.Depth));
                     return;
                 }
             }
@@ -155,11 +155,11 @@ namespace SAM.Analytical.OpenStudio
             if (epwNearestToSurface != null)
             {
                 SetGroundTemperatures(openStudioConversionContext.Target, epwNearestToSurface.Temperatures);
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Ground temperatures taken from the EPW GROUND TEMPERATURES header (depth {0} m set, 12 monthly values)", epwNearestToSurface.Depth));
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Ground temperatures taken from the EPW GROUND TEMPERATURES header (depth {0} m set, 12 monthly values)", epwNearestToSurface.Depth));
             }
             else
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "No ground temperatures in the SAM model WeatherData or the EPW header; the EnergyPlus 18 °C default ground temperature applies");
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "No ground temperatures in the SAM model WeatherData or the EPW header; the EnergyPlus 18 °C default ground temperature applies");
             }
         }
 

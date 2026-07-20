@@ -170,9 +170,41 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
-        public void UnsupportedApertureData_RaisesStructuredDiagnostics()
+        public void SimpleGlazingFallback_NoPaneLayers_UsesPerformanceParameters()
         {
-            ApertureConstruction apertureConstruction = new ApertureConstruction(new System.Guid("22222222-6666-6666-6666-666666666666"), AnalyticalModelFixtures.WindowConstruction, "Pane Adjust Window");
+            ApertureConstruction apertureConstruction = new ApertureConstruction(new System.Guid("22222222-8888-8888-8888-888888888888"), "Performance Window", ApertureType.Window);
+            apertureConstruction.SetValue(ApertureConstructionParameter.ThermalTransmittance, 2.8);
+            apertureConstruction.SetValue(ApertureConstructionParameter.TotalSolarEnergyTransmittance, 0.6);
+            apertureConstruction.SetValue(ApertureConstructionParameter.LightTransmittance, 0.7);
+
+            OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox(apertureConstructionOverride: apertureConstruction).ToOpenStudio();
+
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Model.getSimpleGlazings().Count, Is.EqualTo(1), "No pane layers + complete performance parameters → SimpleGlazingSystem fallback");
+
+            global::OpenStudio.SimpleGlazing simpleGlazing = result.Model.getSimpleGlazings()[0];
+            Assert.That(simpleGlazing.uFactor(), Is.EqualTo(2.8).Within(1e-9));
+            Assert.That(simpleGlazing.solarHeatGainCoefficient(), Is.EqualTo(0.6).Within(1e-9));
+            Assert.That(simpleGlazing.visibleTransmittance().get(), Is.EqualTo(0.7).Within(1e-9));
+            Assert.That(result.Model.getSubSurfaces()[0].construction().isNull(), Is.False);
+            Assert.That(result.Diagnostics.Any(d => d.Code == "SAM-OS-CON-001" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Information && d.Message.Contains("SimpleGlazingSystem fallback")), Is.True, "The fallback is never silent");
+        }
+
+        [Test]
+        public void SimpleGlazingFallback_IncompleteParameters_RaisesError()
+        {
+            ApertureConstruction apertureConstruction = new ApertureConstruction(new System.Guid("22222222-9999-9999-9999-999999999999"), "Incomplete Performance Window", ApertureType.Window);
+            apertureConstruction.SetValue(ApertureConstructionParameter.ThermalTransmittance, 2.8);
+
+            OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox(apertureConstructionOverride: apertureConstruction).ToOpenStudio();
+
+            Assert.That(result.Model.getSimpleGlazings().Count, Is.EqualTo(0));
+            Assert.That(result.Diagnostics.Any(d => d.Code == "SAM-OS-CON-001" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error && d.Message.Contains("no complete performance parameters")), Is.True, "No hidden defaults");
+        }
+
+        [Test]
+        public void UnsupportedApertureData_RaisesStructuredDiagnostics()
+        {            ApertureConstruction apertureConstruction = new ApertureConstruction(new System.Guid("22222222-6666-6666-6666-666666666666"), AnalyticalModelFixtures.WindowConstruction, "Pane Adjust Window");
             apertureConstruction.SetValue(ApertureConstructionParameter.PaneAdditionalHeatTransfer, 10.0);
 
             OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox(apertureConstructionOverride: apertureConstruction).ToOpenStudio();

@@ -33,7 +33,7 @@ namespace SAM.Analytical.OpenStudio
             List<global::OpenStudio.DesignDay> designDays = Query.DesignDays(ddyPath);
             if (designDays == null || designDays.Count == 0)
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("DDY file contains no importable design days: {0}", ddyPath));
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("DDY file contains no importable design days: {0}", ddyPath));
                 return 0;
             }
 
@@ -48,7 +48,7 @@ namespace SAM.Analytical.OpenStudio
 
                 if (selected.Count == 0)
                 {
-                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "No heating 99.6% / cooling 0.4% design days found by name convention; all DDY design days were imported");
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "No heating 99.6% / cooling 0.4% design days found by name convention; all DDY design days were imported");
                     selected = designDays;
                 }
             }
@@ -59,7 +59,7 @@ namespace SAM.Analytical.OpenStudio
             }
 
             openStudioConversionContext.DesignDaysImported = selected.Count > 0;
-            openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Imported {0} design day(s) from {1}", selected.Count, Path.GetFileName(ddyPath)));
+            openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Imported {0} design day(s) from {1}", selected.Count, Path.GetFileName(ddyPath)));
             return selected.Count;
         }
     }

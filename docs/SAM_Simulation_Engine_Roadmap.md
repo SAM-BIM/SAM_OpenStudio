@@ -156,8 +156,8 @@ SAM_FMI / SAM_Modelica
 
 | Phase | Theme | Main outcome |
 |---|---|---|
-| Phase 1 | Minimal OpenStudio/EnergyPlus proof of concept | Generate a valid OpenStudio/EnergyPlus model from SAM for simple zone loads |
-| Phase 2 | OpenStudio adapter structure | Establish reusable C# adapter classes and model translation rules |
+| Phase 1 | Minimal OpenStudio/EnergyPlus proof of concept | Generate a valid OpenStudio/EnergyPlus model from SAM for simple zone loads — **done (MVP, PR #7)** |
+| Phase 2 | OpenStudio adapter structure | Establish reusable C# adapter classes and model translation rules — **done (analytical completeness programme, see `openstudio-analytical-completeness-status.md`: full non-HVAC `AnalyticalModel` translation with enforced coverage, results mapping and cancellable execution)** |
 | Phase 3 | Validation harness | Compare SAM_Tas and SAM_OpenStudio/EnergyPlus results consistently |
 | Phase 4 | AI-assisted QA and model intelligence | Use AI to inspect, explain, repair, and document simulation models safely |
 | Phase 5 | Advanced HVAC, controls, Modelica/FMI | Prepare SAM for dynamic controls, co-simulation, MPC, and digital twin workflows |

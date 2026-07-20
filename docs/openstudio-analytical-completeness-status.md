@@ -15,7 +15,7 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C4 | Site, weather, DDY, simulation settings (north, ground temps, run period, calendar) | **Done** | — |
 | C5 | Results extraction and SAM result mapping (engine-neutral schema, units authority) | **Done** | — |
 | C6 | Cancellation, asynchronous execution, Grasshopper UX | **Done** | — |
-| C7 | Full regression suite, completeness enforcement, documentation | Pending | — |
+| C7 | Full regression suite, completeness enforcement, documentation | **Done** | — |
 
 ## C0 — Coverage audit (done)
 
@@ -183,6 +183,51 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
   everything below the component shell is test-covered headless.
 - Tests: +6 (`tests/.../C6/CancellationAsyncTests.cs`) — 130 → **136**.
 
+## C7 — Regression, validation, documentation (done)
+
+- **Completeness enforcement** (`tests/.../C7/CompletenessTests.cs`): the machine-readable
+  manifest is enforced — every live member of the 16 covered enums has an entry (reflection;
+  fails on silent omission of a known property), every declared diagnostic code exists in
+  `OpenStudioDiagnosticCodes`, the manifest is structurally sound (unique ids, valid
+  statuses/milestones, documented policies for Derived/Approximated/Unsupported entries).
+  Clean fixtures drop nothing (0 skips, 0 unsupported diagnostics); unsupported data raises
+  exactly the declared diagnostics.
+- **Missed C3 item recovered**: the SimpleGlazingSystem fallback (aperture constructions
+  without pane layers but with U/SHGC/VT performance parameters; aperture-level values take
+  precedence) is implemented in `Construction.cs` with two tests. New diagnostic code
+  `SAM-OS-RUN-002` (weather/design-day data) added per the manifest.
+- **Determinism**: the same model converted twice yields identical object sets.
+- **Repeated conversion + disposal**: 5× loop clean; repeated run + disposal covered in C6.
+- **Performance** (this machine, Debug x64): TwoAdjacentBoxes conversion ≈ 0.4 s, 76 model
+  objects; SingleBox end-to-end annual run ≈ 2–4 s CLI wall-clock. MVP object counts unchanged
+  (pinned by the M3/M4 tests); the MVP suite ran ≈ 20 s at C0 vs ≈ 90 s now — the delta is the
+  ~30 additional E+ simulations, not conversion cost.
+- **Simulation table** (all green, `[Category("Simulation")]`):
+
+  | Gate | Asserts |
+  |---|---|
+  | M6 SingleBox / AirGap / TwoBoxes + CLI timeout | end-to-end energy, no fatal/severe, tree kill |
+  | C2 latent + humidistat | humidity output present and sane |
+  | C3 framed window | frame in IDF; E+ glass area = pane area |
+  | C4 design days ×2, north rotation ×2 | sizing on: annual unchanged; solar-gain shift |
+  | C5 extraction ×6 runs | peaks/unmet/gains/series/units/design-day exclusion |
+  | C6 cancellation ×6 runs | cancel/parallel/collision/sequential/progress |
+
+- **Production model**: none supplied on this machine — production validation is deferred to
+  the human Rhino stage below (largest synthetic fixtures validated instead).
+- Docs: this file, `SAM_OPENSTUDIO_RESULT_MAPPING.md` (C5), usage guide and README updated.
+
+## Human validation steps (Rhino 8)
+
+1. Build the solution x64 Debug with Rhino **closed** (GH post-build copies to `%APPDATA%\SAM`).
+2. Open Rhino 8 → Grasshopper → confirm `SAMAnalytical.ToOpenStudio` and `OpenStudio.RunModel`
+   load from the SAM category.
+3. Feed a production SAM analytical model JSON + EPW: confirm the component reports "Running"
+   without blocking the UI, completes onto the outputs, honours `cancel_`, and that no
+   `openstudio.exe`/`energyplus.exe` processes survive a Rhino close mid-run.
+4. Compare `heating`/`cooling` and the diagnostics list against the TAS production route for
+   the same model; attach findings to the PR review.
+
 ## Gates log
 
 | Milestone | Build | Tests | EnergyPlus gate |
@@ -195,3 +240,17 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 | C4 | clean (0 errors; GH project excluded — Rhino running) | 124/124 | Design-day run (sizing on): annual results unchanged vs baseline (environment filter proven); north rotation 0°→180° shifts heating/cooling as expected |
 | C5 | clean (0 errors; GH project excluded — Rhino running) | 130/130 | Extraction validated on annual + sizing-enabled runs (peaks, unmet, gains, series, units, design-day exclusion) |
 | C6 | clean (0 errors, **full solution incl. GH** — Rhino closed) | 136/136 | Cancel-before/cancel-during (tree kill, no surviving process), parallel unique dirs, same-dir collision, sequential, progress stages |
+| C7 | clean (0 errors, full solution) | **146/146** | Full suite (~30 E+ simulations), manifest completeness enforcement, determinism, disposal, performance |
+
+## Final summary
+
+- Tests: 82 (MVP) → **146**; every milestone gated by x64 Debug build + full suite + E+ runs.
+- Coverage (279 manifest entries): **Native 135, Derived 28, Approximated 21, Unsupported 20,
+  Deferred 17, NA 58**. Translated-or-diagnosed: every entry with energy semantics has a
+  Native/Derived/Approximated mapping or a declared Unsupported diagnostic; nothing is
+  silently dropped (enforced by the C7 completeness tests against the manifest).
+- Known limitations: dividers/muntins N/A (no SAM data); blinds/shades and opening properties
+  unsupported (no geometry; HVAC domain); SAM hourly design days approximated (DDY import is
+  the deterministic path); emitter characteristics and exhaust flows deferred to the HVAC
+  programme; STAT parsing deferred; DST default off; Ideal Loads remains the simulation system.
+- Branch `feature/openstudio-analytical-completeness`; no PR opened.

@@ -480,7 +480,7 @@ namespace SAM.Analytical.OpenStudio
                 }
 
                 List<global::OpenStudio.SubSurface> subSurfaces = keyValuePair.Value;
-                global::OpenStudio.Construction forwardConstruction = apertureConstruction.ToOpenStudio(true, context);
+                global::OpenStudio.Construction forwardConstruction = apertureConstruction.ToOpenStudio(true, context, aperture);
                 if (forwardConstruction == null)
                 {
                     continue;
@@ -490,7 +490,7 @@ namespace SAM.Analytical.OpenStudio
 
                 if (subSurfaces.Count >= 2)
                 {
-                    global::OpenStudio.Construction reverseConstruction = apertureConstruction.ToOpenStudio(false, context);
+                    global::OpenStudio.Construction reverseConstruction = apertureConstruction.ToOpenStudio(false, context, aperture);
                     if (reverseConstruction != null)
                     {
                         subSurfaces[1].setConstruction(reverseConstruction);

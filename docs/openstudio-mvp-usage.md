@@ -41,12 +41,31 @@ var runResult = OpenStudioSimulationRunner.Run(
 var conversionOptions = new SAM.Core.OpenStudio.OpenStudioConversionOptions
 {
     FirstDayOfWeek = DayOfWeek.Monday,   // weekly-profile calendar override; default: from the EPW
+    // Post-MVP (completeness programme): NorthAngleDegrees, RunPeriodBegin/End, TimestepsPerHour,
+    // SolarDistribution, ShadowCalculationFrequencyDays, CalendarYear, IsLeapYear (8784 schedules),
+    // DaylightSavingsTime (default off), DdyPath + ImportAllDesignDays + RunSizingPeriods,
+    // OutputVariableFrequency
 };
 var runOptions = new SAM.Core.OpenStudio.OpenStudioRunOptions
 {
     CliPath = @"C:\Program Files\ladybug_tools\openstudio",  // explicit CLI (exe or install dir)
     TimeoutSeconds = 3600,  // real timeout: the process tree (CLI + EnergyPlus) is killed on expiry
+    UseUniqueRunDirectory = true,  // default: GUID subdir per run — concurrent runs never collide
+    ExtractTimeSeries = false,     // true loads hourly temperature/operative/humidity series
 };
+
+// Asynchronous, cancellable execution (token and timeout share the process-tree kill path):
+var cts = new CancellationTokenSource();
+OpenStudioConversionResult result2 = await analyticalModel.ToOpenStudioAsync(
+    epwPath, outputDirectory, conversionOptions, runOptions, run: true,
+    progress: new Progress<SAM.Core.OpenStudio.OpenStudioSimulationProgress>(p => Console.WriteLine(p)),
+    cancellationToken: cts.Token);
+
+// Engine-neutral results (result.Results): annual kWh per zone, peak kW + hour-of-year,
+// unmet hours, gains breakdown, optional hourly series, runtime, warning/severe/fatal counts.
+// SAM mapping: result.Results.ToSAM(analyticalModel) → AnalyticalModelSimulationResult;
+// result.Results.ToSAM_SpaceSimulationResults(analyticalModel) → per-LoadType space results.
+using (result) { /* result owns the OpenStudio model — dispose when done */ }
 ```
 
 ## Grasshopper components (SAM → OpenStudio tab)
@@ -59,30 +78,39 @@ var runOptions = new SAM.Core.OpenStudio.OpenStudioRunOptions
 | `OpenStudioCreateDesignDaysBySQL`, `SAMAnalyticalAddResultsBySQL` (pre-existing) | Design days / result attachment from SQL |
 
 Components are thin wrappers — every conversion rule lives in the tested
-`SAM.Analytical.OpenStudio` API.
+`SAM.Analytical.OpenStudio` API. Both components execute **non-blocking** (background task,
+`cancel_` input, no stale outputs, no UI-thread freeze).
 
-## Documented MVP limitations
+## Post-MVP (analytical completeness) notes
 
-- Ideal Loads only (no detailed HVAC); EnergyPlus object defaults for the Ideal Loads system.
-- Heating-only / cooling-only conditioning is not supported — both setpoint profiles are
-  required (SAM-OS-HVAC-001 otherwise).
-- Latent equipment gains, humidification/dehumidification setpoints: not converted — reported
-  as a `SAM-OS-IC-001` **warning** per affected internal condition; the run remains valid.
+See [openstudio-analytical-completeness-status.md](openstudio-analytical-completeness-status.md)
+for the full programme. The following MVP limitations are **resolved**: single-mode
+(heating-only/cooling-only) thermostats, latent equipment gains, humidification/dehumidification
+(ZoneControlHumidistat + Ideal Loads humidity control), SpaceType outdoor air with ventilation
+schedules, native ACH infiltration, aperture frames (WindowPropertyFrameAndDivider with pane
+geometry), SimpleGlazingSystem fallback for layerless performance-parameter glazing, hole
+diagnostics with GUID + geometry summary, north rotation, ground temperatures (SAM → EPW →
+documented default), DDY design days with sizing enablement and environment-filtered annual
+results, leap-year schedules, custom run period/timestep/calendar, rich results extraction
+(peaks, unmet hours, gains, series) with SAM result mapping, and cancellable asynchronous runs
+in unique directories.
+
+## Remaining documented limitations
+
+- Ideal Loads only (no detailed HVAC); EnergyPlus object defaults for the Ideal Loads system
+  except humidity control (wired from SAM humidity profiles).
 - A zero heating or cooling value in `OpenStudioLoadSummary` is a **genuine result**, not a
   missing one: every reported zone has a full time series in the SQL output. A zone that failed
-  to report is omitted from the per-zone dictionaries (its count then differs from the
-  conditioned-zone count) — zero and missing are never conflated.
-- Aperture frame layers: not converted (pane layers only).
-- Face holes beyond apertures: external boundary only (warned).
-- DDY design days: not imported (annual Ideal Loads runs need no sizing periods).
-- Schedules are 365-day hourly `ScheduleFixedInterval`. Profiles longer than 8760 hours (leap
-  years) are truncated to the first 8760 hours with a warning (documented non-leap policy);
-  shorter flat profiles tile hour-for-hour at their own period exactly as SAM does natively.
-- Day-composed (weekly) profiles follow the LadybugTools `ScheduleRuleset` convention
-  (sub-profile 0 = Monday … 6 = Sunday) and are rotated onto the run calendar: the full-pipeline
-  overload derives the 1-Jan day of week from the EPW, or set
-  `OpenStudioConversionOptions.FirstDayOfWeek` explicitly. Weather-free conversions fall back to
-  Monday-first.
+  to report is omitted from the per-zone dictionaries — zero and missing are never conflated.
+- Glazing dividers/muntins: N/A (no SAM source data). Blinds/shades and opening properties:
+  unsupported with structured diagnostics (no geometry in SAM; HVAC domain).
+- Emitter characteristics, exhaust flows, ventilation-system equipment: deferred to the
+  detailed-HVAC programme (SAM-OS-HVAC-001/SAM-OS-IC-001 diagnostics).
+- STAT ground-temperature parsing: deferred (SAM WeatherData → EPW header → named 18 °C default).
+- Daylight saving: option-driven, default OFF (SAM carries no DST data).
+- SAM hourly design days → parametric `SizingPeriod:DesignDay` is an approximation; the DDY
+  import is the deterministic primary path.
+- Self-intersecting polygons are rejected with a diagnostic (never auto-repaired).
 - Glazing optical sides follow the EnergyPlus definition (Front = side opposite the zone):
   SAM `External*` → Front, `Internal*` → Back — deliberately different from the SAM_LadybugTools
   exporter (see `SAM_OPENSTUDIO_MATERIAL_MAPPING.md`).
@@ -91,8 +119,6 @@ Components are thin wrappers — every conversion rule lives in the tested
   with R = 1/h from SAM's `Heat Transfer Coefficient` [W/m²K] (missing/invalid conductance is a
   SAM-OS-MAT-001 error, never a zero-resistance layer); in an `ApertureConstruction` pane it
   remains `OS:WindowMaterial:Gas` (gas type + thickness).
-- Self-intersecting polygons are rejected with a diagnostic (never auto-repaired).
-- Building north/rotation not applied (site comes from the EPW).
-- SpaceType names embed a deterministic content hash (`SAM_InternalCondition_<Name>_<hash8>`):
-  internal conditions that share a name but differ in content intentionally get distinct
-  SpaceTypes.
+- SpaceType names embed a deterministic content hash over the condition AND the per-space
+  computed densities (`SAM_InternalCondition_<Name>_<hash8>`): shared conditions never impose
+  one space's densities on another.

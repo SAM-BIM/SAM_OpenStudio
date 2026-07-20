@@ -42,6 +42,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>OpenStudio CLI failed.</summary>
         public const string RunCliFailed = "SAM-OS-RUN-001";
 
+        /// <summary>Weather/design-day data issue or documented fallback (ground temperatures, design days).</summary>
+        public const string WeatherDataIssue = "SAM-OS-RUN-002";
+
         /// <summary>EnergyPlus severe error.</summary>
         public const string EnergyPlusSevereError = "SAM-OS-EPLUS-001";
     }

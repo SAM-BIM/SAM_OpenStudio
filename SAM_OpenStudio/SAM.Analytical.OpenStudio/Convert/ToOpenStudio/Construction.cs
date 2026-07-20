@@ -32,22 +32,109 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
-        /// Converts a SAM ApertureConstruction (pane layers only — frame layers are a documented
-        /// MVP gap) to an OpenStudio Construction in the requested direction. Same ordering and
-        /// caching rules as opaque constructions, cache keys suffixed ":Pane".
+        /// Converts a SAM ApertureConstruction to an OpenStudio Construction in the requested
+        /// direction. Pane layers produce a layered construction (same ordering and caching
+        /// rules as opaque constructions, cache keys suffixed ":Pane"). When the construction
+        /// has NO pane layers but carries optical/thermal performance parameters
+        /// (ThermalTransmittance / TotalSolarEnergyTransmittance / LightTransmittance —
+        /// aperture-level values taking precedence), a documented SimpleGlazingSystem fallback
+        /// is built instead (coverage manifest, Approximated); with neither layers nor complete
+        /// performance parameters the construction fails with SAM-OS-CON-001.
         /// </summary>
         /// <param name="apertureConstruction">SAM aperture construction.</param>
         /// <param name="forward">True for the outside-first (EnergyPlus order) variant.</param>
         /// <param name="openStudioConversionContext">Conversion context.</param>
+        /// <param name="aperture">The aperture being converted (aperture-level performance parameters take precedence); may be null.</param>
         /// <returns>OpenStudio construction, or null (diagnostic raised).</returns>
-        public static global::OpenStudio.Construction ToOpenStudio(this ApertureConstruction apertureConstruction, bool forward, OpenStudioConversionContext openStudioConversionContext)
+        public static global::OpenStudio.Construction ToOpenStudio(this ApertureConstruction apertureConstruction, bool forward, OpenStudioConversionContext openStudioConversionContext, Aperture aperture = null)
         {
             if (apertureConstruction == null || openStudioConversionContext == null)
             {
                 return null;
             }
 
-            return ToOpenStudio_Construction(apertureConstruction, apertureConstruction.PaneConstructionLayers, forward, "Pane", OpenStudioMaterialUsage.FenestrationConstruction, openStudioConversionContext);
+            List<ConstructionLayer> paneLayers = apertureConstruction.PaneConstructionLayers;
+            if (paneLayers == null || paneLayers.Count == 0)
+            {
+                return ToOpenStudio_SimpleGlazingFallback(apertureConstruction, aperture, forward, openStudioConversionContext);
+            }
+
+            return ToOpenStudio_Construction(apertureConstruction, paneLayers, forward, "Pane", OpenStudioMaterialUsage.FenestrationConstruction, openStudioConversionContext);
+        }
+
+        /// <summary>
+        /// Documented SimpleGlazingSystem fallback (coverage manifest, Approximated): an
+        /// aperture construction without pane layers but with U / SHGC / visible transmittance
+        /// becomes a WindowMaterial:SimpleGlazingSystem. Aperture-level parameters take
+        /// precedence over construction-level ones. Incomplete parameters are an explicit
+        /// error — no hidden defaults.
+        /// </summary>
+        private static global::OpenStudio.Construction ToOpenStudio_SimpleGlazingFallback(ApertureConstruction apertureConstruction, Aperture aperture, bool forward, OpenStudioConversionContext openStudioConversionContext)
+        {
+            string direction = forward ? "Forward" : "Reverse";
+            string cacheKey = string.Format("{0:N}:SimpleGlazing:{1}", apertureConstruction.Guid, direction);
+
+            global::OpenStudio.Construction cached;
+            if (openStudioConversionContext.ConstructionMap.TryGetValue(cacheKey, out cached))
+            {
+                return cached;
+            }
+
+            string name = Core.OpenStudio.Query.OpenStudioName("Construction", string.Format("{0}_SimpleGlazing_{1}", apertureConstruction.Name, direction), apertureConstruction.Guid);
+
+            double uFactor = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.ThermalTransmittance, ApertureConstructionParameter.ThermalTransmittance);
+            double solarHeatGainCoefficient = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.TotalSolarEnergyTransmittance, ApertureConstructionParameter.TotalSolarEnergyTransmittance);
+            double visibleTransmittance = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.LightTransmittance, ApertureConstructionParameter.LightTransmittance);
+
+            if (double.IsNaN(uFactor) || uFactor <= 0 || double.IsNaN(solarHeatGainCoefficient) || solarHeatGainCoefficient < 0 || solarHeatGainCoefficient > 1 || double.IsNaN(visibleTransmittance) || visibleTransmittance < 0 || visibleTransmittance > 1)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionMissingLayer, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Aperture construction has no pane layers and no complete performance parameters (U, SHGC, visible transmittance) for the SimpleGlazingSystem fallback", apertureConstruction, name);
+                return null;
+            }
+
+            global::OpenStudio.SimpleGlazing simpleGlazingSystem = new global::OpenStudio.SimpleGlazing(openStudioConversionContext.Target);
+            simpleGlazingSystem.setName(name + "_SimpleGlazing");
+            simpleGlazingSystem.setUFactor(uFactor);
+            simpleGlazingSystem.setSolarHeatGainCoefficient(solarHeatGainCoefficient);
+            simpleGlazingSystem.setVisibleTransmittance(visibleTransmittance);
+
+            global::OpenStudio.MaterialVector materialVector = new global::OpenStudio.MaterialVector();
+            materialVector.Add(simpleGlazingSystem);
+
+            global::OpenStudio.Construction result = new global::OpenStudio.Construction(openStudioConversionContext.Target);
+            result.setName(name);
+            if (!result.setLayers(materialVector))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionMissingLayer, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "OpenStudio rejected the SimpleGlazingSystem layer set", apertureConstruction, name);
+                result.remove();
+                return null;
+            }
+
+            openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionMissingLayer, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Aperture construction has no pane layers; SimpleGlazingSystem fallback built from the performance parameters (approximation)", apertureConstruction, name);
+
+            openStudioConversionContext.ConstructionMap[cacheKey] = result;
+            if (forward && !openStudioConversionContext.References.Contains(apertureConstruction.Guid))
+            {
+                openStudioConversionContext.RegisterModelObject(apertureConstruction, result);
+            }
+
+            return result;
+        }
+
+        private static double PerformanceParameter(Aperture aperture, ApertureConstruction apertureConstruction, ApertureParameter apertureParameter, ApertureConstructionParameter apertureConstructionParameter)
+        {
+            double value;
+            if (aperture != null && aperture.TryGetValue(apertureParameter, out value) && !double.IsNaN(value))
+            {
+                return value;
+            }
+
+            if (apertureConstruction.TryGetValue(apertureConstructionParameter, out value) && !double.IsNaN(value))
+            {
+                return value;
+            }
+
+            return double.NaN;
         }
 
         private static global::OpenStudio.Construction ToOpenStudio_Construction(SAMObject sAMObject, List<ConstructionLayer> constructionLayers, bool forward, string variant, OpenStudioMaterialUsage openStudioMaterialUsage, OpenStudioConversionContext openStudioConversionContext)
