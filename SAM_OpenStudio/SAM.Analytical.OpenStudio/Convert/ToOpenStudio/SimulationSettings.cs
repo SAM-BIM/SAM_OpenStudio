@@ -110,6 +110,17 @@ namespace SAM.Analytical.OpenStudio
             }
 
             string reportingFrequency = string.IsNullOrWhiteSpace(options.OutputVariableFrequency) ? "Hourly" : options.OutputVariableFrequency;
+
+            // Review P2-02 (mitigation): the result extractor converts per-row energies with a
+            // fixed 3600 s interval and assumes 8760/8784 hour indices — under a non-hourly
+            // frequency the peaks, peak hours and series are mis-scaled (annual sums stay
+            // correct: energy sums are frequency-independent). Frequency-aware extraction is
+            // follow-up work; until then the conversion says so out loud.
+            if (!string.Equals(reportingFrequency, "Hourly", System.StringComparison.OrdinalIgnoreCase))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ResultExtractionLimitation, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Output-variable frequency '{0}' is not Hourly: extracted peak loads, peak hours and hourly series assume hourly reporting and will be mis-scaled; annual sums remain correct", reportingFrequency));
+            }
+
             string[] variableNames = new string[]
             {
                 "Zone Ideal Loads Supply Air Total Heating Energy",

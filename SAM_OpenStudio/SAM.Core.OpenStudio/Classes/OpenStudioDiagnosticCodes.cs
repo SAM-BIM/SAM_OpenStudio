@@ -45,6 +45,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>Weather/design-day data issue or documented fallback (ground temperatures, design days).</summary>
         public const string WeatherDataIssue = "SAM-OS-RUN-002";
 
+        /// <summary>Result-extraction limitation (e.g. peaks/series assume hourly reporting under a non-hourly OutputVariableFrequency).</summary>
+        public const string ResultExtractionLimitation = "SAM-OS-RUN-003";
+
         /// <summary>EnergyPlus severe error.</summary>
         public const string EnergyPlusSevereError = "SAM-OS-EPLUS-001";
     }

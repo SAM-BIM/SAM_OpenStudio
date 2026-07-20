@@ -170,6 +170,24 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void NonHourlyOutputFrequency_WarnsThatPeaksAssumeHourly()
+        {
+            // Review P2-02 (mitigation): the extractor converts per-row energies with a fixed
+            // 3600 s interval — a non-hourly reporting frequency mis-scales peaks and series.
+            // Until frequency-aware extraction lands, the conversion must say so out loud.
+            Core.OpenStudio.OpenStudioConversionOptions options = new Core.OpenStudio.OpenStudioConversionOptions { OutputVariableFrequency = "Timestep" };
+
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), options, out OpenStudioConversionResult result);
+
+            Assert.That(result.IsValid, Is.True, "A non-hourly frequency stays usable (annual sums are unaffected)");
+            Assert.That(result.Diagnostics.Count(d => d.Code == "SAM-OS-RUN-003" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("Timestep")), Is.EqualTo(1), "One warning naming the non-hourly frequency");
+            Assert.That(result.Model.getOutputVariables().All(x => x.reportingFrequency() == "Timestep"), Is.True, "The requested frequency is still honoured on the Output:Variable requests");
+
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), new Core.OpenStudio.OpenStudioConversionOptions { OutputVariableFrequency = "Hourly" }, out OpenStudioConversionResult hourly);
+            Assert.That(hourly.Diagnostics.Any(d => d.Code == "SAM-OS-RUN-003"), Is.False, "The default hourly frequency stays silent");
+        }
+
+        [Test]
         public void CustomRunPeriod_And_Timestep_And_DaylightSaving()
         {
             Core.OpenStudio.OpenStudioConversionOptions options = new Core.OpenStudio.OpenStudioConversionOptions

@@ -30,7 +30,7 @@ Three P1 findings were confirmed by reproduction — all three in the newest (C2
 | P1-02 | P1 | The default DDY design-day filter (`"99.6%"`/`"0.4%"`) imports **no cooling design day** (ASHRAE DDYs name them `Ann Clg .4% …`) and wrongly imports humidification (`Hum_n`) and wind (`Htg Wind`) 99.6% days | **Fixed** (Stage L, §8) |
 | P1-03 | P1 | Leap-year runs: SQL hour-of-year uses a fixed non-leap reference year, so Feb 29 rows clamp onto Feb 28 (duplicate hour keys double-count the coincident peak) and all post-February peak hours shift by one day | **Fixed** (Stage L, §8) |
 | P2-01 | P2 | The C7 completeness test does not implement the stale-manifest-id detection the coverage document claims | **Fixed** (Stage L, §8) — the new check immediately caught 2 real stale rows |
-| P2-02 | P2 | `OutputVariableFrequency` ≠ Hourly silently mis-scales extracted peaks (fixed 3600 s interval assumption) | Confirmed — mitigation pending; full support is follow-up |
+| P2-02 | P2 | `OutputVariableFrequency` ≠ Hourly silently mis-scales extracted peaks (fixed 3600 s interval assumption) | **Mitigated** (Stage L, §8); frequency-aware extraction stays follow-up |
 | P2-03 | P2 | SAM `Location` site override writes non-finite/out-of-range coordinates into `OS:Site` unvalidated | Confirmed — fix pending |
 | P2-04 | P2 | Standalone `Run(path, …)` ignores `UseUniqueRunDirectory` for `.osw` inputs and has no collision lock on that path | **Open (follow-up)** — needs an OSW-rewrite design; not fixed here |
 | P2-05 | P2 | Grasshopper: removing the component or closing the document does not cancel a running simulation; the completion callback can target a disposed document | Confirmed — fix pending (needs human Rhino confirmation) |
@@ -232,7 +232,10 @@ None.
 - **Correction (mitigation, this branch):** a warning diagnostic at conversion when the
   requested frequency is not Hourly, stating peaks/series in the result set assume hourly
   reporting. Full frequency-aware extraction is follow-up work.
-- **Status:** **Confirmed — mitigation pending** (Stage L); frequency-aware peak extraction remains a follow-up.
+- **Status:** **Mitigated** (Stage L) — new `SAM-OS-RUN-003` (ResultExtractionLimitation)
+  warning at conversion naming the non-hourly frequency; the request itself is still honoured
+  and the default stays silent (both tested). Frequency-aware peak extraction remains a
+  follow-up. Commit in §8.
 
 ### P2-03 — SAM Location override unvalidated
 
