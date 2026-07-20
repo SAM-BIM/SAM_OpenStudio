@@ -120,6 +120,51 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void Manifest_HasNoStaleIds()
+        {
+            // Review P2-01, the reverse of Manifest_CoversEveryLiveEnumMember: every manifest id
+            // whose prefix belongs to a covered enum must name a LIVE member — a rename or
+            // removal in SAM must fail here instead of leaving a stale coverage row behind.
+            Assembly analyticalAssembly = typeof(InternalCondition).Assembly;
+            Assembly coreAssembly = typeof(Core.SAMObject).Assembly;
+
+            using (JsonDocument manifest = Manifest())
+            {
+                Dictionary<string, HashSet<string>> liveMembersByPrefix = new Dictionary<string, HashSet<string>>();
+                foreach (JsonElement coveredEnum in manifest.RootElement.GetProperty("coveredEnums").EnumerateArray())
+                {
+                    string typeName = coveredEnum.GetProperty("type").GetString();
+                    string prefix = coveredEnum.GetProperty("prefix").GetString();
+
+                    Type enumType = analyticalAssembly.GetType(typeName) ?? coreAssembly.GetType(typeName) ?? Type.GetType(typeName);
+                    Assert.That(enumType, Is.Not.Null, $"Covered enum type not found: {typeName}");
+
+                    liveMembersByPrefix[prefix] = new HashSet<string>(Enum.GetNames(enumType));
+                }
+
+                List<string> stale = new List<string>();
+                foreach (JsonElement entry in Entries(manifest))
+                {
+                    string id = entry.GetProperty("id").GetString();
+                    int separatorIndex = id.IndexOf('.');
+                    if (separatorIndex <= 0)
+                    {
+                        continue;
+                    }
+
+                    string prefix = id.Substring(0, separatorIndex);
+                    string memberName = id.Substring(separatorIndex + 1);
+                    if (liveMembersByPrefix.TryGetValue(prefix, out HashSet<string> liveMembers) && !liveMembers.Contains(memberName))
+                    {
+                        stale.Add(id);
+                    }
+                }
+
+                Assert.That(stale, Is.Empty, "Manifest ids naming removed or renamed enum members (stale coverage): " + string.Join(", ", stale));
+            }
+        }
+
+        [Test]
         public void Manifest_DeclaredDiagnosticCodes_Exist()
         {
             HashSet<string> declaredCodes = new HashSet<string>(

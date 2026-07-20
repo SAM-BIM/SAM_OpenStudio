@@ -317,8 +317,6 @@ diagnostic code and/or note recorded in the manifest.
 
 | SAM property | Unit | OpenStudio / EnergyPlus representation | Status | Milestone | Conversion / policy |
 |---|---|---|---|---|---|
-| `AnalyticalMaterialParameter.TypeName` | - | - | NA | C0 | Metadata. |
-| `AnalyticalMaterialParameter.Description` | - | - | NA | C0 | Metadata. |
 | `AnalyticalMaterialParameter.VapourDiffusionFactor` | - | - | Unsupported | C3 | SAM-OS-MAT-002 info; EnergyPlus moisture modelling (HAMT/EMPD) needs data SAM does not carry |
 
 ### Opaque material parameters (`SAM.Analytical.OpaqueMaterialParameter`)
@@ -491,9 +489,14 @@ that behavioural semantics â€” not just parameter slots â€” are classi
 
 ## Counts at C0 (before implementation)
 
-Generated from the manifest: 279 entries â€” Native 135, Derived 28, Approximated 21,
-Unsupported 20, Deferred 17, NA 58. Milestones: MVP 90, C1 3, C2 37, C3 23, C4 26, C5 36,
-classification-only (C0) 64.
+Generated from the manifest: 277 entries â€” Native 135, Derived 28, Approximated 21,
+Unsupported 20, Deferred 17, NA 56. Milestones: MVP 90, C1 3, C2 37, C3 23, C4 26, C5 36,
+classification-only (C0) 62.
+
+Stage L review correction (P2-01): the C0 audit transcribed two commented-out members of
+`SAM.Analytical.MaterialParameter` (`TypeName`, `Description`); those stale rows were removed
+from the manifest and this document, and the stale-id reverse check in `CompletenessTests`
+now fails on any manifest id that stops naming a live enum member.
 
 These counts change as milestones land; the final counts are reported in
 `docs/openstudio-analytical-completeness-status.md`.

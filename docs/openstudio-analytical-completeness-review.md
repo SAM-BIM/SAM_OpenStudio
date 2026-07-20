@@ -29,7 +29,7 @@ Three P1 findings were confirmed by reproduction — all three in the newest (C2
 | P1-01 | P1 | Eighteen coverage-manifest rows declare structured diagnostics that no converter ever emits (false completeness: view coefficients, lighting control function, internal-shadow flags, panel feature shades, vapour diffusion factor, opaque internal-optics divergence, emitter and exhaust parameters) | **Fixed** (Stage L, §8) |
 | P1-02 | P1 | The default DDY design-day filter (`"99.6%"`/`"0.4%"`) imports **no cooling design day** (ASHRAE DDYs name them `Ann Clg .4% …`) and wrongly imports humidification (`Hum_n`) and wind (`Htg Wind`) 99.6% days | **Fixed** (Stage L, §8) |
 | P1-03 | P1 | Leap-year runs: SQL hour-of-year uses a fixed non-leap reference year, so Feb 29 rows clamp onto Feb 28 (duplicate hour keys double-count the coincident peak) and all post-February peak hours shift by one day | **Fixed** (Stage L, §8) |
-| P2-01 | P2 | The C7 completeness test does not implement the stale-manifest-id detection the coverage document claims | Confirmed — fix pending |
+| P2-01 | P2 | The C7 completeness test does not implement the stale-manifest-id detection the coverage document claims | **Fixed** (Stage L, §8) — the new check immediately caught 2 real stale rows |
 | P2-02 | P2 | `OutputVariableFrequency` ≠ Hourly silently mis-scales extracted peaks (fixed 3600 s interval assumption) | Confirmed — mitigation pending; full support is follow-up |
 | P2-03 | P2 | SAM `Location` site override writes non-finite/out-of-range coordinates into `OS:Site` unvalidated | Confirmed — fix pending |
 | P2-04 | P2 | Standalone `Run(path, …)` ignores `UseUniqueRunDirectory` for `.osw` inputs and has no collision lock on that path | **Open (follow-up)** — needs an OSW-rewrite design; not fixed here |
@@ -52,7 +52,7 @@ P1-01 breaks the programme's own "nothing silently dropped" contract.
 | OpenStudio SDK | NuGet 3.10.0 | confirmed in all three library csproj files |
 | OpenStudio CLI | 3.10.0+86d7e215a1 | `openstudio openstudio_version` at `C:\Program Files\ladybug_tools\openstudio\bin\openstudio.exe` |
 | EnergyPlus | — | **25.1.0-1c11a3d85f** (bundled) |
-| Coverage manifest | 279 entries; N135/D28/A21/U20/Def17/NA58 | **Reproduced exactly** (script count); 0 duplicate ids; MD ↔ JSON ids identical (279 ↔ 279, no drift in either direction) |
+| Coverage manifest | 279 entries; N135/D28/A21/U20/Def17/NA58 | **Reproduced exactly** (script count); 0 duplicate ids; MD ↔ JSON ids identical (279 ↔ 279, no drift in either direction). *Stage L correction: 2 of the 279 turned out to be stale (P2-01) — final manifest 277 entries, NA 56* |
 | Sibling repositories | untouched | `git status` clean in SAM, SAM_LadybugTools, SAM_UI, SAM_SQLite, SAM_Tas |
 | Committed artifacts | none | diff contains only source/docs/tests; no binaries, run outputs or machine paths |
 
@@ -211,7 +211,15 @@ None.
 - **Files:** `tests/.../C7/CompletenessTests.cs:89-120`; `docs/SAM_OPENSTUDIO_ANALYTICAL_COVERAGE.md` (§Enum completeness enforcement).
 - **Correction:** reverse check — every manifest id whose prefix matches a covered enum must
   name a live member.
-- **Status:** **Confirmed — fix pending** (Stage L).
+- **Status:** **Fixed** (Stage L) — `Manifest_HasNoStaleIds` added. On its first run against the
+  shipped manifest it caught **two real stale rows**: `AnalyticalMaterialParameter.TypeName`
+  and `.Description` name members that are commented out in the live
+  `SAM.Analytical.MaterialParameter` enum (the C0 audit transcribed them; this review's own
+  Stage D "no stale entries today" verification also missed them — corrected in §7). Both rows
+  removed from the JSON manifest and the Markdown document (byte-level edit preserving the
+  pre-P2-06 encoding); coverage totals are now **277 entries, NA 56, C0 62** (documents
+  updated). Failure mode reproduced with an injected ghost id before the manifest correction.
+  Commit in §8.
 
 ### P2-02 — Non-hourly OutputVariableFrequency mis-scales extracted peaks
 
@@ -289,12 +297,14 @@ None.
 ## 7. Areas reviewed with no defect found
 
 - **Coverage system (Stage D):** 279 entries, zero duplicates; status totals match the claim
-  exactly; MD ↔ JSON in perfect lockstep (279 ↔ 279, no drift); every id maps to a live SAM
-  enum member (verified mechanically — no stale entries today); every Unsupported entry
+  exactly; MD ↔ JSON in perfect lockstep (279 ↔ 279, no drift); every Unsupported entry
   declares a diagnostic; enum reflection is deterministic (`Enum.GetNames` + set membership);
   new SAM enum members cannot vanish silently (live→manifest direction enforced; the missing
   reverse direction is P2-01). Milestone totals (MVP 90, C1 3, C2 37, C3 23, C4 26, C5 36,
-  C0 64) reproduce.
+  C0 64) reproduce. *Stage D correction:* this review originally recorded "every id maps to a
+  live SAM enum member — no stale entries today"; the P2-01 reverse check proved that wrong —
+  `AnalyticalMaterialParameter.TypeName`/`.Description` named commented-out members. Corrected
+  totals after Stage L: **277 entries, NA 56, C0 62**.
 - **C1 adapter hardening (Stage E):** ordinal case-insensitive `IsConditioned` (tr-TR tested);
   schedule cache keyed (Guid, ProfileType); SpaceType key = name + content hash (Guids
   stripped) + per-space evaluated densities — first-space imposition impossible (tested);

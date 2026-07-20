@@ -223,8 +223,6 @@
     { "id": "Material.Density", "unit": "kg/m3", "os": "OS:Material Density", "status": "Native", "milestone": "MVP" },
     { "id": "Material.SpecificHeatCapacity", "unit": "J/kgK", "os": "OS:Material Specific Heat", "status": "Native", "milestone": "MVP" },
     { "id": "CoreMaterialParameter.DefaultThickness", "unit": "m", "os": "layer thickness fallback", "status": "Native", "milestone": "MVP", "diagnostic": "SAM-OS-CON-001 warning when used" },
-    { "id": "AnalyticalMaterialParameter.TypeName", "unit": null, "os": null, "status": "NA", "milestone": "C0", "notes": "Metadata." },
-    { "id": "AnalyticalMaterialParameter.Description", "unit": null, "os": null, "status": "NA", "milestone": "C0", "notes": "Metadata." },
     { "id": "AnalyticalMaterialParameter.VapourDiffusionFactor", "unit": null, "os": null, "status": "Unsupported", "milestone": "C3", "diagnostic": "SAM-OS-MAT-002 info; EnergyPlus moisture modelling (HAMT/EMPD) needs data SAM does not carry" },
 
     { "id": "OpaqueMaterialParameter.ExternalEmissivity", "unit": "0-1", "os": "OS:Material Thermal Absorptance", "status": "Native", "milestone": "MVP" },

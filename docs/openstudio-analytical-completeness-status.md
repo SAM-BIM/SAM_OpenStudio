@@ -21,13 +21,16 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 
 - `docs/SAM_OPENSTUDIO_ANALYTICAL_COVERAGE.md` — full audit of the SAM analytical data surface;
   tables generated from the manifest.
-- `tests/resources/openstudio-analytical-coverage.json` — machine-readable manifest (279 entries)
+- `tests/resources/openstudio-analytical-coverage.json` — machine-readable manifest (277 entries
+  after the Stage L review removed two stale `AnalyticalMaterialParameter` rows, review P2-01)
   consumed by the C7 completeness tests (tests never parse the Markdown).
 - Baseline verified on this machine before work started: x64 Debug build clean,
   **82/82 tests passing** (including the EnergyPlus simulation tests), OpenStudio CLI
   3.10.0+86d7e215a1, OpenStudio NuGet 3.10.0 restored.
 - Classification counts at C0: Native 135, Derived 28, Approximated 21, Unsupported 20,
-  Deferred 17, NA 58 across 279 entries (MVP already covers 90).
+  Deferred 17, NA 58 across 279 entries (MVP already covers 90). The Stage L review (P2-01)
+  found the C0 audit had transcribed two commented-out `SAM.Analytical.MaterialParameter`
+  members (`TypeName`, `Description`); the corrected manifest carries 277 entries, NA 56.
 - Agreed reclassifications (binding): dividers → NA (no SAM source data); blinds/shades and
   opening properties → Unsupported with diagnostics; STAT parsing → deferred; SAM hourly design
   days → Approximated parametric fit (DDY import is the deterministic primary path); subhourly
@@ -245,10 +248,11 @@ remains the simulation system. Branch: `feature/openstudio-analytical-completene
 ## Final summary
 
 - Tests: 82 (MVP) → **146**; every milestone gated by x64 Debug build + full suite + E+ runs.
-- Coverage (279 manifest entries): **Native 135, Derived 28, Approximated 21, Unsupported 20,
-  Deferred 17, NA 58**. Translated-or-diagnosed: every entry with energy semantics has a
-  Native/Derived/Approximated mapping or a declared Unsupported diagnostic; nothing is
-  silently dropped (enforced by the C7 completeness tests against the manifest).
+- Coverage (277 manifest entries after review P2-01 removed two stale rows): **Native 135,
+  Derived 28, Approximated 21, Unsupported 20, Deferred 17, NA 56**. Translated-or-diagnosed:
+  every entry with energy semantics has a Native/Derived/Approximated mapping or a declared
+  Unsupported diagnostic; nothing is silently dropped (enforced by the C7 completeness tests
+  against the manifest, in both directions since the Stage L review).
 - Known limitations: dividers/muntins N/A (no SAM data); blinds/shades and opening properties
   unsupported (no geometry; HVAC domain); SAM hourly design days approximated (DDY import is
   the deterministic path); emitter characteristics and exhaust flows deferred to the HVAC
