@@ -403,9 +403,12 @@ namespace SAM.Analytical.OpenStudio
                     return null;
                 }
 
-                return System.IO.Path.IsPathRooted(value)
+                // Always normalised: the CLI writes forward-slashed paths even on Windows, and a
+                // caller comparing the returned path against its own would otherwise fail on
+                // separators alone.
+                return System.IO.Path.GetFullPath(System.IO.Path.IsPathRooted(value)
                     ? value
-                    : System.IO.Path.GetFullPath(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(outOswPath), value));
+                    : System.IO.Path.Combine(System.IO.Path.GetDirectoryName(outOswPath), value));
             }
             catch (Exception)
             {

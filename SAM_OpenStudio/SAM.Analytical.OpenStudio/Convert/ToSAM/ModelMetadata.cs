@@ -76,9 +76,14 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
-        /// Site → SAM <see cref="Core.Location"/>. Returns null when the model carries no Site or
-        /// its coordinates are the OpenStudio defaults with no name — an unset site is not a
-        /// location at (0, 0).
+        /// Site → SAM <see cref="Core.Location"/>. Returns null when the model carries no Site, or
+        /// when its latitude, longitude and elevation are all exactly zero.
+        /// <para>
+        /// Every OpenStudio model has a Site object with an auto-assigned name, so the name says
+        /// nothing about whether the site was ever set; the coordinates do. All three exactly
+        /// zero is the OpenStudio default, and importing it would place the building in the Gulf
+        /// of Guinea — a fabricated location is worse than none.
+        /// </para>
         /// </summary>
         private static Core.Location ToSAM_Location(OpenStudioImportContext openStudioImportContext)
         {
@@ -102,9 +107,9 @@ namespace SAM.Analytical.OpenStudio
             double longitude = site.longitude();
             double elevation = site.elevation();
 
-            if (string.IsNullOrWhiteSpace(name) && latitude == 0 && longitude == 0 && elevation == 0)
+            if (latitude == 0 && longitude == 0 && elevation == 0)
             {
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.WeatherLimitation, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "The model's Site carries no name and default (0, 0, 0) coordinates; no SAM Location was created rather than placing the model at the equator", OpenStudioImportContext.OpenStudioObjectLabel(site));
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.WeatherLimitation, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "The model's Site still carries the default (0, 0, 0) coordinates, so no site was ever set; no SAM Location was created rather than placing the model at the equator", OpenStudioImportContext.OpenStudioObjectLabel(site));
                 return null;
             }
 

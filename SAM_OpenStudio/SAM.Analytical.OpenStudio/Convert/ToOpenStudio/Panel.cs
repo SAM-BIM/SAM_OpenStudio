@@ -155,6 +155,14 @@ namespace SAM.Analytical.OpenStudio
                 result.setSurfaceType(surfaceType);
             }
 
+            // Identity on EVERY side, not just the primary one. RegisterModelObject is
+            // deliberately once-per-Guid — it is the traceability map — but an internal panel
+            // produces two surfaces, and a reverse import that happens to meet the unstamped side
+            // first would issue that panel a fresh Guid. Which side it meets depends on
+            // OpenStudio's handle ordering, so stamping only the primary made round-trip identity
+            // intermittent.
+            Core.OpenStudio.Modify.SetSAMIdentity(result, panel);
+
             if (!openStudioConversionContext.PrimarySurfaceMap.ContainsKey(panel.Guid))
             {
                 openStudioConversionContext.PrimarySurfaceMap[panel.Guid] = result;

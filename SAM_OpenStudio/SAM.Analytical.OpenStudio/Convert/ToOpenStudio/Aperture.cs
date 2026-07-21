@@ -129,6 +129,10 @@ namespace SAM.Analytical.OpenStudio
                 result.setWindowPropertyFrameAndDivider(frameAndDivider);
             }
 
+            // Identity on every side: an aperture in an internal panel becomes two subsurfaces,
+            // and the reverse import must restore the same SAM Guid whichever it meets first.
+            Core.OpenStudio.Modify.SetSAMIdentity(result, aperture);
+
             if (!openStudioConversionContext.References.Contains(aperture.Guid))
             {
                 openStudioConversionContext.RegisterModelObject(aperture, result);
