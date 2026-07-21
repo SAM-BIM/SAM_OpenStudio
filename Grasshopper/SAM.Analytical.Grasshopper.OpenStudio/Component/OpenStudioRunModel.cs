@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace SAM.Analytical.Grasshopper.OpenStudio
 {
@@ -20,7 +21,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.1.0";
+        public override string LatestComponentVersion => "1.2.0";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -39,6 +40,26 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
               "Runs an existing OpenStudio model (OSM or OSW) through the OpenStudio CLI (EnergyPlus) — asynchronous, cancellable",
               "SAM", "OpenStudio")
         {
+        }
+
+        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
+        {
+            base.AppendAdditionalMenuItems(menu);
+
+            Menu_AppendSeparator(menu);
+            Menu_AppendItem(menu, "Go to Directory", Menu_GoToDirectory, Properties.Resources.SAM_Small, true, false);
+        }
+
+        void Menu_GoToDirectory(object sender, EventArgs e)
+        {
+            string outputDirectory = MenuHelper.GetVolatileString(this, "outputDirectory_");
+            if (!string.IsNullOrWhiteSpace(outputDirectory))
+            {
+                MenuHelper.GoToDirectory(outputDirectory, true);
+                return;
+            }
+
+            MenuHelper.GoToFileDirectory(MenuHelper.GetVolatileString(this, "_path"));
         }
 
         /// <summary>
@@ -71,11 +92,11 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
             get
             {
                 List<GH_SAMParam> result = new List<GH_SAMParam>();
-                result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_Boolean() { Name = "successful", NickName = "successful", Description = "True when the CLI exited 0 with no fatal errors and results exist", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_String() { Name = "sqlPath", NickName = "sqlPath", Description = "EnergyPlus SQLite results path", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_Number() { Name = "heating", NickName = "heating", Description = "Annual Ideal Loads heating energy [kWh]", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_Number() { Name = "cooling", NickName = "cooling", Description = "Annual Ideal Loads cooling energy [kWh]", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_String() { Name = "diagnostics", NickName = "diagnostics", Description = "Run diagnostics", Access = GH_ParamAccess.list }, ParamVisibility.Binding));
+                result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_Boolean() { Name = "successful", NickName = "successful", Description = "True when the CLI exited 0 with no fatal errors and results exist", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 return result.ToArray();
             }
         }

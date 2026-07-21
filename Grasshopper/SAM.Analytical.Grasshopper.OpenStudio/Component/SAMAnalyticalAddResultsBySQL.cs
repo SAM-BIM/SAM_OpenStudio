@@ -5,6 +5,7 @@ using Grasshopper.Kernel;
 using SAM.Core.Grasshopper;
 using System;
 using System.Collections.Generic;
+using System.Windows.Forms;
 
 namespace SAM.Analytical.Grasshopper.OpenStudio
 {
@@ -18,7 +19,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.0.5";
+        public override string LatestComponentVersion => "1.0.6";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -33,6 +34,19 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
               "Adds Results From OpenStudio Sql Database",
               "SAM", "OpenStudio")
         {
+        }
+
+        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
+        {
+            base.AppendAdditionalMenuItems(menu);
+
+            Menu_AppendSeparator(menu);
+            Menu_AppendItem(menu, "Go to Directory", Menu_GoToDirectory, Properties.Resources.SAM_Small, true, false);
+        }
+
+        void Menu_GoToDirectory(object sender, EventArgs e)
+        {
+            MenuHelper.GoToFileDirectory(MenuHelper.GetVolatileString(this, "_sQLPath"));
         }
 
         /// <summary>
@@ -65,7 +79,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 result.Add(new GH_SAMParam(new GooAnalyticalObjectParam() { Name = "analytical", NickName = "analytical", Description = "SAM Analytical Object such as AdjacencyCluster or AnalyticalModel", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 result.Add(new GH_SAMParam(new GooResultParam() { Name = "spaceSimulationResults", NickName = "spaceSimulationResults", Description = "SAM Analytical SpaceSimulationResults", Access = GH_ParamAccess.list }, ParamVisibility.Binding));
                 result.Add(new GH_SAMParam(new GooResultParam() { Name = "panelSimulationResults", NickName = "panelSimulationResults", Description = "SAM Analytical panel simulation results (the SAM class is SurfaceSimulationResult; the output name is kept for compatibility)", Access = GH_ParamAccess.list }, ParamVisibility.Binding));
-                result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_Boolean() { Name = "Successful", NickName = "Successful", Description = "Correctly saved?", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
+                result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_Boolean() { Name = "successful", NickName = "successful", Description = "Correctly saved?", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
                 return result.ToArray();
             }
         }
@@ -76,7 +90,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <param name="dataAccess">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess dataAccess)
         {
-            int index = Params.IndexOfOutputParam("Successful");
+            int index = Params.IndexOfOutputParam("successful");
             if (index != -1)
             {
                 dataAccess.SetData(index, false);
@@ -160,7 +174,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 dataAccess.SetDataList(index, results?.FindAll(x => x is SurfaceSimulationResult).ConvertAll(x => new GooResult(x)));
             }
 
-            index = Params.IndexOfOutputParam("Successful");
+            index = Params.IndexOfOutputParam("successful");
             if (index != -1)
             {
                 dataAccess.SetData(index, results != null && results.Count != 0);
