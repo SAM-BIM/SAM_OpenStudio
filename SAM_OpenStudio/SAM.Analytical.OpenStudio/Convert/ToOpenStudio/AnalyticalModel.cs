@@ -466,6 +466,7 @@ namespace SAM.Analytical.OpenStudio
                     {
                         constructionAirBoundary = new global::OpenStudio.ConstructionAirBoundary(context.Target);
                         constructionAirBoundary.setName("SAM_Construction_AirBoundary");
+                        ApplyAirBoundaryAirExchange(constructionAirBoundary, context);
                     }
 
                     foreach (global::OpenStudio.Surface surface in surfaces)
@@ -603,6 +604,47 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return context;
+        }
+
+        /// <summary>
+        /// Applies the opt-in inter-zone air exchange to the shared air-boundary construction
+        /// (coverage manifest: PanelType.Air — Approximated when enabled).
+        /// <para>
+        /// An air boundary always groups its two zones for solar, daylighting and radiant
+        /// exchange; what the EnergyPlus <c>Air Exchange Method</c> field controls is whether AIR
+        /// moves between them. The default <c>None</c> leaves the zones convectively uncoupled,
+        /// which under-models a real opening — but SAM carries no per-panel airflow data, so a
+        /// rate can only come from the caller
+        /// (<see cref="Core.OpenStudio.OpenStudioConversionOptions.AirBoundaryAirChangesPerHour"/>)
+        /// and is never inferred. Whichever branch applies is named in a diagnostic: an assumed
+        /// mixing rate and a deliberately uncoupled boundary are both modelling decisions the
+        /// reader must see.
+        /// </para>
+        /// </summary>
+        private static void ApplyAirBoundaryAirExchange(global::OpenStudio.ConstructionAirBoundary constructionAirBoundary, OpenStudioConversionContext openStudioConversionContext)
+        {
+            double airChangesPerHour = openStudioConversionContext.Options.AirBoundaryAirChangesPerHour;
+
+            if (double.IsNaN(airChangesPerHour))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Air panel converted with Air Exchange Method 'None': the zones share one radiant/solar enclosure but exchange no air. SAM carries no airflow data for the opening — set OpenStudioConversionOptions.AirBoundaryAirChangesPerHour to model mixing");
+                return;
+            }
+
+            if (double.IsInfinity(airChangesPerHour) || airChangesPerHour < 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "AirBoundaryAirChangesPerHour {0} is not a valid rate (finite, ≥ 0); Air Exchange Method 'None' kept", airChangesPerHour));
+                return;
+            }
+
+            if (!constructionAirBoundary.setAirExchangeMethod("SimpleMixing"))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "OpenStudio rejected the SimpleMixing air exchange method; Air Exchange Method 'None' kept");
+                return;
+            }
+
+            constructionAirBoundary.setSimpleMixingAirChangesPerHour(airChangesPerHour);
+            openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format(System.Globalization.CultureInfo.InvariantCulture, "Air panel converted with Air Exchange Method 'SimpleMixing' at {0} ACH (caller-supplied assumption — SAM carries no airflow data for the opening; EnergyPlus applies the rate to the smaller zone's volume, on an always-on schedule)", airChangesPerHour));
         }
     }
 }

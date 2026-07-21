@@ -180,6 +180,18 @@ in unique directories.
   to report is omitted from the per-zone dictionaries — zero and missing are never conflated.
 - Glazing dividers/muntins: N/A (no SAM source data). Blinds/shades and opening properties:
   unsupported with structured diagnostics (no geometry in SAM; HVAC domain).
+- Inter-zone air mixing across `PanelType.Air` partitions is **opt-in**. An
+  `OS:Construction:AirBoundary` always groups its two zones for solar, daylighting and radiant
+  exchange, but EnergyPlus defaults `Air Exchange Method` to `None`, so no air moves and the
+  zone air temperatures are coupled only by radiation. SAM carries no per-panel airflow data
+  (`PanelParameter` has no airflow member), so a rate is never inferred: set
+  `OpenStudioConversionOptions.AirBoundaryAirChangesPerHour` to switch the boundary to
+  `SimpleMixing` at that rate (EnergyPlus applies it to the **smaller** zone's volume, on an
+  always-on schedule; its own documented default for the field is 0.5). Whichever branch
+  applies is named in a diagnostic. A negative or infinite value is rejected with a warning and
+  `None` is kept — never clamped. Note that with Ideal Loads holding both zones at the same
+  setpoints, mixing changes very little; it matters when setpoints differ or a zone is
+  unconditioned.
 - Emitter characteristics, exhaust flows, ventilation-system equipment: deferred to the
   detailed-HVAC programme (SAM-OS-HVAC-001/SAM-OS-IC-001 diagnostics).
 - STAT ground-temperature parsing: deferred (SAM WeatherData → EPW header → named 18 °C default).

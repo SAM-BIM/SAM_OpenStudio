@@ -133,5 +133,25 @@ namespace SAM.Core.OpenStudio
 
         /// <summary>Reporting frequency for the requested output variables. Default "Hourly".</summary>
         public string OutputVariableFrequency { get; set; } = "Hourly";
+
+        /// <summary>
+        /// Inter-zone air exchange across SAM Air panels (OS:Construction:AirBoundary), in air
+        /// changes per hour of the smaller of the two zones — the EnergyPlus basis.
+        /// <para>
+        /// Default NaN keeps the EnergyPlus default <c>Air Exchange Method = None</c>: the two
+        /// zones are still grouped for solar, daylighting and radiant exchange (that is inherent
+        /// to an air boundary), but no air moves between them, so their air temperatures are
+        /// coupled only by radiation. A finite positive value switches the method to
+        /// <c>SimpleMixing</c> at that rate.
+        /// </para>
+        /// <para>
+        /// This is deliberately opt-in and never inferred: SAM carries no per-panel airflow data
+        /// (PanelParameter has no airflow member), so any rate is an assumption by the caller and
+        /// is named in a diagnostic when applied. EnergyPlus's own documented default for the
+        /// field is 0.5 ACH. Ignored when an AirflowNetwork simulation is active (EnergyPlus
+        /// rule), which is outside the Ideal Loads scope of this converter.
+        /// </para>
+        /// </summary>
+        public double AirBoundaryAirChangesPerHour { get; set; } = double.NaN;
     }
 }
