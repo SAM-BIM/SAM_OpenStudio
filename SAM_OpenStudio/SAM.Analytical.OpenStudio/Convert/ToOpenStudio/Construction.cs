@@ -76,13 +76,21 @@ namespace SAM.Analytical.OpenStudio
         /// Documented SimpleGlazingSystem fallback (coverage manifest, Approximated): an
         /// aperture construction without pane layers but with U / SHGC / visible transmittance
         /// becomes a WindowMaterial:SimpleGlazingSystem. Aperture-level parameters take
-        /// precedence over construction-level ones. Incomplete parameters are an explicit
-        /// error — no hidden defaults.
+        /// precedence over construction-level ones, so the RESOLVED performance — not the
+        /// construction Guid alone — is the identity of the glazing: two apertures sharing one
+        /// construction but overriding it differently each get their own SimpleGlazing and their
+        /// own deterministic name, while two carrying identical values still share one.
+        /// Incomplete parameters are an explicit error — no hidden defaults.
         /// </summary>
         private static global::OpenStudio.Construction ToOpenStudio_SimpleGlazingFallback(ApertureConstruction apertureConstruction, Aperture aperture, bool forward, OpenStudioConversionContext openStudioConversionContext)
         {
             string direction = forward ? "Forward" : "Reverse";
-            string cacheKey = string.Format("{0:N}:SimpleGlazing:{1}", apertureConstruction.Guid, direction);
+
+            double uFactor = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.ThermalTransmittance, ApertureConstructionParameter.ThermalTransmittance);
+            double solarHeatGainCoefficient = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.TotalSolarEnergyTransmittance, ApertureConstructionParameter.TotalSolarEnergyTransmittance);
+            double visibleTransmittance = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.LightTransmittance, ApertureConstructionParameter.LightTransmittance);
+
+            string cacheKey = string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:N}:SimpleGlazing:{1}:{2:R}:{3:R}:{4:R}", apertureConstruction.Guid, direction, uFactor, solarHeatGainCoefficient, visibleTransmittance);
 
             global::OpenStudio.Construction cached;
             if (openStudioConversionContext.ConstructionMap.TryGetValue(cacheKey, out cached))
@@ -90,11 +98,14 @@ namespace SAM.Analytical.OpenStudio
                 return cached;
             }
 
-            string name = Core.OpenStudio.Query.OpenStudioName("Construction", string.Format("{0}_SimpleGlazing_{1}", apertureConstruction.Name, direction), apertureConstruction.Guid);
+            // Aperture-level overrides carry the performance into the name too, so the extra
+            // constructions stay distinguishable in the OSM instead of being auto-renamed by
+            // OpenStudio (which would break the trailing-Guid resolution convention).
+            string variant = IsApertureSpecificPerformance(apertureConstruction, uFactor, solarHeatGainCoefficient, visibleTransmittance)
+                ? string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}_SimpleGlazing_U{1:R}_G{2:R}_T{3:R}_{4}", apertureConstruction.Name, uFactor, solarHeatGainCoefficient, visibleTransmittance, direction)
+                : string.Format("{0}_SimpleGlazing_{1}", apertureConstruction.Name, direction);
 
-            double uFactor = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.ThermalTransmittance, ApertureConstructionParameter.ThermalTransmittance);
-            double solarHeatGainCoefficient = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.TotalSolarEnergyTransmittance, ApertureConstructionParameter.TotalSolarEnergyTransmittance);
-            double visibleTransmittance = PerformanceParameter(aperture, apertureConstruction, ApertureParameter.LightTransmittance, ApertureConstructionParameter.LightTransmittance);
+            string name = Core.OpenStudio.Query.OpenStudioName("Construction", variant, apertureConstruction.Guid);
 
             if (double.IsNaN(uFactor) || uFactor <= 0 || double.IsNaN(solarHeatGainCoefficient) || solarHeatGainCoefficient < 0 || solarHeatGainCoefficient > 1 || double.IsNaN(visibleTransmittance) || visibleTransmittance < 0 || visibleTransmittance > 1)
             {
@@ -129,6 +140,19 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// True when the resolved performance differs from what the shared ApertureConstruction
+        /// alone would give — that is, when an aperture-level override actually changed a value.
+        /// Compared with Equals so that NaN (an incomplete set, reported as an error further
+        /// down) does not read as a difference.
+        /// </summary>
+        private static bool IsApertureSpecificPerformance(ApertureConstruction apertureConstruction, double uFactor, double solarHeatGainCoefficient, double visibleTransmittance)
+        {
+            return !uFactor.Equals(PerformanceParameter(null, apertureConstruction, ApertureParameter.ThermalTransmittance, ApertureConstructionParameter.ThermalTransmittance))
+                || !solarHeatGainCoefficient.Equals(PerformanceParameter(null, apertureConstruction, ApertureParameter.TotalSolarEnergyTransmittance, ApertureConstructionParameter.TotalSolarEnergyTransmittance))
+                || !visibleTransmittance.Equals(PerformanceParameter(null, apertureConstruction, ApertureParameter.LightTransmittance, ApertureConstructionParameter.LightTransmittance));
         }
 
         private static double PerformanceParameter(Aperture aperture, ApertureConstruction apertureConstruction, ApertureParameter apertureParameter, ApertureConstructionParameter apertureConstructionParameter)

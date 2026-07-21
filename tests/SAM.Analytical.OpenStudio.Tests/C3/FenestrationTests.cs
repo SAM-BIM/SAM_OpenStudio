@@ -191,6 +191,65 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void SimpleGlazingFallback_ApertureOverrides_AreNotCacheCollided()
+        {
+            // Codex review (PR #8, P2): the fallback takes U/SHGC/visible transmittance from the
+            // Aperture before the shared ApertureConstruction, but the cache key held only the
+            // construction Guid and direction. Two apertures sharing one construction with
+            // different aperture-level overrides therefore collided: the second window silently
+            // reused the first window's SimpleGlazing and simulated the wrong performance.
+            ApertureConstruction apertureConstruction = new ApertureConstruction(new System.Guid("22222222-7777-7777-7777-777777777777"), "Shared Performance Window", ApertureType.Window);
+            apertureConstruction.SetValue(ApertureConstructionParameter.ThermalTransmittance, 2.8);
+            apertureConstruction.SetValue(ApertureConstructionParameter.TotalSolarEnergyTransmittance, 0.6);
+            apertureConstruction.SetValue(ApertureConstructionParameter.LightTransmittance, 0.7);
+
+            AnalyticalModel analyticalModel = AnalyticalModelFixtures.SingleBox(apertureConstructionOverride: apertureConstruction);
+            Panel glazedPanel = analyticalModel.AdjacencyCluster.GetPanels().Single(x => x.HasApertures);
+            glazedPanel.RemoveApertures();
+            glazedPanel.AddAperture(OverriddenAperture(apertureConstruction, 1.0, 3.0, 1.2, 0.3, 0.4));
+            glazedPanel.AddAperture(OverriddenAperture(apertureConstruction, 3.5, 4.5, 3.4, 0.5, 0.6));
+
+            OpenStudioConversionResult result = analyticalModel.ToOpenStudio();
+
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Model.getSubSurfaces().Count, Is.EqualTo(2), "Both windows converted");
+            Assert.That(result.Model.getSimpleGlazings().Count, Is.EqualTo(2), "Each aperture-level performance set gets its own SimpleGlazing — never one shared by Guid alone");
+
+            // Every window carries ITS OWN performance, matched by area (the wider window is the
+            // 1.2 W/m²K one), so a collision cannot pass by coincidence.
+            foreach (global::OpenStudio.SubSurface subSurface in result.Model.getSubSurfaces())
+            {
+                global::OpenStudio.Construction construction = subSurface.construction().get().to_Construction().get();
+                global::OpenStudio.SimpleGlazing simpleGlazing = construction.layers()[0].to_SimpleGlazing().get();
+
+                bool wide = subSurface.grossArea() > 2.0;
+                Assert.That(simpleGlazing.uFactor(), Is.EqualTo(wide ? 1.2 : 3.4).Within(1e-9), subSurface.nameString());
+                Assert.That(simpleGlazing.solarHeatGainCoefficient(), Is.EqualTo(wide ? 0.3 : 0.5).Within(1e-9), subSurface.nameString());
+                Assert.That(simpleGlazing.visibleTransmittance().get(), Is.EqualTo(wide ? 0.4 : 0.6).Within(1e-9), subSurface.nameString());
+            }
+
+            Assert.That(result.Model.getConstructions().Select(x => x.nameString()).Distinct().Count(), Is.EqualTo(result.Model.getConstructions().Count), "Deterministic naming survives: the two glazing constructions are distinctly named, not auto-renamed by OpenStudio");
+        }
+
+        /// <summary>South-wall window between x0 and x1 (z 0.8-2.2) carrying aperture-level performance overrides.</summary>
+        private static Aperture OverriddenAperture(ApertureConstruction apertureConstruction, double x0, double x1, double uFactor, double solarHeatGainCoefficient, double visibleTransmittance)
+        {
+            Geometry.Spatial.Face3D face3D = new Geometry.Spatial.Face3D(new Geometry.Spatial.Polygon3D(new List<Geometry.Spatial.Point3D>
+            {
+                new Geometry.Spatial.Point3D(x0, 0, 0.8),
+                new Geometry.Spatial.Point3D(x1, 0, 0.8),
+                new Geometry.Spatial.Point3D(x1, 0, 2.2),
+                new Geometry.Spatial.Point3D(x0, 0, 2.2),
+            }));
+
+            Aperture result = AnalyticalCreate.Aperture(apertureConstruction, face3D);
+            result.SetValue(ApertureParameter.ThermalTransmittance, uFactor);
+            result.SetValue(ApertureParameter.TotalSolarEnergyTransmittance, solarHeatGainCoefficient);
+            result.SetValue(ApertureParameter.LightTransmittance, visibleTransmittance);
+            return result;
+        }
+
+        [Test]
         public void SimpleGlazingFallback_IncompleteParameters_RaisesError()
         {
             ApertureConstruction apertureConstruction = new ApertureConstruction(new System.Guid("22222222-9999-9999-9999-999999999999"), "Incomplete Performance Window", ApertureType.Window);
