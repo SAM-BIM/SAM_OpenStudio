@@ -5,6 +5,7 @@ using Grasshopper.Kernel;
 using SAM.Core.Grasshopper;
 using System;
 using System.Collections.Generic;
+using System.Windows.Forms;
 
 namespace SAM.Analytical.Grasshopper.OpenStudio
 {
@@ -18,7 +19,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.0.2";
+        public override string LatestComponentVersion => "1.0.3";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -33,6 +34,19 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
               "Converts OpenStudio Sql Database to SpaceSymulationResults",
               "SAM", "OpenStudio")
         {
+        }
+
+        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
+        {
+            base.AppendAdditionalMenuItems(menu);
+
+            Menu_AppendSeparator(menu);
+            Menu_AppendItem(menu, "Go to Directory", Menu_GoToDirectory, Properties.Resources.SAM_Small, true, false);
+        }
+
+        void Menu_GoToDirectory(object sender, EventArgs e)
+        {
+            MenuHelper.GoToFileDirectory(MenuHelper.GetVolatileString(this, "_sQLPath"));
         }
 
         /// <summary>

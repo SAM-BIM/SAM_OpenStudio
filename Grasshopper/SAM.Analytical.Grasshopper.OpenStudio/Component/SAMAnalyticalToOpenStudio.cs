@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace SAM.Analytical.Grasshopper.OpenStudio
 {
@@ -20,7 +21,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.3.0";
+        public override string LatestComponentVersion => "1.3.1";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -40,6 +41,19 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
               "Converts SAM AnalyticalModel to OpenStudio model (OSM/OSW) and optionally runs the annual EnergyPlus Ideal Loads simulation (asynchronous, cancellable)",
               "SAM", "OpenStudio")
         {
+        }
+
+        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
+        {
+            base.AppendAdditionalMenuItems(menu);
+
+            Menu_AppendSeparator(menu);
+            Menu_AppendItem(menu, "Go to Directory", Menu_GoToDirectory, Properties.Resources.SAM_Small, true, false);
+        }
+
+        void Menu_GoToDirectory(object sender, EventArgs e)
+        {
+            MenuHelper.GoToDirectory(MenuHelper.GetVolatileString(this, "_outputDirectory"), true);
         }
 
         /// <summary>
