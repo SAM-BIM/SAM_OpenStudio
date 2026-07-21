@@ -290,7 +290,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             // and casts shadows — PolygonClipping reports it as a severe
             // DetermineShadowingCombinations error. The conversion names the SAM panel so it
             // can be split into convex parts; PixelCounting itself has no concavity
-            // limitation, but a GPU-less machine silently falls back to PolygonClipping, so an
+            // limitation, but a GPU-less machine warns and reverts to PolygonClipping, so an
             // Information-level advisory is still emitted.
             AnalyticalModel analyticalModel = AnalyticalModelFixtures.LShapedBox();
 
