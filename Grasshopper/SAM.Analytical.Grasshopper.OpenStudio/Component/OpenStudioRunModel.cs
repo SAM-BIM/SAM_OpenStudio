@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace SAM.Analytical.Grasshopper.OpenStudio
 {
-    public class OpenStudioRunModel : GH_SamAsyncComponent
+    public class OpenStudioRunModel : GH_SAMAsyncComponent
     {
         /// <summary>
         /// Gets the unique ID for this component. Do not change this ID after release.

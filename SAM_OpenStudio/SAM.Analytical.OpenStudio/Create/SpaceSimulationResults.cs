@@ -430,7 +430,7 @@ namespace SAM.Analytical.OpenStudio
                                 DateTime? dateTime_Max = Core.OpenStudio.Query.DateTime(dataTable_Time, timeIndex_Max);
                                 if (dateTime_Max != null && dateTime_Max.HasValue)
                                 {
-                                    spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.MaxDryBulbTemperatureIndex, Core.OpenStudio.Query.IntervalHourOfYear(dateTime_Max.Value));
+                                    spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.MaxDryBulbTemperatureIndex, Core.Query.IntervalHourOfYear(dateTime_Max.Value));
                                 }
 
                                 // Min Dry Bulb Temperture
@@ -441,7 +441,7 @@ namespace SAM.Analytical.OpenStudio
                                 DateTime? dateTime_Min = Core.OpenStudio.Query.DateTime(dataTable_Time, timeIndex_Min);
                                 if (dateTime_Min != null && dateTime_Min.HasValue)
                                 {
-                                    spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.MinDryBulbTemperatureIndex, Core.OpenStudio.Query.IntervalHourOfYear(dateTime_Min.Value));
+                                    spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.MinDryBulbTemperatureIndex, Core.Query.IntervalHourOfYear(dateTime_Min.Value));
                                 }
                             }
                         }
@@ -466,7 +466,7 @@ namespace SAM.Analytical.OpenStudio
                             DateTime? dateTime = Core.OpenStudio.Query.DateTime(dataTable_Time, timeIndex_Load);
                             if (dateTime != null && dateTime.HasValue)
                             {
-                                spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.LoadIndex, Core.OpenStudio.Query.IntervalHourOfYear(dateTime.Value));
+                                spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.LoadIndex, Core.Query.IntervalHourOfYear(dateTime.Value));
                             }
 
                             //if (sortedDictionary_TimeIndex != null && sortedDictionary_TimeIndex.ContainsKey(timeIndex_Temp))

@@ -20,7 +20,7 @@ namespace SAM.Analytical.OpenStudio
         /// DesignDay objects. Annual weather-run environments (EnvironmentType 3) are not
         /// design days and are skipped when the schema carries the type column. Raw SQL
         /// timestamps (hour 0–24, minute 0–60, year 0 on sizing environments) are normalised
-        /// through the central <see cref="Core.OpenStudio.Query.TryGetDateTime"/> helper —
+        /// through the central <see cref="Core.Query.TryGetDateTime"/> helper —
         /// malformed rows are skipped and reported through <paramref name="diagnostics"/>,
         /// never thrown as unrepresentable-DateTime exceptions. Each day is classified
         /// heating/cooling from its environment name (Htg/Clg).

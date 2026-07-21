@@ -24,7 +24,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         [Test]
         public void TryGetDateTime_OrdinaryHourlyTimestamp_IsIntervalEnd()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2006, 7, 15, 1, 0, 0, 2017, out DateTime dateTime, out string diagnostic), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(2006, 7, 15, 1, 0, 0, 2017, out DateTime dateTime, out string diagnostic), Is.True);
             Assert.That(diagnostic, Is.Null);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2006, 7, 15, 1, 0, 0)), "Hour 1 minute 0 is the end of the first hourly interval");
         }
@@ -32,21 +32,21 @@ namespace SAM.Analytical.OpenStudio.Tests
         [Test]
         public void TryGetDateTime_Hour24_RollsToNextDay()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2006, 1, 1, 24, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(2006, 1, 1, 24, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2006, 1, 2, 0, 0, 0)), "24:00 is midnight at the end of the day, never clamped to 23:00");
         }
 
         [Test]
         public void TryGetDateTime_Minute60_RollsToNextHour()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2006, 1, 1, 1, 60, 0, 2017, out DateTime dateTime, out _), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(2006, 1, 1, 1, 60, 0, 2017, out DateTime dateTime, out _), Is.True);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2006, 1, 1, 2, 0, 0)), "1:60 is the end of hour 2, never clamped to 1:59");
         }
 
         [Test]
         public void TryGetDateTime_Hour24PlusMinute60_RollsToNextDayPlusHour()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2006, 1, 1, 24, 60, 0, 2017, out DateTime dateTime, out _), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(2006, 1, 1, 24, 60, 0, 2017, out DateTime dateTime, out _), Is.True);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2006, 1, 2, 1, 0, 0)));
         }
 
@@ -54,66 +54,66 @@ namespace SAM.Analytical.OpenStudio.Tests
         public void TryGetDateTime_Hour0_SubHourlyRow_SameDayEarlyInterval()
         {
             // Live SQL rows: timestep data starts the day at Hour = 0 (00:10 … 00:50).
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2006, 1, 1, 0, 10, 0, 2017, out DateTime dateTime, out _), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(2006, 1, 1, 0, 10, 0, 2017, out DateTime dateTime, out _), Is.True);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2006, 1, 1, 0, 10, 0)), "The hour-0 sub-hourly row that threw the Grasshopper exception");
         }
 
         [Test]
         public void TryGetDateTime_Year0_UsesDefaultYear_SizingEnvironment()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(0, 1, 21, 13, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(0, 1, 21, 13, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2017, 1, 21, 13, 0, 0)), "Sizing/design-day environments write Year = 0");
         }
 
         [Test]
         public void TryGetDateTime_February28_Valid()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2017, 2, 28, 24, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(2017, 2, 28, 24, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2017, 3, 1, 0, 0, 0)), "Non-leap February rolls into March");
         }
 
         [Test]
         public void TryGetDateTime_February29_LeapYear_Valid()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2020, 2, 29, 24, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(2020, 2, 29, 24, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2020, 3, 1, 0, 0, 0)), "Leap-day 24:00 rolls into March of the leap year");
         }
 
         [Test]
         public void TryGetDateTime_February29_NonLeapCalendar_DiagnosticNotException()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2017, 2, 29, 12, 0, 0, 2017, out _, out string diagnostic), Is.False);
+            Assert.That(Core.Query.TryGetDateTime(2017, 2, 29, 12, 0, 0, 2017, out _, out string diagnostic), Is.False);
             Assert.That(diagnostic, Does.Contain("2017").And.Contain("leap"), "The diagnostic names the calendar conflict");
         }
 
         [Test]
         public void TryGetDateTime_February29_Year0NonLeapDefault_DiagnosticNotException()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(0, 2, 29, 12, 0, 0, 2017, out _, out string diagnostic), Is.False);
+            Assert.That(Core.Query.TryGetDateTime(0, 2, 29, 12, 0, 0, 2017, out _, out string diagnostic), Is.False);
             Assert.That(diagnostic, Is.Not.Null);
         }
 
         [Test]
         public void TryGetDateTime_December31_FinalTimestep_RollsYear()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2006, 12, 31, 24, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
+            Assert.That(Core.Query.TryGetDateTime(2006, 12, 31, 24, 0, 0, 2017, out DateTime dateTime, out _), Is.True);
             Assert.That(dateTime, Is.EqualTo(new DateTime(2007, 1, 1, 0, 0, 0)), "The year's final interval ends on 1 Jan of the next year");
         }
 
         [Test]
         public void TryGetDateTime_Month0_WarmupRow_DiagnosticNotException()
         {
-            Assert.That(Core.OpenStudio.Query.TryGetDateTime(2006, 0, 1, 1, 0, 0, 2017, out _, out string diagnostic), Is.False);
+            Assert.That(Core.Query.TryGetDateTime(2006, 0, 1, 1, 0, 0, 2017, out _, out string diagnostic), Is.False);
             Assert.That(diagnostic, Is.Not.Null);
         }
 
         [Test]
         public void IntervalHourOfYear_MatchesLegacyHourlyConvention()
         {
-            Assert.That(Core.OpenStudio.Query.IntervalHourOfYear(new DateTime(2006, 1, 1, 1, 0, 0)), Is.EqualTo(0), "End of interval 0");
-            Assert.That(Core.OpenStudio.Query.IntervalHourOfYear(new DateTime(2006, 1, 2, 0, 0, 0)), Is.EqualTo(23), "24:00 ends interval 23");
-            Assert.That(Core.OpenStudio.Query.IntervalHourOfYear(new DateTime(2006, 12, 31, 23, 0, 0)), Is.EqualTo(8758));
-            Assert.That(Core.OpenStudio.Query.IntervalHourOfYear(new DateTime(2007, 1, 1, 0, 0, 0)), Is.EqualTo(8759), "Dec 31 24:00 (normalised to 1 Jan) ends interval 8759");
+            Assert.That(Core.Query.IntervalHourOfYear(new DateTime(2006, 1, 1, 1, 0, 0)), Is.EqualTo(0), "End of interval 0");
+            Assert.That(Core.Query.IntervalHourOfYear(new DateTime(2006, 1, 2, 0, 0, 0)), Is.EqualTo(23), "24:00 ends interval 23");
+            Assert.That(Core.Query.IntervalHourOfYear(new DateTime(2006, 12, 31, 23, 0, 0)), Is.EqualTo(8758));
+            Assert.That(Core.Query.IntervalHourOfYear(new DateTime(2007, 1, 1, 0, 0, 0)), Is.EqualTo(8759), "Dec 31 24:00 (normalised to 1 Jan) ends interval 8759");
         }
 
         [Test]

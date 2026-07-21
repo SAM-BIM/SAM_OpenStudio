@@ -17,7 +17,7 @@ namespace SAM.Core.OpenStudio
         /// <summary>
         /// Maps TimeIndex values to normalised interval-end timestamps for one environment.
         /// Raw EnergyPlus rows (hour 0–24, minute 0–60, year 0 on sizing environments) are
-        /// normalised through <see cref="TryGetDateTime"/>; rows that cannot form a valid
+        /// normalised through <see cref="Core.Query.TryGetDateTime"/>; rows that cannot form a valid
         /// calendar date are skipped and reported through <paramref name="diagnostics"/>
         /// instead of throwing.
         /// </summary>
@@ -135,7 +135,7 @@ namespace SAM.Core.OpenStudio
                     }
                 }
 
-                if (!TryGetDateTime(year_Temp, month, day, hour, minute, second, year, out DateTime dateTime, out string diagnostic))
+                if (!Core.Query.TryGetDateTime(year_Temp, month, day, hour, minute, second, year, out DateTime dateTime, out string diagnostic))
                 {
                     diagnostics?.Add(string.Format("TimeIndex {0} (environment {1}): {2}", timeIndex, environemntPeriodIndex, diagnostic));
                     continue;
