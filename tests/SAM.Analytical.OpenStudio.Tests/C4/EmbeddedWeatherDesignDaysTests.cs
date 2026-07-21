@@ -170,6 +170,33 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void ExportedEpw_DaylightSavingHeader_IsEnergyPlusValid()
+        {
+            // Human-Rhino validation: every embedded-weather run ended with
+            //   ** Severe ** Invalid date field=NO
+            //   ProcessEPWHeader: Invalid Daylight Saving Period Start Date Field(WeatherFile)=NO
+            // The exported header carried an extra empty leading field
+            // (HOLIDAYS/DAYLIGHT SAVINGS,,No,0,0,0), shifting "No" into the DST start-date slot.
+            AnalyticalModel analyticalModel = ModelWithEmbeddedWeather();
+
+            string epwPath = analyticalModel.EmbeddedAnnualWeatherPath();
+            Assert.That(epwPath, Is.Not.Null.And.Not.Empty, "The embedded WeatherData exports an EPW");
+            Assert.That(File.Exists(epwPath), Is.True, epwPath);
+
+            string line = File.ReadLines(epwPath).FirstOrDefault(x => x.StartsWith("HOLIDAYS/DAYLIGHT SAVINGS", StringComparison.OrdinalIgnoreCase));
+            Assert.That(line, Is.Not.Null, "The exported EPW carries the header EnergyPlus parses");
+
+            // EPW field order after the keyword: leap year observed, daylight saving start day,
+            // daylight saving end day, number of holidays.
+            string[] fields = line.Split(',');
+            Assert.That(fields.Length, Is.GreaterThanOrEqualTo(5), "No empty padding field: " + line);
+            Assert.That(fields[1].Trim(), Is.EqualTo("No"), "Field 1 is the leap-year flag: " + line);
+            Assert.That(fields[2].Trim(), Is.EqualTo("0"), "Field 2 is the DST start day - EnergyPlus rejects a Yes/No token here with a Severe: " + line);
+            Assert.That(fields[3].Trim(), Is.EqualTo("0"), "Field 3 is the DST end day: " + line);
+            Assert.That(fields[4].Trim(), Is.EqualTo("0"), "Field 4 is the holiday count: " + line);
+        }
+
+        [Test]
         public void EmbeddedWeatherMetadata_WithoutYears_UsedWhenNoEpw()
         {
             Weather.WeatherData weatherData = new Weather.WeatherData(42.36, -71.01, 6.0);
