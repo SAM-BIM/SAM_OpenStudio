@@ -74,8 +74,25 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="resolvedOsmPath">The OSM that was attempted, when one was identified.</param>
         /// <param name="runResult">Workflow run outcome, when one was executed.</param>
         public OpenStudioImportResult(IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> diagnostics, string sourcePath = null, string resolvedOsmPath = null, Core.OpenStudio.OpenStudioRunResult runResult = null)
+            : this(diagnostics, null, sourcePath, resolvedOsmPath, null, runResult)
         {
-            AnalyticalModel = null;
+        }
+
+        /// <summary>
+        /// Creates a snapshot from an explicit diagnostic list rather than a context. Used when
+        /// an import spans two phases — workflow execution and OSM conversion — and the result
+        /// must carry the run outcome alongside the converted model.
+        /// </summary>
+        /// <param name="diagnostics">Diagnostics collected across both phases; may be null.</param>
+        /// <param name="analyticalModel">The imported SAM model, when one was produced.</param>
+        /// <param name="sourcePath">Caller-supplied path.</param>
+        /// <param name="resolvedOsmPath">The OSM actually converted.</param>
+        /// <param name="openStudioVersion">Pre-translation OSM version, when known.</param>
+        /// <param name="runResult">Workflow run outcome, when one was executed.</param>
+        public OpenStudioImportResult(IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> diagnostics, AnalyticalModel analyticalModel, string sourcePath, string resolvedOsmPath, string openStudioVersion, Core.OpenStudio.OpenStudioRunResult runResult)
+        {
+            AnalyticalModel = analyticalModel;
+            OpenStudioVersion = openStudioVersion;
             SourcePath = sourcePath;
             ResolvedOsmPath = resolvedOsmPath;
             RunResult = runResult;
