@@ -65,6 +65,16 @@ var conversionOptions = new SAM.Core.OpenStudio.OpenStudioConversionOptions
     // SolarDistribution, ShadowCalculationFrequencyDays, CalendarYear, IsLeapYear (8784 schedules),
     // DaylightSavingsTime (default off), DdyPath + ImportAllDesignDays + RunSizingPeriods,
     // OutputVariableFrequency
+    ShadingCalculationMethod = "PixelCounting",  // default; "PolygonClipping" restores the E+ default,
+                                                 // null leaves the OSM default untouched. PixelCounting
+                                                 // has no concavity limitation (no DetermineShadowingCombinations
+                                                 // non-convex severe errors) and scales better with shading count
+    MeasurePaths = new List<string> { @"C:\measures\my_measure" },  // OSW steps, in order, args at measure
+                                                                    // defaults; missing dirs warn, never silent
+    AdditionalIdfStrings = new List<string>     // advanced: complete IDF objects written verbatim
+    {                                           // through a generated EnergyPlus measure (appended last);
+        "Output:Variable,*,Site Outdoor Air Dewpoint Temperature,hourly;",  // unparseable strings fail the run
+    },
 };
 var runOptions = new SAM.Core.OpenStudio.OpenStudioRunOptions
 {
@@ -92,7 +102,7 @@ using (result) { /* result owns the OpenStudio model — dispose when done */ }
 
 | Component | Purpose |
 | --- | --- |
-| `SAMAnalytical.ToOpenStudio` | AnalyticalModel + output folder (+ optional `_epwPath`, `ddyPath_`, `_run`) → OSM/OSW paths, SQL path, heating/cooling kWh, diagnostics, success. Weather/design-day sources: explicit paths override embedded model data |
+| `SAMAnalytical.ToOpenStudio` | AnalyticalModel + output folder (+ optional `_epwPath`, `ddyPath_`, `_run`, `measures_`, `add_str_`) → OSM/OSW paths, SQL path, heating/cooling kWh, diagnostics, success. Weather/design-day sources: explicit paths override embedded model data. `measures_`: OSW measure steps (BCL measure directories); `add_str_`: advanced verbatim IDF objects |
 | `OpenStudio.RunModel` | Existing OSM/OSW (+EPW for OSM) → run, SQL path, heating/cooling kWh, diagnostics |
 | `OpenStudio.CreateSpaceSimulationResultsBySQL` (pre-existing) | SQL → SAM `SpaceSimulationResult` objects |
 | `OpenStudioCreateDesignDaysBySQL`, `SAMAnalyticalAddResultsBySQL` (pre-existing) | Design days / result attachment from SQL |

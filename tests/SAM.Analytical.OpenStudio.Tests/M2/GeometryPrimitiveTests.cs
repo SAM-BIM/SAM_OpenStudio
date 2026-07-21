@@ -244,5 +244,40 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(Geometry.OpenStudio.Query.IsSelfIntersecting(lShape, DistanceTolerance), Is.False);
             Assert.That(Geometry.OpenStudio.Query.ValidatePolygon(lShape, DistanceTolerance, AngleTolerance, MinimumArea), Is.Empty);
         }
+
+        [Test]
+        public void EnergyPlusSideCount_SliverCollapses_BelowThreeSides()
+        {
+            // The HungaryHouse door: a 1.6 mm wide, 2.125 m tall sliver. It survives the
+            // converter's own cleaning (1e-6 m) but EnergyPlus drops consecutive vertices
+            // closer than 0.01 m — 4 sides collapse to 2 → degenerate (severe).
+            List<Point3D> sliverDoor = new List<Point3D>
+            {
+                new Point3D(6.036156, 0.424724, 5.125),
+                new Point3D(6.036156, 0.424724, 3),
+                new Point3D(6.037758, 0.424724, 3),
+                new Point3D(6.037758, 0.424724, 5.125),
+            };
+
+            Assert.That(Geometry.OpenStudio.Query.EnergyPlusSideCount(sliverDoor), Is.EqualTo(2), "Both 1.6 mm vertex pairs collapse under the EnergyPlus 0.01 m rule");
+            Assert.That(Geometry.OpenStudio.Query.EnergyPlusSideCount(HorizontalFloor()), Is.EqualTo(4), "An ordinary rectangle keeps its sides");
+            Assert.That(Geometry.OpenStudio.Query.EnergyPlusSideCount(new List<Point3D> { new Point3D(0, 0, 0), new Point3D(1, 0, 0), new Point3D(0, 1, 0) }), Is.EqualTo(3), "A triangle is the last valid polygon");
+            Assert.That(Geometry.OpenStudio.Query.EnergyPlusSideCount(null), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void EnergyPlusSideCount_ClosingPairCollapse()
+        {
+            // First and last vertices within 0.01 m (the wrap-around edge) also collapse.
+            List<Point3D> closingSliver = new List<Point3D>
+            {
+                new Point3D(0, 0, 0),
+                new Point3D(2, 0, 0),
+                new Point3D(2, 0.005, 0),
+                new Point3D(0, 0.002, 0),
+            };
+
+            Assert.That(Geometry.OpenStudio.Query.EnergyPlusSideCount(closingSliver), Is.LessThan(3));
+        }
     }
 }

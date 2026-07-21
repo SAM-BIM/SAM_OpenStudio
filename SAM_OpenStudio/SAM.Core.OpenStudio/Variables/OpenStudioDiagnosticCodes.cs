@@ -15,6 +15,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>Duplicate or collinear vertices removed.</summary>
         public const string GeometryVerticesCleaned = "SAM-OS-GEO-002";
 
+        /// <summary>Non-convex shadow-casting surface: PolygonClipping raises an EnergyPlus severe DetermineShadowingCombinations error; split the panel or use PixelCounting with a GPU.</summary>
+        public const string GeometryNonConvexCasting = "SAM-OS-GEO-003";
+
         /// <summary>Missing adjacent surface.</summary>
         public const string AdjacencyMissingSurface = "SAM-OS-ADJ-001";
 
@@ -47,6 +50,9 @@ namespace SAM.Core.OpenStudio
 
         /// <summary>Result-extraction limitation (e.g. peaks/series assume hourly reporting under a non-hourly OutputVariableFrequency).</summary>
         public const string ResultExtractionLimitation = "SAM-OS-RUN-003";
+
+        /// <summary>Unsupported or rejected simulation-setting value (e.g. shading calculation method); workflow issues such as unusable measure directories.</summary>
+        public const string SimulationSettingsUnsupported = "SAM-OS-SET-001";
 
         /// <summary>EnergyPlus severe error.</summary>
         public const string EnergyPlusSevereError = "SAM-OS-EPLUS-001";

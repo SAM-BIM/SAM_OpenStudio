@@ -20,7 +20,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.2.0";
+        public override string LatestComponentVersion => "1.3.0";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -64,6 +64,9 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 // inputs by position, so inserting ddyPath_ earlier would mis-wire existing
                 // documents (their _outputDirectory/_run sources would shift one position).
                 result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_String() { Name = "ddyPath_", NickName = "ddyPath_", Description = "DDY design-day file path (optional — overrides the design days embedded in the AnalyticalModel)", Access = GH_ParamAccess.item, Optional = true }, ParamVisibility.Voluntary));
+
+                result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_String() { Name = "measures_", NickName = "measures_", Description = "An optional list of OpenStudio measure directories (each containing measure.xml and measure.rb) applied to the OSM as OSW workflow steps, in order, with arguments at their measure defaults. Measures can be downloaded from the NREL Building Components Library (BCL) at https://bcl.nrel.gov/.", Access = GH_ParamAccess.list, Optional = true }, ParamVisibility.Voluntary));
+                result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_String() { Name = "add_str_", NickName = "add_str_", Description = "THIS OPTION IS JUST FOR ADVANCED USERS OF ENERGYPLUS. Complete EnergyPlus objects as single strings following the IDF format, written into the IDF verbatim through a generated EnergyPlus measure — for objects not currently supported by the conversion. An object that does not parse fails the run; invalid objects are never silently dropped.", Access = GH_ParamAccess.list, Optional = true }, ParamVisibility.Voluntary));
 
                 return result.ToArray();
             }
@@ -127,11 +130,33 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
                 dataAccess.GetData(index, ref ddyPath);
             }
 
+            List<string> measures = ReadStringList(dataAccess, "measures_");
+            List<string> additionalIdfStrings = ReadStringList(dataAccess, "add_str_");
+
             // Embedded weather/design-day content is part of the signature: changing it on the
             // same AnalyticalModel reference (same Guid) must trigger a new conversion.
             string embeddedFingerprint = Analytical.OpenStudio.Query.EmbeddedWeatherFingerprint(analyticalModel);
 
-            return string.Format("{0:N}|{1}|{2}|{3}|{4}|{5}", analyticalModel.Guid, epwPath ?? string.Empty, outputDirectory, run, ddyPath ?? string.Empty, embeddedFingerprint ?? string.Empty);
+            return string.Format("{0:N}|{1}|{2}|{3}|{4}|{5}|{6}|{7}", analyticalModel.Guid, epwPath ?? string.Empty, outputDirectory, run, ddyPath ?? string.Empty, embeddedFingerprint ?? string.Empty, string.Join("|", measures), string.Join("|", additionalIdfStrings));
+        }
+
+        private List<string> ReadStringList(IGH_DataAccess dataAccess, string name)
+        {
+            List<string> result = new List<string>();
+            int index = Params.IndexOfInputParam(name);
+            if (index != -1)
+            {
+                List<string> values = new List<string>();
+                if (dataAccess.GetDataList(index, values))
+                {
+                    foreach (string value in values)
+                    {
+                        result.Add(value ?? string.Empty);
+                    }
+                }
+            }
+
+            return result;
         }
 
         protected override Task CreateTask(IGH_DataAccess dataAccess, CancellationToken cancellationToken)
@@ -159,6 +184,18 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
             if (!string.IsNullOrWhiteSpace(ddyPath))
             {
                 openStudioConversionOptions.DdyPath = ddyPath;
+            }
+
+            List<string> measures = ReadStringList(dataAccess, "measures_");
+            if (measures.Count > 0)
+            {
+                openStudioConversionOptions.MeasurePaths = measures;
+            }
+
+            List<string> additionalIdfStrings = ReadStringList(dataAccess, "add_str_");
+            if (additionalIdfStrings.Count > 0)
+            {
+                openStudioConversionOptions.AdditionalIdfStrings = additionalIdfStrings;
             }
 
             return Analytical.OpenStudio.Convert.ToOpenStudioAsync(analyticalModel, epwPath, outputDirectory, openStudioConversionOptions, null, run, null, cancellationToken);

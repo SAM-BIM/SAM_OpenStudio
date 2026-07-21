@@ -374,5 +374,19 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(result.Loads, Is.Not.Null);
             Assert.That(result.Loads.TotalHeating + result.Loads.TotalCooling, Is.GreaterThan(0));
         }
+
+        [Test]
+        public void Degenerate_SliverAperture_SkippedWithWarning_NeverReachesEnergyPlus()
+        {
+            // Real-model reproduction (HungaryHouse): a 1.6 mm wide door passes the
+            // converter's own cleaning and minimum-area check, but EnergyPlus collapses it
+            // under its 0.01 m vertex-proximity rule and reports a severe "degenerate
+            // surface". The converter must reject it first — EnergyPlus never sees it.
+            OpenStudioConversionResult result = AnalyticalModelFixtures.SliverApertureBox().ToOpenStudio();
+
+            Assert.That(result.Model.getSubSurfaces().Count, Is.EqualTo(0), "The sliver door never reaches the OSM");
+            Assert.That(result.Diagnostics.Count(d => d.Code == "SAM-OS-GEO-001" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("degenerate") && d.Message.Contains("0.01")), Is.EqualTo(1), "One warning naming the EnergyPlus proximity rule");
+            Assert.That(result.IsValid, Is.True, "A warning-level skip keeps the conversion valid");
+        }
     }
 }

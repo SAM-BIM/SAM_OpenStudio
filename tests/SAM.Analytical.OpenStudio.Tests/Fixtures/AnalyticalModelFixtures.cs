@@ -485,5 +485,84 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             return new AnalyticalModel("Opaque AirGap Box Model", "MVP opaque air-gap fixture (review P1-06)", null, null, adjacencyCluster, materialLibrary, CreateProfileLibrary());
         }
+
+        /// <summary>
+        /// One-zone box whose south wall carries a 1.6 mm wide, 2.125 m tall sliver door — a
+        /// reduced reproduction of the real-model EnergyPlus failure ("degenerate surface"
+        /// severe): the aperture passes the converter's own cleaning and minimum-area check
+        /// (area ≈ 0.0034 m²) but collapses below three sides under the EnergyPlus 0.01 m
+        /// vertex-proximity rule.
+        /// </summary>
+        public static AnalyticalModel SliverApertureBox()
+        {
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
+
+            Space space = new Space(new Guid("abababab-0000-0000-0000-000000000001"), "Space Sliver", P(2.5, 2, 1.5));
+            space.SetValue(SpaceParameter.Area, 20.0);
+            space.SetValue(SpaceParameter.Volume, 60.0);
+            space.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
+            space.InternalCondition = CreateOfficeInternalCondition();
+            adjacencyCluster.AddObject(space);
+
+            Panel wallSouth = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3)));
+            wallSouth.AddAperture(AnalyticalCreate.Aperture(WindowConstruction, F(P(1, 0, 0.8), P(1.0016, 0, 0.8), P(1.0016, 0, 2.925), P(1, 0, 2.925))));
+
+            List<Panel> panels = new List<Panel>
+            {
+                AnalyticalCreate.Panel(WallConstruction, PanelType.SlabOnGrade, F(P(0, 0, 0), P(5, 0, 0), P(5, 4, 0), P(0, 4, 0))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.Roof, F(P(0, 0, 3), P(5, 0, 3), P(5, 4, 3), P(0, 4, 3))),
+                wallSouth,
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3))),
+            };
+
+            foreach (Panel panel in panels)
+            {
+                adjacencyCluster.AddObject(panel);
+                adjacencyCluster.AddRelation(space, panel);
+            }
+
+            return new AnalyticalModel("Sliver Aperture Box Model", "EnergyPlus degenerate-subsurface fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), CreateProfileLibrary());
+        }
+
+        /// <summary>
+        /// One-zone L-shaped box (L footprint 10×8 m less a 5×4 m corner, height 3 m) — the
+        /// roof is non-convex and outdoors, so it casts shadows: with PolygonClipping the
+        /// conversion names it (SAM-OS-GEO-003); with PixelCounting it stays silent. The
+        /// slab-on-grade floor is ground-coupled and the six walls are convex — exactly one
+        /// non-convex casting surface.
+        /// </summary>
+        public static AnalyticalModel LShapedBox()
+        {
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
+
+            Space space = new Space(new Guid("acacacac-0000-0000-0000-000000000001"), "Space L", P(2.5, 2, 1.5));
+            space.SetValue(SpaceParameter.Area, 60.0);
+            space.SetValue(SpaceParameter.Volume, 180.0);
+            space.SetValue(SpaceParameter.OutsideSupplyAirFlow, 0.02);
+            space.InternalCondition = CreateOfficeInternalCondition();
+            adjacencyCluster.AddObject(space);
+
+            List<Panel> panels = new List<Panel>
+            {
+                AnalyticalCreate.Panel(WallConstruction, PanelType.SlabOnGrade, F(P(0, 0, 0), P(10, 0, 0), P(10, 4, 0), P(5, 4, 0), P(5, 8, 0), P(0, 8, 0))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.Roof, F(P(0, 0, 3), P(10, 0, 3), P(10, 4, 3), P(5, 4, 3), P(5, 8, 3), P(0, 8, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(10, 0, 0), P(10, 0, 3), P(0, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(10, 0, 0), P(10, 4, 0), P(10, 4, 3), P(10, 0, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(10, 4, 0), P(5, 4, 0), P(5, 4, 3), P(10, 4, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 4, 0), P(5, 8, 0), P(5, 8, 3), P(5, 4, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(5, 8, 0), P(0, 8, 0), P(0, 8, 3), P(5, 8, 3))),
+                AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 8, 0), P(0, 0, 0), P(0, 0, 3), P(0, 8, 3))),
+            };
+
+            foreach (Panel panel in panels)
+            {
+                adjacencyCluster.AddObject(panel);
+                adjacencyCluster.AddRelation(space, panel);
+            }
+
+            return new AnalyticalModel("L-Shaped Box Model", "Non-convex casting-surface fixture", null, null, adjacencyCluster, CreateMaterialLibrary(), CreateProfileLibrary());
+        }
     }
 }

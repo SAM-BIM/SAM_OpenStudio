@@ -95,6 +95,36 @@ namespace SAM.Core.OpenStudio
         /// </summary>
         public int? ShadowCalculationFrequencyDays { get; set; }
 
+        /// <summary>
+        /// OS:ShadowCalculation Shading Calculation Method: "PixelCounting" (default) or
+        /// "PolygonClipping". PixelCounting (the GPU-based method) has no limitations related
+        /// to zone or shading-surface concavity — PolygonClipping reports every non-convex
+        /// casting surface as a severe DetermineShadowingCombinations error — and scales
+        /// better with high shading-surface counts; its per-timestep cost only pays off from
+        /// roughly a few hundred shading surfaces. Set to "PolygonClipping" to restore the
+        /// EnergyPlus default; null/empty leaves the OpenStudio default untouched.
+        /// </summary>
+        public string ShadingCalculationMethod { get; set; } = "PixelCounting";
+
+        /// <summary>
+        /// Paths to OpenStudio measure directories (each containing measure.xml and measure.rb)
+        /// applied to the generated OSW as workflow steps, in order, with caller arguments at
+        /// their measure defaults. Null/empty (default) writes an empty steps array. Directories
+        /// that do not exist or contain no measure.xml are skipped with a warning — never
+        /// silently.
+        /// </summary>
+        public System.Collections.Generic.IList<string> MeasurePaths { get; set; }
+
+        /// <summary>
+        /// Advanced use only: complete EnergyPlus objects in IDF format injected into the
+        /// workspace after translation through a generated EnergyPlus measure
+        /// (sam_additional_idf_objects) appended to the OSW steps. Each entry is one or more
+        /// complete IDF objects; an entry that does not parse fails the workflow step, which
+        /// fails the run — invalid objects are never silently dropped. Null/empty (default)
+        /// generates no measure.
+        /// </summary>
+        public System.Collections.Generic.IList<string> AdditionalIdfStrings { get; set; }
+
         /// <summary>OS:YearDescription Calendar Year. Null (default) leaves it unset.</summary>
         public int? CalendarYear { get; set; }
 
