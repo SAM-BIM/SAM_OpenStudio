@@ -42,6 +42,8 @@ namespace SAM.Analytical.OpenStudio
                 result = dataTable.ToSAM_SurfaceSimulationResult();
             }
 
+            SetHostSurfaceNames(sQLiteConnection, result);
+
             dataTable = Core.SQLite.Query.DataTable(sQLiteConnection, "Zones", "ZoneIndex", "ZoneName");
             if (dataTable != null)
             {
@@ -177,6 +179,85 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Stamps every subsurface result with the EnergyPlus name of the base surface hosting
+        /// it, read from the <c>Surfaces.BaseSurfaceIndex</c> self-reference. This is the
+        /// authoritative host link: a SAM_SubSurface name carries the Aperture Guid, but the
+        /// base surface it points at carries the PANEL Guid, so a window resolves to its panel
+        /// even when the aperture itself cannot be found in the cluster. The column is optional
+        /// (older schemas and synthetic fixtures may omit it) - its absence simply leaves the
+        /// host unknown and the aperture-Guid route in charge.
+        /// </summary>
+        private static void SetHostSurfaceNames(SQLiteConnection sQLiteConnection, List<SurfaceSimulationResult> surfaceSimulationResults)
+        {
+            if (sQLiteConnection == null || surfaceSimulationResults == null || surfaceSimulationResults.Count == 0)
+            {
+                return;
+            }
+
+            DataTable dataTable;
+            try
+            {
+                dataTable = Core.SQLite.Query.DataTable(sQLiteConnection, "Surfaces", "SurfaceIndex", "SurfaceName", "BaseSurfaceIndex");
+            }
+            catch (System.Exception)
+            {
+                return;
+            }
+
+            if (dataTable == null)
+            {
+                return;
+            }
+
+            int index_SurfaceIndex = dataTable.Columns.IndexOf("SurfaceIndex");
+            int index_SurfaceName = dataTable.Columns.IndexOf("SurfaceName");
+            int index_BaseSurfaceIndex = dataTable.Columns.IndexOf("BaseSurfaceIndex");
+            if (index_SurfaceIndex == -1 || index_SurfaceName == -1 || index_BaseSurfaceIndex == -1)
+            {
+                return;
+            }
+
+            Dictionary<int, string> names = new Dictionary<int, string>();
+            Dictionary<int, int> baseIndexes = new Dictionary<int, int>();
+            foreach (DataRow dataRow in dataTable.Rows)
+            {
+                if (dataRow == null || !Core.Query.TryConvert(dataRow[index_SurfaceIndex], out int surfaceIndex))
+                {
+                    continue;
+                }
+
+                if (Core.Query.TryConvert(dataRow[index_SurfaceName], out string surfaceName))
+                {
+                    names[surfaceIndex] = surfaceName;
+                }
+
+                if (Core.Query.TryConvert(dataRow[index_BaseSurfaceIndex], out int baseSurfaceIndex))
+                {
+                    baseIndexes[surfaceIndex] = baseSurfaceIndex;
+                }
+            }
+
+            foreach (SurfaceSimulationResult surfaceSimulationResult in surfaceSimulationResults)
+            {
+                if (surfaceSimulationResult == null || !surfaceSimulationResult.TryGetValue(SurfaceSimulationResultParameter.SurfaceIndex, out int surfaceIndex))
+                {
+                    continue;
+                }
+
+                // A base surface points at itself; only a genuine subsurface gets a host.
+                if (!baseIndexes.TryGetValue(surfaceIndex, out int baseSurfaceIndex) || baseSurfaceIndex == surfaceIndex)
+                {
+                    continue;
+                }
+
+                if (names.TryGetValue(baseSurfaceIndex, out string hostSurfaceName) && !string.IsNullOrWhiteSpace(hostSurfaceName))
+                {
+                    surfaceSimulationResult.SetValue(SurfaceSimulationResultParameter.HostSurfaceName, hostSurfaceName);
+                }
+            }
         }
     }
 

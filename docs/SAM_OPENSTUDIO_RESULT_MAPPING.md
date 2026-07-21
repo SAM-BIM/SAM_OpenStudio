@@ -74,21 +74,50 @@ result set only.
 engine-neutral result set above (per-LoadType `SpaceSimulationResult` with Load [W],
 LoadIndex, UnmetHours) and the design-day `ZoneSizes` family (DesignLoad) when sizing ran.
 
+**Why one conditioned space yields four `SpaceSimulationResult`s.** The two families are
+distinct measurements of the same zone and are deliberately not merged — one space, one load
+type, two answers to different questions:
+
+| Family | Source | Name | Carries | Answers |
+|---|---|---|---|---|
+| Annual | `ReportData` Ideal Loads series over the run period | SAM `Space.Name` (e.g. `Cell 1`) | `Load` [W], `LoadIndex` (peak hour-of-year), `UnmetHours` | "what did the zone actually peak at across the weather year" |
+| Design day | `ZoneSizes` (sizing periods) | EnergyPlus zone name (e.g. `SAM_ThermalZone_Cell_1_<guid8>`) | `DesignLoad` [W], `DesignDayName`, `DesignDayIndex`, `PeakDate` | "what would the plant be sized at on the ASHRAE design day" |
+
+Heating + cooling in each family = four results for one space. They differ in magnitude by
+design (an annual peak is not a design-day load) and both reference the same SAM `Space` Guid,
+so filter by which parameter is present — `Load` for annual, `DesignLoad` for design day — or by
+`LoadType`. A run without sizing periods produces only the annual pair.
+
 - **Zone/panel resolution**: EnergyPlus names (`SAM_<type>_<name>_<guid8>`) are matched to SAM
   objects by their deterministic 8-hex Guid suffix, then by full-Guid reference, then by
   sanitized name — never by display name alone. Unmatched SQL zones/surfaces and SAM
   spaces/panels with no result are both reported as structured diagnostics (a reported zero
   stays a valid result; only absence is diagnosed).
 - **Surface aggregation rule**: one `SurfaceSimulationResult` per engine surface (identity:
-  SQL `SurfaceIndex` in `Reference`). An internal panel represented by two engine surfaces
+  SQL `SurfaceIndex`). An internal panel represented by two engine surfaces
   receives two results related to the same panel — values are never summed across surfaces.
   Surface values available without sizing runs: area, zone identity, panel linkage; inside/
   outside conduction at the space peak is added per load type when `ZoneSizes` data exists.
 - **Subsurfaces**: the EnergyPlus `Surfaces` table lists subsurfaces alongside base surfaces,
   and a `SAM_SubSurface_<name>_<guid8>` name carries the **Aperture** Guid, never a panel Guid.
   Apertures are not standalone `AdjacencyCluster` objects, so a window result is related to the
-  panel **hosting** that aperture, keeping its own SQL name and `SurfaceIndex` reference. A
-  glazed panel therefore carries one result for its opaque surface plus one per hosted aperture.
+  panel **hosting** that aperture, keeping its own SQL name and `SurfaceIndex`. A glazed panel
+  therefore carries one result for its opaque surface plus one per hosted aperture. Resolution
+  order: panel Guid suffix → aperture Guid suffix → **host base surface**. The last one is the
+  authoritative fallback: EnergyPlus records the base surface each subsurface sits in
+  (`Surfaces.BaseSurfaceIndex`), and that name carries the panel Guid, so a window resolves even
+  when its aperture Guid is no longer in the cluster — apertures are re-created (trimmed, merged,
+  re-hosted) and a Guid present at conversion time need not survive. `Surfaces.BaseSurfaceIndex`
+  is optional: without it only the first two routes apply.
+- **`Reference` carries the SAM Guid**: after a result is matched, its `Reference` holds the
+  matched `Space`/`Panel` Guid (`"N"` format), so a consumer holding only the result list can map
+  back to the model without re-parsing EnergyPlus names. This is uniform across both space
+  families and all surface results. `Core.Result.Reference` is immutable, so the result is
+  rebuilt through its JSON form — Guid, name, source, timestamp and parameters all carry over.
+  The engine identity it replaces is preserved as parameters: `SurfaceIndex` (and
+  `HostSurfaceName`) on surface results, `ZoneIndex`/`ZoneName` on space results. An unmatched
+  result keeps its raw SQL reference. Two engine surfaces of one internal panel therefore share
+  a `Reference` and are told apart by `SurfaceIndex` — values are still never summed.
 - **Rerun**: identical results (type, name, reference, load type) already present from the
   same source are not duplicated; the space/panel relation is ensured.
 - The Grasshopper output name `panelSimulationResults` is retained for compatibility; the SAM

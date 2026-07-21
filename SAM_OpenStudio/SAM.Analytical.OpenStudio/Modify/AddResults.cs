@@ -93,22 +93,24 @@ namespace SAM.Analytical.OpenStudio
             HashSet<Space> matchedSpaces = new HashSet<Space>();
             if (spaceSimulationResults != null)
             {
-                foreach (SpaceSimulationResult spaceSimulationResult in spaceSimulationResults)
+                foreach (SpaceSimulationResult spaceSimulationResult_SQL in spaceSimulationResults)
                 {
-                    if (spaceSimulationResult == null)
+                    if (spaceSimulationResult_SQL == null)
                     {
                         continue;
                     }
 
-                    Space space = LookupSpace(spaceSimulationResult, spaces);
+                    Space space = LookupSpace(spaceSimulationResult_SQL, spaces);
                     if (space == null)
                     {
-                        diagnostics.Add(string.Format("SQL zone result '{0}' matched no SAM space; left unattached", spaceSimulationResult.Name));
+                        diagnostics.Add(string.Format("SQL zone result '{0}' matched no SAM space; left unattached", spaceSimulationResult_SQL.Name));
                     }
                     else
                     {
                         matchedSpaces.Add(space);
                     }
+
+                    SpaceSimulationResult spaceSimulationResult = Referenced(spaceSimulationResult_SQL, space);
 
                     AddResult(adjacencyCluster, spaceSimulationResult, space, existingIdentities);
                     result.Add(spaceSimulationResult);
@@ -129,22 +131,24 @@ namespace SAM.Analytical.OpenStudio
             HashSet<Panel> matchedPanels = new HashSet<Panel>();
             if (surfaceSimulationResults != null)
             {
-                foreach (SurfaceSimulationResult surfaceSimulationResult in surfaceSimulationResults)
+                foreach (SurfaceSimulationResult surfaceSimulationResult_SQL in surfaceSimulationResults)
                 {
-                    if (surfaceSimulationResult == null)
+                    if (surfaceSimulationResult_SQL == null)
                     {
                         continue;
                     }
 
-                    Panel panel = LookupPanel(surfaceSimulationResult, panels);
+                    Panel panel = LookupPanel(surfaceSimulationResult_SQL, panels);
                     if (panel == null)
                     {
-                        diagnostics.Add(string.Format("SQL surface result '{0}' matched no SAM panel; left unattached", surfaceSimulationResult.Name));
+                        diagnostics.Add(string.Format("SQL surface result '{0}' matched no SAM panel; left unattached", surfaceSimulationResult_SQL.Name));
                     }
                     else
                     {
                         matchedPanels.Add(panel);
                     }
+
+                    SurfaceSimulationResult surfaceSimulationResult = Referenced(surfaceSimulationResult_SQL, panel);
 
                     AddResult(adjacencyCluster, surfaceSimulationResult, panel, existingIdentities);
                     result.Add(surfaceSimulationResult);
@@ -178,6 +182,52 @@ namespace SAM.Analytical.OpenStudio
         public static List<Core.Result> AddResults(this AdjacencyCluster adjacencyCluster, string path)
         {
             return AddResults(adjacencyCluster, path, out _);
+        }
+
+        /// <summary>
+        /// Returns the result carrying the matched SAM object's Guid in <c>Reference</c>, so a
+        /// consumer holding only the result list (Grasshopper, an export, a later rerun) can map
+        /// it back to its Space or Panel without re-parsing EnergyPlus names. The engine identity
+        /// it replaces is not lost: the SQL ZoneIndex/ZoneName and SurfaceIndex are kept as
+        /// parameters. <c>Core.Result.Reference</c> is immutable, so the result is rebuilt through
+        /// its JSON form - Guid, name, source, timestamp and every parameter carry over. An
+        /// unmatched result (null SAM object) keeps the raw SQL reference untouched.
+        /// </summary>
+        private static SpaceSimulationResult Referenced(SpaceSimulationResult spaceSimulationResult, Space space)
+        {
+            System.Text.Json.Nodes.JsonObject jsonObject = ReferencedJsonObject(spaceSimulationResult, space);
+            return jsonObject == null ? spaceSimulationResult : new SpaceSimulationResult(jsonObject);
+        }
+
+        /// <summary>See <see cref="Referenced(SpaceSimulationResult, Space)"/>; a subsurface result references the panel hosting its aperture.</summary>
+        private static SurfaceSimulationResult Referenced(SurfaceSimulationResult surfaceSimulationResult, Panel panel)
+        {
+            System.Text.Json.Nodes.JsonObject jsonObject = ReferencedJsonObject(surfaceSimulationResult, panel);
+            return jsonObject == null ? surfaceSimulationResult : new SurfaceSimulationResult(jsonObject);
+        }
+
+        /// <summary>The result's JSON form with Reference replaced, or null when nothing needs rebuilding.</summary>
+        private static System.Text.Json.Nodes.JsonObject ReferencedJsonObject(Core.Result result, Core.SAMObject sAMObject)
+        {
+            if (result == null || sAMObject == null)
+            {
+                return null;
+            }
+
+            string reference = sAMObject.Guid.ToString("N");
+            if (string.Equals(result.Reference, reference, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            System.Text.Json.Nodes.JsonObject jsonObject = result.ToJsonObject();
+            if (jsonObject == null)
+            {
+                return null;
+            }
+
+            jsonObject["Reference"] = reference;
+            return jsonObject;
         }
 
         /// <summary>Adds the result unless an identical one (type, name, reference, load type) already exists from the same source; the space/panel relation is ensured either way.</summary>
@@ -320,11 +370,24 @@ namespace SAM.Analytical.OpenStudio
                 // and a SAM_SubSurface name carries the APERTURE Guid (never a panel Guid) - the
                 // window result belongs to the panel hosting that aperture. Apertures are not
                 // standalone AdjacencyCluster objects, so the host panel is the only valid
-                // relation target; the result keeps its own SQL name and surface reference.
+                // relation target; the result keeps its own SQL name and surface index.
                 Panel panel_Aperture = panels.Find(x => x != null && x.HasApertures && x.Apertures.Find(y => y != null && Query.GuidSuffix(y) == suffix) != null);
                 if (panel_Aperture != null)
                 {
                     return panel_Aperture;
+                }
+            }
+
+            // Authoritative host link when the aperture cannot be found in the cluster (it was
+            // trimmed, merged or re-created after the conversion, so its Guid no longer exists):
+            // EnergyPlus records the base surface each subsurface sits in, and THAT name carries
+            // the panel Guid. A window can only fail to resolve here if its own wall did too.
+            if (surfaceSimulationResult.TryGetValue(SurfaceSimulationResultParameter.HostSurfaceName, out string hostSurfaceName) && Query.TryGetGuidSuffix(hostSurfaceName, out string suffix_Host))
+            {
+                Panel panel_Host = panels.Find(x => x != null && Query.GuidSuffix(x) == suffix_Host);
+                if (panel_Host != null)
+                {
+                    return panel_Host;
                 }
             }
 

@@ -23,7 +23,8 @@ namespace SAM.Analytical.OpenStudio.Tests
     [TestFixture]
     public class AddResultsBySqlTests
     {
-        private static string CreateResultsSql(string fileName, IReadOnlyList<(string ZoneName, string IdealLoadsKey, double FloorArea, double Volume)> zones, IReadOnlyList<(string SurfaceName, double Area, int ZoneIndex)> surfaces, double heatingPeakJoules, double coolingPeakJoules, bool withDesignDayEnvironment, double? zeroCoolingZone = null)
+        /// <param name="hostSurfaceIndexes">SurfaceIndex -> BaseSurfaceIndex for subsurface rows; a surface not listed points at itself, like an EnergyPlus base surface.</param>
+        private static string CreateResultsSql(string fileName, IReadOnlyList<(string ZoneName, string IdealLoadsKey, double FloorArea, double Volume)> zones, IReadOnlyList<(string SurfaceName, double Area, int ZoneIndex)> surfaces, double heatingPeakJoules, double coolingPeakJoules, bool withDesignDayEnvironment, double? zeroCoolingZone = null, IReadOnlyDictionary<int, int> hostSurfaceIndexes = null)
         {
             string sqlPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, fileName);
             if (File.Exists(sqlPath))
@@ -47,7 +48,7 @@ namespace SAM.Analytical.OpenStudio.Tests
                     Exec("CREATE TABLE ReportDataDictionary (ReportDataDictionaryIndex INTEGER PRIMARY KEY, KeyValue TEXT, Name TEXT, Units TEXT)");
                     Exec("CREATE TABLE ReportData (ReportDataIndex INTEGER PRIMARY KEY, ReportDataDictionaryIndex INTEGER, TimeIndex INTEGER, Value REAL)");
                     Exec("CREATE TABLE Zones (ZoneIndex INTEGER PRIMARY KEY, ZoneName TEXT, FloorArea REAL, Volume REAL)");
-                    Exec("CREATE TABLE Surfaces (SurfaceIndex INTEGER PRIMARY KEY, SurfaceName TEXT, Area REAL, ZoneIndex INTEGER)");
+                    Exec("CREATE TABLE Surfaces (SurfaceIndex INTEGER PRIMARY KEY, SurfaceName TEXT, Area REAL, ZoneIndex INTEGER, BaseSurfaceIndex INTEGER)");
                     Exec("CREATE TABLE ZoneSizes (ZoneName TEXT, LoadType TEXT, CalcDesLoad REAL, DesDayName TEXT, PeakHrMin TEXT, PeakTemp REAL, PeakHumRat REAL)");
                     Exec("CREATE TABLE NominalLighting (ZoneIndex INTEGER, DesignLevel REAL)");
                     Exec("CREATE TABLE NominalInfiltration (ZoneIndex INTEGER, DesignLevel REAL)");
@@ -128,7 +129,14 @@ namespace SAM.Analytical.OpenStudio.Tests
 
                     for (int i = 0; i < surfaces.Count; i++)
                     {
-                        Exec(string.Format(System.Globalization.CultureInfo.InvariantCulture, "INSERT INTO Surfaces VALUES ({0}, '{1}', {2}, {3})", i + 1, surfaces[i].SurfaceName, surfaces[i].Area, surfaces[i].ZoneIndex));
+                        int surfaceIndex = i + 1;
+                        int baseSurfaceIndex = surfaceIndex;
+                        if (hostSurfaceIndexes != null && hostSurfaceIndexes.TryGetValue(surfaceIndex, out int hostSurfaceIndex))
+                        {
+                            baseSurfaceIndex = hostSurfaceIndex;
+                        }
+
+                        Exec(string.Format(System.Globalization.CultureInfo.InvariantCulture, "INSERT INTO Surfaces VALUES ({0}, '{1}', {2}, {3}, {4})", surfaceIndex, surfaces[i].SurfaceName, surfaces[i].Area, surfaces[i].ZoneIndex, baseSurfaceIndex));
                     }
                 }
             }
@@ -242,6 +250,92 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void SubSurfaceResult_UnknownAperture_StillResolvesThroughItsHostSurface()
+        {
+            // Second Rhino validation round: one window of twelve still reported "matched no SAM
+            // panel" because its aperture Guid was not in the cluster the results were attached
+            // to (apertures are re-created - trimmed, merged, re-hosted - so a Guid that existed
+            // at conversion time need not survive). EnergyPlus records the base surface each
+            // subsurface sits in, and THAT name carries the panel Guid, so the window resolves
+            // regardless of what happened to the aperture.
+            AnalyticalModel analyticalModel = AnalyticalModelFixtures.SingleBox();
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster(analyticalModel.AdjacencyCluster);
+            Space space = adjacencyCluster.GetSpaces().Single();
+            List<Panel> panels = adjacencyCluster.GetPanels();
+            Panel glazedPanel = panels.Single(x => x.HasApertures);
+
+            // A subsurface whose Guid suffix belongs to no SAM object at all, hosted by the
+            // glazed panel's engine surface (SurfaceIndex 1 in the list below).
+            int hostIndex = panels.IndexOf(glazedPanel) + 1;
+            List<(string SurfaceName, double Area, int ZoneIndex)> surfaces = panels.Select((p, i) => (SurfaceName(p, 0), 20.0 - i, 1)).ToList();
+            surfaces.Add(("SAM_SUBSURFACE_ORPHANED_GLZ_0_6F64626E", 2.64, 1));
+
+            string sqlPath = CreateResultsSql(
+                "c5_addresults_orphaned_subsurface.sql",
+                new[] { (ZoneName(space), IdealLoadsKey(space), 20.0, 60.0) },
+                surfaces,
+                3_600_000.0, 7_200_000.0, false,
+                hostSurfaceIndexes: new Dictionary<int, int> { { surfaces.Count, hostIndex } });
+
+            Modify.AddResults(adjacencyCluster, sqlPath, out List<string> diagnostics);
+
+            Assert.That(diagnostics.Where(d => d.Contains("matched no SAM panel")), Is.Empty, "The host surface resolves the window even with an unknown aperture: " + string.Join(" | ", diagnostics));
+
+            List<SurfaceSimulationResult> glazedResults = adjacencyCluster.GetResults<SurfaceSimulationResult>(glazedPanel);
+            Assert.That(glazedResults, Is.Not.Null.And.Count.EqualTo(2), "The host panel keeps its own surface result AND the orphaned window");
+            SurfaceSimulationResult window = glazedResults.Single(x => x.Name == "SAM_SUBSURFACE_ORPHANED_GLZ_0_6F64626E");
+            Assert.That(window.TryGetValue(SurfaceSimulationResultParameter.HostSurfaceName, out string hostSurfaceName), Is.True);
+            Assert.That(hostSurfaceName, Is.EqualTo(SurfaceName(glazedPanel, 0)), "The EnergyPlus host link is recorded on the result");
+        }
+
+        [Test]
+        public void Results_Reference_CarriesTheMatchedSamGuid()
+        {
+            // Requested after the Rhino review: a consumer holding only the result list must be
+            // able to map back to the model, so Reference carries the SAM Space / Panel Guid.
+            // The engine identity it replaces stays available as parameters.
+            AnalyticalModel analyticalModel = AnalyticalModelFixtures.SingleBox();
+            AdjacencyCluster adjacencyCluster = new AdjacencyCluster(analyticalModel.AdjacencyCluster);
+            Space space = adjacencyCluster.GetSpaces().Single();
+            List<Panel> panels = adjacencyCluster.GetPanels();
+
+            string sqlPath = CreateResultsSql(
+                "c5_addresults_reference.sql",
+                new[] { (ZoneName(space), IdealLoadsKey(space), 20.0, 60.0) },
+                panels.Select((p, i) => (SurfaceName(p, 0), 20.0 - i, 1)).ToArray(),
+                3_600_000.0, 7_200_000.0, true);
+
+            List<Result> results = Modify.AddResults(adjacencyCluster, sqlPath, out List<string> diagnostics);
+
+            // Both space families - annual (named after the SAM space) and design-day (named
+            // after the EnergyPlus zone) - now reference the same SAM Space Guid.
+            List<SpaceSimulationResult> spaceResults = results.OfType<SpaceSimulationResult>().ToList();
+            Assert.That(spaceResults, Is.Not.Empty);
+            Assert.That(spaceResults.Select(x => x.Name).Distinct().Count(), Is.EqualTo(2), "The two families keep their own names (SAM space vs EnergyPlus zone)");
+            Assert.That(spaceResults.All(x => x.Reference == space.Guid.ToString("N")), Is.True, "Every space result references the SAM Space Guid: " + string.Join(" | ", spaceResults.Select(x => x.Name + "=" + x.Reference)));
+
+            SpaceSimulationResult designDayResult = spaceResults.First(x => x.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double _));
+            Assert.That(designDayResult.TryGetValue(SpaceSimulationResultParameter.ZoneIndex, out int zoneIndex), Is.True, "The SQL ZoneIndex survives the Reference change");
+            Assert.That(zoneIndex, Is.EqualTo(1));
+            Assert.That(designDayResult.TryGetValue(SpaceSimulationResultParameter.ZoneName, out string zoneName), Is.True);
+            Assert.That(zoneName, Is.EqualTo(ZoneName(space)));
+
+            foreach (Panel panel in panels)
+            {
+                SurfaceSimulationResult surfaceResult = adjacencyCluster.GetResults<SurfaceSimulationResult>(panel).Single();
+                Assert.That(surfaceResult.Reference, Is.EqualTo(panel.Guid.ToString("N")), $"Panel {panel.Name} result references the SAM Panel Guid");
+                Assert.That(surfaceResult.TryGetValue(SurfaceSimulationResultParameter.SurfaceIndex, out int surfaceIndex), Is.True, "The SQL SurfaceIndex survives the Reference change");
+                Assert.That(surfaceIndex, Is.EqualTo(panels.IndexOf(panel) + 1));
+            }
+
+            // Rebuilding through JSON must not lose anything already asserted elsewhere.
+            SpaceSimulationResult annual = spaceResults.First(x => x.TryGetValue(Analytical.SpaceSimulationResultParameter.LoadIndex, out double _));
+            Assert.That(annual.Source, Is.EqualTo(Query.Source()), "Source survives");
+            Assert.That(annual.TryGetValue(Analytical.SpaceSimulationResultParameter.UnmetHours, out double unmet), Is.True, "Parameters survive");
+            Assert.That(unmet, Is.EqualTo(1.0).Within(1e-9));
+        }
+
+        [Test]
         public void TwoZones_InternalPanels_KeepSourceIdentity()
         {
             AnalyticalModel analyticalModel = AnalyticalModelFixtures.TwoAdjacentBoxes();
@@ -284,7 +378,8 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             List<SurfaceSimulationResult> sharedWallResults = adjacencyCluster.GetResults<SurfaceSimulationResult>(sharedWall);
             Assert.That(sharedWallResults, Is.Not.Null.And.Count.EqualTo(2), "An internal panel represented by two engine surfaces receives two results, never a collision");
-            Assert.That(sharedWallResults.Select(x => x.Reference).Distinct().Count(), Is.EqualTo(2), "Surface identity (SQL SurfaceIndex reference) is retained per engine surface");
+            Assert.That(sharedWallResults.All(x => x.Reference == sharedWall.Guid.ToString("N")), Is.True, "Both engine surfaces reference the one SAM panel they belong to");
+            Assert.That(sharedWallResults.Select(x => x.GetValue<int>(SurfaceSimulationResultParameter.SurfaceIndex)).Distinct().Count(), Is.EqualTo(2), "Engine-surface identity is retained per result (SQL SurfaceIndex), values never summed");
 
             // No result related to the wrong space: B-side results must not relate to A.
             List<SpaceSimulationResult> resultsA = adjacencyCluster.GetResults<SpaceSimulationResult>(spaceA);
