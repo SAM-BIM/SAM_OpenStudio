@@ -184,7 +184,8 @@ namespace SAM.Analytical.OpenStudio
             string handle;
             try
             {
-                handle = modelObject.handle()?.ToString();
+                // __str__ is the SWIG string conversion; UUID does not override ToString.
+                handle = modelObject.handle()?.__str__();
             }
             catch (Exception)
             {
