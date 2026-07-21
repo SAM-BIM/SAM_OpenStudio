@@ -144,7 +144,7 @@ namespace SAM.Analytical.OpenStudio
             // A relative EPW path is therefore made absolute, as the standalone OSW writer does;
             // an absent weather source (conversion-only) still writes an empty entry.
             string weatherFile = string.IsNullOrWhiteSpace(epwPath) ? string.Empty : Path.GetFullPath(epwPath).Replace('\\', '/');
-            File.WriteAllText(oswPath, string.Format("{{\n  \"seed_file\": \"{0}\",\n  \"weather_file\": \"{1}\",\n  \"steps\": []\n}}\n", Path.GetFileName(osmPath), weatherFile));
+            WriteWorkflow(openStudioConversionContext, oswPath, Path.GetFileName(osmPath), weatherFile, directory);
 
             OpenStudioConversionResult result;
 
@@ -303,6 +303,243 @@ namespace SAM.Analytical.OpenStudio
             result.Loads = loadSummary;
             result.Results = resultSet;
             return result;
+        }
+
+        /// <summary>
+        /// Writes the OSW workflow. With no caller measures and no additional IDF strings the
+        /// historical minimal shape is kept — seed, weather, empty steps. Caller measures
+        /// (<see cref="Core.OpenStudio.OpenStudioConversionOptions.MeasurePaths"/>) become steps
+        /// in order with their parent directories as the measure paths; additional IDF strings
+        /// (<see cref="Core.OpenStudio.OpenStudioConversionOptions.AdditionalIdfStrings"/>) are
+        /// injected through a generated EnergyPlus measure appended last, so it never precedes
+        /// the caller's own measures. Directories that are missing or contain no measure.xml
+        /// are skipped with a warning — never silently.
+        /// </summary>
+        private static void WriteWorkflow(OpenStudioConversionContext openStudioConversionContext, string oswPath, string seedFile, string weatherFile, string directory)
+        {
+            Core.OpenStudio.OpenStudioConversionOptions options = openStudioConversionContext?.Options;
+
+            List<string> measurePaths = new List<string>();
+            List<string> measureStepNames = new List<string>();
+
+            if (options?.MeasurePaths != null)
+            {
+                foreach (string measurePath in options.MeasurePaths)
+                {
+                    if (string.IsNullOrWhiteSpace(measurePath))
+                    {
+                        continue;
+                    }
+
+                    string fullPath = Path.GetFullPath(measurePath);
+                    if (!Directory.Exists(fullPath) || !File.Exists(Path.Combine(fullPath, "measure.xml")))
+                    {
+                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.SimulationSettingsUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Measure directory '{0}' does not exist or contains no measure.xml; the step was skipped", measurePath));
+                        continue;
+                    }
+
+                    string name = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                    if (measureStepNames.Contains(name))
+                    {
+                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.SimulationSettingsUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("A measure named '{0}' is already on the workflow; the duplicate step ({1}) was skipped", name, measurePath));
+                        continue;
+                    }
+
+                    string parent = Path.GetDirectoryName(fullPath);
+                    if (!measurePaths.Contains(parent))
+                    {
+                        measurePaths.Add(parent);
+                    }
+
+                    measureStepNames.Add(name);
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.SimulationSettingsUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Measure '{0}' applied as workflow step {1} (arguments at their measure defaults)", name, measureStepNames.Count));
+                }
+            }
+
+            List<string> additionalIdfStrings = new List<string>();
+            if (options?.AdditionalIdfStrings != null)
+            {
+                foreach (string additionalIdfString in options.AdditionalIdfStrings)
+                {
+                    if (!string.IsNullOrWhiteSpace(additionalIdfString))
+                    {
+                        additionalIdfStrings.Add(additionalIdfString);
+                    }
+                }
+            }
+
+            if (additionalIdfStrings.Count > 0)
+            {
+                const string additionalMeasureName = "sam_additional_idf_objects";
+                if (measureStepNames.Contains(additionalMeasureName))
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.SimulationSettingsUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("A caller measure is already named '{0}'; the additional IDF strings were not injected", additionalMeasureName));
+                }
+                else
+                {
+                    string measuresDirectory = Path.Combine(directory, "measures");
+                    WriteAdditionalIdfMeasure(Path.Combine(measuresDirectory, additionalMeasureName), additionalIdfStrings);
+                    if (!measurePaths.Contains(measuresDirectory))
+                    {
+                        measurePaths.Add(measuresDirectory);
+                    }
+
+                    measureStepNames.Add(additionalMeasureName);
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.SimulationSettingsUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("{0} additional IDF string(s) will be injected through the generated EnergyPlus measure '{1}' (advanced use — objects are written verbatim)", additionalIdfStrings.Count, additionalMeasureName));
+                }
+            }
+
+            System.Text.StringBuilder stringBuilder = new System.Text.StringBuilder();
+            stringBuilder.Append("{\n  \"seed_file\": \"").Append(JsonEscape(seedFile)).Append("\",\n  \"weather_file\": \"").Append(JsonEscape(weatherFile)).Append("\"");
+            if (measurePaths.Count > 0)
+            {
+                stringBuilder.Append(",\n  \"measure_paths\": [");
+                for (int i = 0; i < measurePaths.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        stringBuilder.Append(", ");
+                    }
+
+                    stringBuilder.Append("\"").Append(JsonEscape(measurePaths[i].Replace('\\', '/'))).Append("\"");
+                }
+
+                stringBuilder.Append("]");
+            }
+
+            stringBuilder.Append(",\n  \"steps\": [");
+            for (int i = 0; i < measureStepNames.Count; i++)
+            {
+                if (i > 0)
+                {
+                    stringBuilder.Append(",");
+                }
+
+                stringBuilder.Append("\n    {\n      \"measure_dir_name\": \"").Append(JsonEscape(measureStepNames[i])).Append("\",\n      \"arguments\": {}\n    }");
+            }
+
+            stringBuilder.Append(measureStepNames.Count == 0 ? "]\n}\n" : "\n  ]\n}\n");
+            File.WriteAllText(oswPath, stringBuilder.ToString());
+        }
+
+        /// <summary>
+        /// Generates the EnergyPlus measure that injects <paramref name="idfStrings"/> into the
+        /// workspace verbatim (complete IDF objects, parsed one string at a time). An
+        /// unparseable string fails the step — and therefore the run — so an invalid object is
+        /// never silently dropped. The measure.xml checksums are placeholders: the OpenStudio
+        /// CLI validates structure, not checksums.
+        /// </summary>
+        private static void WriteAdditionalIdfMeasure(string measureDirectory, List<string> idfStrings)
+        {
+            Directory.CreateDirectory(measureDirectory);
+
+            System.Text.StringBuilder ruby = new System.Text.StringBuilder();
+            ruby.AppendLine("class SAMAdditionalIdfObjects < OpenStudio::Measure::EnergyPlusMeasure");
+            ruby.AppendLine("  def name");
+            ruby.AppendLine("    return \"SAM Additional IDF Objects\"");
+            ruby.AppendLine("  end");
+            ruby.AppendLine("");
+            ruby.AppendLine("  def description");
+            ruby.AppendLine("    return \"Injects caller-supplied EnergyPlus objects (IDF text) into the workspace verbatim. Generated by the SAM Analytical to OpenStudio conversion.\"");
+            ruby.AppendLine("  end");
+            ruby.AppendLine("");
+            ruby.AppendLine("  def modeler_description");
+            ruby.AppendLine("    return description");
+            ruby.AppendLine("  end");
+            ruby.AppendLine("");
+            ruby.AppendLine("  def arguments(workspace)");
+            ruby.AppendLine("    return OpenStudio::Measure::OSArgumentVector.new");
+            ruby.AppendLine("  end");
+            ruby.AppendLine("");
+            ruby.AppendLine("  def run(workspace, runner, user_arguments)");
+            ruby.AppendLine("    super(workspace, runner, user_arguments)");
+            ruby.AppendLine("");
+            ruby.AppendLine("    idf_strings = []");
+            foreach (string idfString in idfStrings)
+            {
+                ruby.Append("    idf_strings << '").Append(RubyEscape(idfString)).AppendLine("'");
+            }
+
+            ruby.AppendLine("");
+            ruby.AppendLine("    injected = 0");
+            ruby.AppendLine("    idf_strings.each_with_index do |idf_string, index|");
+            ruby.AppendLine("      idf_file = OpenStudio::IdfFile.load(idf_string, \"EnergyPlus\".to_IddFileType)");
+            ruby.AppendLine("      if idf_file.empty?");
+            ruby.AppendLine("        runner.registerError(\"Additional IDF string #{index + 1} could not be parsed as EnergyPlus objects: #{idf_string[0, 120]}\")");
+            ruby.AppendLine("        return false");
+            ruby.AppendLine("      end");
+            ruby.AppendLine("");
+            ruby.AppendLine("      objects = idf_file.get.objects");
+            ruby.AppendLine("      workspace.addObjects(objects)");
+            ruby.AppendLine("      injected += objects.size");
+            ruby.AppendLine("    end");
+            ruby.AppendLine("");
+            ruby.AppendLine("    runner.registerInfo(\"Injected #{injected} EnergyPlus object(s) from #{idf_strings.size} additional string(s)\")");
+            ruby.AppendLine("    return true");
+            ruby.AppendLine("  end");
+            ruby.AppendLine("end");
+            ruby.AppendLine("");
+            ruby.AppendLine("SAMAdditionalIdfObjects.new.registerWithApplication");
+            File.WriteAllText(Path.Combine(measureDirectory, "measure.rb"), ruby.ToString());
+
+            System.Text.StringBuilder xml = new System.Text.StringBuilder();
+            xml.AppendLine("<?xml version=\"1.0\"?>");
+            xml.AppendLine("<measure>");
+            xml.AppendLine("  <schema_version>3.0</schema_version>");
+            xml.AppendLine("  <name>sam_additional_idf_objects</name>");
+            xml.Append("  <uid>").Append(System.Guid.NewGuid().ToString()).AppendLine("</uid>");
+            xml.Append("  <version_id>").Append(System.Guid.NewGuid().ToString()).AppendLine("</version_id>");
+            xml.Append("  <version_modified>").Append(System.DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ", System.Globalization.CultureInfo.InvariantCulture)).AppendLine("</version_modified>");
+            xml.AppendLine("  <xml_checksum>00000000</xml_checksum>");
+            xml.AppendLine("  <class_name>SAMAdditionalIdfObjects</class_name>");
+            xml.AppendLine("  <display_name>SAM Additional IDF Objects</display_name>");
+            xml.AppendLine("  <description>Injects caller-supplied EnergyPlus objects (IDF text) into the workspace verbatim. Generated by the SAM Analytical to OpenStudio conversion.</description>");
+            xml.AppendLine("  <modeler_description>Injects caller-supplied EnergyPlus objects (IDF text) into the workspace verbatim. Generated by the SAM Analytical to OpenStudio conversion.</modeler_description>");
+            xml.AppendLine("  <arguments />");
+            xml.AppendLine("  <outputs />");
+            xml.AppendLine("  <provenances />");
+            xml.AppendLine("  <tags>");
+            xml.AppendLine("    <tag>EnergyPlus.EnergyPlus</tag>");
+            xml.AppendLine("  </tags>");
+            xml.AppendLine("  <attributes>");
+            xml.AppendLine("    <attribute>");
+            xml.AppendLine("      <name>Measure Type</name>");
+            xml.AppendLine("      <value>EnergyPlusMeasure</value>");
+            xml.AppendLine("      <datatype>string</datatype>");
+            xml.AppendLine("    </attribute>");
+            xml.AppendLine("    <attribute>");
+            xml.AppendLine("      <name>Uses SketchUp API</name>");
+            xml.AppendLine("      <value>false</value>");
+            xml.AppendLine("      <datatype>boolean</datatype>");
+            xml.AppendLine("    </attribute>");
+            xml.AppendLine("  </attributes>");
+            xml.AppendLine("  <files>");
+            xml.AppendLine("    <file>");
+            xml.AppendLine("      <filename>measure.rb</filename>");
+            xml.AppendLine("      <filetype>rb</filetype>");
+            xml.AppendLine("      <usage_type>script</usage_type>");
+            xml.AppendLine("      <checksum>00000000</checksum>");
+            xml.AppendLine("    </file>");
+            xml.AppendLine("  </files>");
+            xml.AppendLine("</measure>");
+            File.WriteAllText(Path.Combine(measureDirectory, "measure.xml"), xml.ToString());
+        }
+
+        /// <summary>Escapes a value for a JSON string literal (paths arrive forward-slashed).</summary>
+        private static string JsonEscape(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        /// <summary>Escapes text for a Ruby single-quoted string literal: only backslash and the quote itself are special.</summary>
+        private static string RubyEscape(string value)
+        {
+            return value.Replace("\\", "\\\\").Replace("'", "\\'");
         }
 
         /// <summary>

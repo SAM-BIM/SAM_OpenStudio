@@ -259,6 +259,31 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void ShadingCalculationMethod_DefaultsToPixelCounting()
+        {
+            // PixelCounting default: PolygonClipping flags every non-convex casting surface as a
+            // severe DetermineShadowingCombinations error; PixelCounting has no concavity
+            // limitation (same default as Ladybug Tools' FullInterior workflows).
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), null, out OpenStudioConversionResult result);
+            Assert.That(result.Model.getShadowCalculation().shadingCalculationMethod(), Is.EqualTo("PixelCounting"), "PixelCounting is the default shading calculation method");
+
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), new Core.OpenStudio.OpenStudioConversionOptions { ShadingCalculationMethod = "PolygonClipping" }, out OpenStudioConversionResult overridden);
+            Assert.That(overridden.Model.getShadowCalculation().shadingCalculationMethod(), Is.EqualTo("PolygonClipping"), "An explicit method is honoured");
+
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), new Core.OpenStudio.OpenStudioConversionOptions { ShadingCalculationMethod = null }, out OpenStudioConversionResult untouched);
+            Assert.That(untouched.Model.getShadowCalculation().shadingCalculationMethod(), Is.EqualTo("PolygonClipping"), "Null leaves the OpenStudio default (PolygonClipping) untouched");
+        }
+
+        [Test]
+        public void ShadingCalculationMethod_InvalidValue_Warns()
+        {
+            Convert_NoRun(AnalyticalModelFixtures.SingleBox(), new Core.OpenStudio.OpenStudioConversionOptions { ShadingCalculationMethod = "NotAMethod" }, out OpenStudioConversionResult result);
+
+            Assert.That(result.Diagnostics.Count(d => d.Code == "SAM-OS-SET-001" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("NotAMethod")), Is.EqualTo(1), "One warning naming the rejected method");
+            Assert.That(result.IsValid, Is.True, "A rejected method stays a warning — the OpenStudio default applies");
+        }
+
+        [Test]
         public void LeapYear_Generates8784ValueSchedules()
         {
             Core.OpenStudio.OpenStudioConversionOptions options = new Core.OpenStudio.OpenStudioConversionOptions { IsLeapYear = true };

@@ -52,6 +52,14 @@ namespace SAM.Analytical.OpenStudio
                 model.getShadowCalculation().setShadingCalculationUpdateFrequency(options.ShadowCalculationFrequencyDays.Value);
             }
 
+            // PixelCounting by default (see OpenStudioConversionOptions.ShadingCalculationMethod):
+            // PolygonClipping flags every non-convex casting surface as a severe
+            // DetermineShadowingCombinations error; PixelCounting has no concavity limitation.
+            if (!string.IsNullOrWhiteSpace(options.ShadingCalculationMethod) && !model.getShadowCalculation().setShadingCalculationMethod(options.ShadingCalculationMethod))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.SimulationSettingsUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("OpenStudio rejected Shading Calculation Method '{0}'; valid values are PolygonClipping and PixelCounting", options.ShadingCalculationMethod));
+            }
+
             global::OpenStudio.RunPeriod runPeriod = model.getRunPeriod();
             runPeriod.setName("SAM_RunPeriod");
             runPeriod.setBeginMonth(options.RunPeriodBeginMonth ?? 1);
