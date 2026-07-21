@@ -89,6 +89,15 @@ jobs:
             # Current sow branch: base_ref on PR events, ref_name on push events.
             $sowRef = if ($baseRef -match '^sow/') { $baseRef } elseif ($refName -match '^sow/') { $refName } else { '' }
             if ($sowRef -and $sowRef -ne $headRef) { $candidates += $sowRef }
+            # Feature branches off a quarterly sow branch (e.g. sow/2026-Q3-feature): the
+            # quarter branch itself carries the matching dependency state. Without this a
+            # push-event build (no head/base ref) falls straight to the stale fallback below.
+            foreach ($r in @($headRef, $baseRef, $refName)) {
+              if ($r -match '^sow/(\d{4}-Q\d)') {
+                $quarterRef = "sow/$($Matches[1])"
+                if ($candidates -notcontains $quarterRef) { $candidates += $quarterRef }
+              }
+            }
             $candidates += 'sow/2026-Q2'
             $cloned = $false
             foreach ($cand in $candidates) {
