@@ -101,6 +101,62 @@ Components are thin wrappers — every conversion rule lives in the tested
 `SAM.Analytical.OpenStudio` API. Both components execute **non-blocking** (background task,
 `cancel_` input, no stale outputs, no UI-thread freeze).
 
+## Reading `SAMAnalytical.AddResultsBySQL` output
+
+The component returns the model with results attached, plus flat
+`spaceSimulationResults` / `panelSimulationResults` lists. Two things about those lists are
+worth knowing before you wire them up.
+
+### Mapping a result back to its Space or Panel — use `Reference`
+
+Every matched result carries the **SAM object's Guid** in its `Reference` property (32-hex,
+no dashes — `Guid.ToString("N")`). That is the mapping key: group results by `Reference` and
+match against `Space.Guid` / `Panel.Guid`. Do not parse the result `Name` — it is the
+EnergyPlus name and its shape differs per family (see below).
+
+The relations are attached too, so `AdjacencyCluster.GetResults<SpaceSimulationResult>(space)`
+and `GetResults<SurfaceSimulationResult>(panel)` work directly. `Reference` is for the case
+where you hold only the result list.
+
+The EnergyPlus identity that `Reference` used to hold is still there, as parameters:
+
+| Result | Parameters carrying the engine identity |
+| --- | --- |
+| `SpaceSimulationResult` | `ZoneIndex`, `ZoneName` |
+| `SurfaceSimulationResult` | `SurfaceIndex`, and `HostSurfaceName` on a window/door |
+
+An **unmatched** result keeps its raw SQL reference (a bare index) instead of a Guid, and is
+named in a diagnostic — so a `Reference` that is not 32 hex characters means "this result did
+not map to the model".
+
+One panel represented by two engine surfaces (an internal wall, seen from both spaces) yields
+two results sharing one `Reference`; tell them apart by `SurfaceIndex`. Values are never
+summed across engine surfaces.
+
+### Why one space returns four results
+
+Not duplicates — two independent families, each with a heating and a cooling result:
+
+| Family | `Name` looks like | Has parameter | Answers |
+| --- | --- | --- | --- |
+| **Annual** | the SAM space name, e.g. `Cell 1` | `Load` [W], `LoadIndex`, `UnmetHours` | what the zone actually peaked at across the weather year |
+| **Design day** | the EnergyPlus zone name, e.g. `SAM_ThermalZone_Cell_1_<guid8>` | `DesignLoad` [W], `DesignDayName`, `PeakDate` | what plant would be sized at on the ASHRAE design day |
+
+So a one-space model with sizing periods gives 2 + 2 = 4. Without sizing periods (no DDY and
+no embedded design days) you get only the annual pair.
+
+The two are **deliberately not merged** and their magnitudes legitimately differ — an annual
+peak includes real weather and thermal dynamics, a design-day load is a steady-state sizing
+calculation. All four reference the same `Space` Guid.
+
+**To split them in Grasshopper**, filter on which parameter is present — `Load` for annual,
+`DesignLoad` for design day — then on `LoadType` for heating vs cooling. The naming asymmetry
+is historical (the design-day family is read straight from the SQL `ZoneSizes` table, which is
+keyed by EnergyPlus zone name); `Reference` is uniform across both, which is why it is the key
+to map on.
+
+Full rules: [SAM_OPENSTUDIO_RESULT_MAPPING.md](SAM_OPENSTUDIO_RESULT_MAPPING.md).
+
 ## Post-MVP (analytical completeness) notes
 
 See [openstudio-analytical-completeness-status.md](openstudio-analytical-completeness-status.md)
