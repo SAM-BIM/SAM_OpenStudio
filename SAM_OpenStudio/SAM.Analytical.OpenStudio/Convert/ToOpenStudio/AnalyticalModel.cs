@@ -615,10 +615,12 @@ namespace SAM.Analytical.OpenStudio
         /// Advisory diagnostic for a non-convex shadow-casting surface. With PolygonClipping
         /// resolved it is a Warning: EnergyPlus raises a severe DetermineShadowingCombinations
         /// error and shadowing may be inaccurate. With PixelCounting resolved it is an
-        /// Information: the method itself has no concavity limitation, but on a machine
-        /// without a GPU EnergyPlus silently falls back to PolygonClipping and flags the
-        /// surface anyway. Best-effort: a geometry-kernel failure skips the advisory, never
-        /// the surface.
+        /// Information: the method itself has no concavity limitation, so wherever
+        /// PixelCounting actually runs the surface is fine — the advisory is a precaution,
+        /// not GPU detection (the converter never queries for a GPU). Only on a machine
+        /// without a GPU (or GPU emulation) does EnergyPlus warn in eplusout.err, revert to
+        /// PolygonClipping, and flag the surface anyway. Best-effort: a geometry-kernel
+        /// failure skips the advisory, never the surface.
         /// </summary>
         private static void EmitNonConvexCastingDiagnostic(Panel panel, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
         {
@@ -657,11 +659,11 @@ namespace SAM.Analytical.OpenStudio
             string method = openStudioConversionContext.Options?.ShadingCalculationMethod;
             if (string.Equals(method, "PixelCounting", System.StringComparison.OrdinalIgnoreCase))
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryNonConvexCasting, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Non-convex surface casts shadows: PixelCounting (the resolved shading calculation method) has no concavity limitation, but without a GPU EnergyPlus falls back to PolygonClipping and reports this surface as a severe DetermineShadowingCombinations error — split the panel into convex parts (e.g. an L-shape into rectangles) to be safe on GPU-less machines", panel, openStudioObjectName);
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryNonConvexCasting, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Non-convex surface casts shadows: PixelCounting (the resolved shading calculation method) has no concavity limitation, so wherever it runs this surface is fine — this advisory is a precaution, not a report that a GPU is missing (the converter does not detect GPUs). The caveat applies only on a machine with no GPU (or GPU emulation): there EnergyPlus warns in eplusout.err, reverts to PolygonClipping, and then reports this surface as a severe DetermineShadowingCombinations error. To be safe on such machines, split the panel into convex parts (e.g. an L-shape into rectangles)", panel, openStudioObjectName);
             }
             else
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryNonConvexCasting, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Non-convex surface casts shadows: with Shading Calculation Method 'PolygonClipping' EnergyPlus reports a severe DetermineShadowingCombinations error and shadowing may be inaccurate — split the panel into convex parts (e.g. an L-shape into rectangles) or use PixelCounting (requires a GPU; without one EnergyPlus falls back to PolygonClipping)", panel, openStudioObjectName);
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryNonConvexCasting, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Non-convex surface casts shadows: with Shading Calculation Method 'PolygonClipping' EnergyPlus reports a severe DetermineShadowingCombinations error and shadowing may be inaccurate — split the panel into convex parts (e.g. an L-shape into rectangles) or use PixelCounting (needs a GPU or GPU emulation; without one EnergyPlus warns and reverts to PolygonClipping)", panel, openStudioObjectName);
             }
         }
 
