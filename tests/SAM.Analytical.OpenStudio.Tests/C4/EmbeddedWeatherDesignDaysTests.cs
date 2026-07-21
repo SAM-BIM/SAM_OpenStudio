@@ -82,6 +82,34 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void EmbeddedDesignDay_ImplausiblePressure_RejectedWithDiagnostic()
+        {
+            // Some SAM embedded (TRY-derived) design days carry an implausible barometric
+            // pressure — a London day reported ~31000 Pa at a 25 m site. EnergyPlus rejects
+            // anything more than 10% off the elevation-based standard and substitutes the
+            // standard; the converter mirrors that rule and names the rejection instead of
+            // propagating a value that only triggers a confusing EnergyPlus warning.
+            AnalyticalModel analyticalModel = ModelWithEmbeddedWeather();
+            analyticalModel.TryGetValue(AnalyticalModelParameter.HeatingDesignDays, out SAMCollection<DesignDay> heatingDesignDays);
+            DesignDay heatingDesignDay = new DesignDay(heatingDesignDays.First());
+            for (int i = 0; i < 24; i++)
+            {
+                heatingDesignDay[Weather.WeatherDataType.AtmosphericPressure, i] = 31000.0;
+            }
+
+            Analytical.Modify.UpdateWeather(analyticalModel, null, null, new System.Collections.Generic.List<DesignDay> { heatingDesignDay });
+
+            OpenStudioConversionResult result = analyticalModel.ToOpenStudio(WeatherPath(".epw"), OutputDirectory("dd_bad_pressure"), run: false);
+
+            Assert.That(result.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("barometric pressure") && d.Message.Contains("31000")), Is.True, "The rejected implausible pressure is named: " + string.Join(" | ", result.Diagnostics.Select(d => d.Message)));
+
+            // The implausible 31000 Pa (which also happens to be the unset OpenStudio IDD
+            // floor) never reaches the IDF: the field carries the elevation-based standard.
+            global::OpenStudio.DesignDay designDay = result.Model.getDesignDays().Single(x => x.dayType() == "WinterDesignDay");
+            Assert.That(designDay.barometricPressure(), Is.GreaterThan(90000.0).And.LessThan(110000.0), "Elevation-based standard pressure is written in place of the implausible SAM value");
+        }
+
+        [Test]
         public void ExplicitDdy_OverridesEmbeddedDesignDays_NoDuplicates()
         {
             AnalyticalModel analyticalModel = ModelWithEmbeddedWeather();

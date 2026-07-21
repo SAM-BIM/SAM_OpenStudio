@@ -220,7 +220,25 @@ namespace SAM.Analytical.OpenStudio
             double pressure = Mean(pressures);
             if (!double.IsNaN(pressure) && pressure > 0)
             {
-                result.setBarometricPressure(pressure);
+                // EnergyPlus rejects a design-day barometric pressure that differs by more
+                // than 10% from the elevation-based standard and silently substitutes the
+                // standard (SizingPeriod:DesignDay Barometric Pressure). Some SAM embedded
+                // design days carry an implausible pressure (a TRY-derived London day here
+                // reported ~31000 Pa at a 25 m site); propagating it only produces a
+                // confusing EnergyPlus warning. Mirror the EnergyPlus rule: keep a plausible
+                // value, otherwise set the elevation-based standard EnergyPlus would use
+                // (the unset OpenStudio default is the 31000 Pa IDD floor, so the field must
+                // be written, not left) and name the substitution.
+                double standardPressure = StandardBarometricPressure(openStudioConversionContext.Target.getSite().elevation());
+                if (System.Math.Abs(pressure - standardPressure) <= 0.10 * standardPressure)
+                {
+                    result.setBarometricPressure(pressure);
+                }
+                else
+                {
+                    result.setBarometricPressure(standardPressure);
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "Embedded design day '{0}': the SAM barometric pressure ({1:0} Pa) differs by more than 10% from the elevation-based standard ({2:0} Pa) and is not converted — it is replaced with the elevation-based standard that EnergyPlus would otherwise substitute", name, pressure, standardPressure));
+                }
             }
 
             double[] windSpeeds = designDay[Weather.WeatherDataType.WindSpeed];
@@ -252,6 +270,19 @@ namespace SAM.Analytical.OpenStudio
 
             double gamma = (a * dryBulbTemperature / (b + dryBulbTemperature)) + System.Math.Log(relativeHumidity / 100.0);
             return (b * gamma) / (a - gamma);
+        }
+
+        // ASHRAE / EnergyPlus standard barometric pressure from site elevation (m):
+        // p = 101325 * (1 - 2.25577e-5 * z) ^ 5.2559. A non-finite elevation is treated as
+        // sea level (the same fallback EnergyPlus uses when no elevation is available).
+        private static double StandardBarometricPressure(double elevation)
+        {
+            if (double.IsNaN(elevation) || double.IsInfinity(elevation))
+            {
+                elevation = 0.0;
+            }
+
+            return 101325.0 * System.Math.Pow(1.0 - 2.25577e-5 * elevation, 5.2559);
         }
 
         private static double Mean(double[] values)
