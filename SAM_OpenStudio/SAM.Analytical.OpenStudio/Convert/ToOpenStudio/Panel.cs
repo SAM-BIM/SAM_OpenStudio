@@ -122,6 +122,17 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
+            // EnergyPlus applies its own 0.01 m vertex-proximity rule on top of our cleaning:
+            // a sliver panel collapses below three sides and is reported as a severe
+            // "degenerate surface". Reject it here instead — EnergyPlus never sees it.
+            int energyPlusSides = Geometry.OpenStudio.Query.EnergyPlusSideCount(surfacePoint3Ds);
+            if (energyPlusSides < 3)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Panel would be degenerate in EnergyPlus: its vertices collapse to {0} side(s) under the 0.01 m proximity rule (sliver geometry); skipped — repair the source panel", energyPlusSides), panel, name);
+                openStudioConversionContext.RegisterSkip();
+                return null;
+            }
+
             if (Geometry.OpenStudio.Query.IsClockwise(surfacePoint3Ds, panel.Normal))
             {
                 surfacePoint3Ds.Reverse();

@@ -64,6 +64,19 @@ namespace SAM.Analytical.OpenStudio
                     continue;
                 }
 
+                // EnergyPlus applies its own 0.01 m vertex-proximity rule on top of our
+                // cleaning: a sliver shade collapses below three sides and is reported as a
+                // severe "degenerate surface". Reject it here instead — EnergyPlus never
+                // sees it.
+                List<Point3D> shadingPoint3Ds = Geometry.OpenStudio.Query.CleanVertices(point3Ds, openStudioConversionContext.Options.DistanceTolerance, openStudioConversionContext.Options.AngleTolerance);
+                int energyPlusSides = Geometry.OpenStudio.Query.EnergyPlusSideCount(shadingPoint3Ds);
+                if (energyPlusSides < 3)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Shading panel would be degenerate in EnergyPlus: its vertices collapse to {0} side(s) under the 0.01 m proximity rule (sliver geometry); skipped — repair the source panel", energyPlusSides), panel, name);
+                    openStudioConversionContext.RegisterSkip();
+                    continue;
+                }
+
                 global::OpenStudio.Point3dVector point3dVector = face3D.ToOpenStudio(openStudioConversionContext.Options.DistanceTolerance, openStudioConversionContext.Options.AngleTolerance);
                 if (point3dVector == null || point3dVector.Count < 3)
                 {
@@ -80,6 +93,8 @@ namespace SAM.Analytical.OpenStudio
                 global::OpenStudio.ShadingSurface shadingSurface = new global::OpenStudio.ShadingSurface(point3dVector, openStudioConversionContext.Target);
                 shadingSurface.setName(name);
                 shadingSurface.setShadingSurfaceGroup(shadingSurfaceGroup);
+
+                EmitNonConvexCastingDiagnostic(panel, name, openStudioConversionContext);
 
                 if (!openStudioConversionContext.References.Contains(panel.Guid))
                 {

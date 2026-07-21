@@ -66,6 +66,18 @@ namespace SAM.Analytical.OpenStudio
 
             point3Ds = Geometry.OpenStudio.Query.CleanVertices(point3Ds, openStudioConversionContext.Options.DistanceTolerance, openStudioConversionContext.Options.AngleTolerance);
 
+            // EnergyPlus applies its own 0.01 m vertex-proximity rule on top of our cleaning:
+            // a sliver aperture (e.g. a residual millimetre-wide door) collapses below three
+            // sides and is reported as a severe "degenerate surface". Reject it here instead —
+            // EnergyPlus never sees it.
+            int energyPlusSides = Geometry.OpenStudio.Query.EnergyPlusSideCount(point3Ds);
+            if (energyPlusSides < 3)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Aperture would be degenerate in EnergyPlus: its vertices collapse to {0} side(s) under the 0.01 m proximity rule (sliver geometry); skipped — repair the source aperture", energyPlusSides), aperture, name);
+                openStudioConversionContext.RegisterSkip();
+                return null;
+            }
+
             Plane plane = panel.GetFace3D()?.GetPlane();
             if (plane != null)
             {

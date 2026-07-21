@@ -15,6 +15,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>Duplicate or collinear vertices removed.</summary>
         public const string GeometryVerticesCleaned = "SAM-OS-GEO-002";
 
+        /// <summary>Non-convex shadow-casting surface: PolygonClipping raises an EnergyPlus severe DetermineShadowingCombinations error; split the panel or use PixelCounting with a GPU.</summary>
+        public const string GeometryNonConvexCasting = "SAM-OS-GEO-003";
+
         /// <summary>Missing adjacent surface.</summary>
         public const string AdjacencyMissingSurface = "SAM-OS-ADJ-001";
 

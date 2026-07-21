@@ -284,6 +284,24 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void NonConvexCasting_PolygonClippingNamesThePanel_PixelCountingAdvisesAboutGpuFallback()
+        {
+            // Real-model reproduction (HungaryHouse): an L-shaped exposed roof is non-convex
+            // and casts shadows — PolygonClipping reports it as a severe
+            // DetermineShadowingCombinations error. The conversion names the SAM panel so it
+            // can be split into convex parts; PixelCounting itself has no concavity
+            // limitation, but a GPU-less machine silently falls back to PolygonClipping, so an
+            // Information-level advisory is still emitted.
+            AnalyticalModel analyticalModel = AnalyticalModelFixtures.LShapedBox();
+
+            Convert_NoRun(analyticalModel, new Core.OpenStudio.OpenStudioConversionOptions { ShadingCalculationMethod = "PolygonClipping" }, out OpenStudioConversionResult polygonClipping);
+            Assert.That(polygonClipping.Diagnostics.Count(d => d.Code == "SAM-OS-GEO-003" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning), Is.EqualTo(1), "Exactly the L-shaped roof is named (slab is ground-coupled, walls are convex)");
+
+            Convert_NoRun(analyticalModel, null, out OpenStudioConversionResult pixelCounting);
+            Assert.That(pixelCounting.Diagnostics.Count(d => d.Code == "SAM-OS-GEO-003" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Information && d.Message.Contains("GPU")), Is.EqualTo(1), "PixelCounting (default): advisory about the no-GPU PolygonClipping fallback");
+        }
+
+        [Test]
         public void LeapYear_Generates8784ValueSchedules()
         {
             Core.OpenStudio.OpenStudioConversionOptions options = new Core.OpenStudio.OpenStudioConversionOptions { IsLeapYear = true };

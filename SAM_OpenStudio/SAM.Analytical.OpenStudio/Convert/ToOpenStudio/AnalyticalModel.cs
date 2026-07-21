@@ -428,6 +428,11 @@ namespace SAM.Analytical.OpenStudio
                     {
                         surface.setOutsideBoundaryCondition(boundaryCondition);
                     }
+
+                    if (boundaryCondition == "Outdoors")
+                    {
+                        EmitNonConvexCastingDiagnostic(panel, surfaces[0].nameString(), context);
+                    }
                 }
                 else
                 {
@@ -604,6 +609,60 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return context;
+        }
+
+        /// <summary>
+        /// Advisory diagnostic for a non-convex shadow-casting surface. With PolygonClipping
+        /// resolved it is a Warning: EnergyPlus raises a severe DetermineShadowingCombinations
+        /// error and shadowing may be inaccurate. With PixelCounting resolved it is an
+        /// Information: the method itself has no concavity limitation, but on a machine
+        /// without a GPU EnergyPlus silently falls back to PolygonClipping and flags the
+        /// surface anyway. Best-effort: a geometry-kernel failure skips the advisory, never
+        /// the surface.
+        /// </summary>
+        private static void EmitNonConvexCastingDiagnostic(Panel panel, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
+        {
+            Geometry.Spatial.Face3D face3D = panel?.GetFace3D();
+            Geometry.Spatial.ISegmentable3D segmentable3D = face3D?.GetExternalEdge3D() as Geometry.Spatial.ISegmentable3D;
+            List<Geometry.Spatial.Point3D> point3Ds = segmentable3D?.GetPoints();
+            if (point3Ds == null)
+            {
+                return;
+            }
+
+            // Check the polygon EnergyPlus actually sees: the converter's cleaned boundary,
+            // with near-collinear vertices ignored by the convexity test — a raw CAD shell
+            // vertex stream would false-positive on every collinear mid-edge point.
+            point3Ds = Geometry.OpenStudio.Query.CleanVertices(point3Ds, openStudioConversionContext.Options.DistanceTolerance, openStudioConversionContext.Options.AngleTolerance);
+            if (point3Ds == null || point3Ds.Count < 3)
+            {
+                return;
+            }
+
+            bool convex;
+            try
+            {
+                convex = Geometry.OpenStudio.Query.IsConvex(point3Ds, openStudioConversionContext.Options.AngleTolerance);
+            }
+            catch (System.Exception)
+            {
+                return;
+            }
+
+            if (convex)
+            {
+                return;
+            }
+
+            string method = openStudioConversionContext.Options?.ShadingCalculationMethod;
+            if (string.Equals(method, "PixelCounting", System.StringComparison.OrdinalIgnoreCase))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryNonConvexCasting, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Non-convex surface casts shadows: PixelCounting (the resolved shading calculation method) has no concavity limitation, but without a GPU EnergyPlus falls back to PolygonClipping and reports this surface as a severe DetermineShadowingCombinations error — split the panel into convex parts (e.g. an L-shape into rectangles) to be safe on GPU-less machines", panel, openStudioObjectName);
+            }
+            else
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryNonConvexCasting, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Non-convex surface casts shadows: with Shading Calculation Method 'PolygonClipping' EnergyPlus reports a severe DetermineShadowingCombinations error and shadowing may be inaccurate — split the panel into convex parts (e.g. an L-shape into rectangles) or use PixelCounting (requires a GPU; without one EnergyPlus falls back to PolygonClipping)", panel, openStudioObjectName);
+            }
         }
 
         /// <summary>
