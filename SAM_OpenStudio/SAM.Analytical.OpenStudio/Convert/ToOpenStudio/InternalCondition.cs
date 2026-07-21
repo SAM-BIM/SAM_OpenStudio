@@ -35,10 +35,24 @@ namespace SAM.Analytical.OpenStudio
             // SAM's Space.InternalCondition setter clones the condition with a NEW Guid
             // (SAM.Analytical\Classes\Space.cs), so per-space Guids differ by design and cannot
             // identify shared conditions. Deduplication is by sanitized name PLUS a deterministic
-            // content hash (parameters and profile-name references, Guids excluded): identical
-            // clones share one SpaceType, while same-named conditions with different content
-            // never merge silently.
-            string name = "SAM_InternalCondition_" + Core.OpenStudio.Query.SanitizeName(internalCondition.Name) + "_" + ContentHash(internalCondition);
+            // content hash (parameters and profile-name references, Guids excluded) PLUS the
+            // per-space computed load densities: identical clones evaluated for equivalent spaces
+            // share one SpaceType, while same-named conditions with different content — or a
+            // shared condition evaluated for spaces with different densities — never merge
+            // silently (the first space's values are never imposed on another space).
+            AdjacencyCluster adjacencyCluster = openStudioConversionContext.Source?.AdjacencyCluster;
+
+            double area = double.NaN;
+            space.TryGetValue(SpaceParameter.Area, out area);
+
+            double peoplePerArea = Analytical.Query.CalculatedPeoplePerArea(space);
+            double occupancyGain = Analytical.Query.OccupancyGain(space);
+            double occupancy = Analytical.Query.CalculatedOccupancy(space);
+            double lightingGain = Analytical.Query.CalculatedLightingGain(space);
+            double equipmentGain = Analytical.Query.CalculatedEquipmentSensibleGain(space);
+            double infiltrationAirFlow = Analytical.Query.CalculatedInfiltrationAirFlow(space);
+
+            string name = "SAM_InternalCondition_" + Core.OpenStudio.Query.SanitizeName(internalCondition.Name) + "_" + ContentHash(internalCondition, peoplePerArea, occupancyGain, occupancy, lightingGain, equipmentGain, infiltrationAirFlow, area);
 
             global::OpenStudio.OptionalSpaceType existing = openStudioConversionContext.Target.getSpaceTypeByName(name);
             if (existing != null && !existing.isNull())
@@ -54,10 +68,7 @@ namespace SAM.Analytical.OpenStudio
             ProfileLibrary profileLibrary = openStudioConversionContext.Source?.ProfileLibrary;
             Dictionary<ProfileType, Profile> profileDictionary = profileLibrary == null ? new Dictionary<ProfileType, Profile>() : internalCondition.GetProfileDictionary(profileLibrary);
 
-            AdjacencyCluster adjacencyCluster = openStudioConversionContext.Source?.AdjacencyCluster;
-
             // People
-            double peoplePerArea = Analytical.Query.CalculatedPeoplePerArea(space);
             if (!double.IsNaN(peoplePerArea) && peoplePerArea > 0)
             {
                 global::OpenStudio.Schedule occupancySchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Occupancy, name, openStudioConversionContext);
@@ -81,8 +92,6 @@ namespace SAM.Analytical.OpenStudio
                         peopleDefinition.setSensibleHeatFraction(sensibleGain / (sensibleGain + latentGain));
                     }
 
-                    double occupancyGain = Analytical.Query.OccupancyGain(space);
-                    double occupancy = Analytical.Query.CalculatedOccupancy(space);
                     double activityLevel = 0;
                     if (!double.IsNaN(occupancyGain) && !double.IsNaN(occupancy) && occupancy > 0)
                     {
@@ -104,10 +113,6 @@ namespace SAM.Analytical.OpenStudio
             }
 
             // Lights
-            double area = double.NaN;
-            space.TryGetValue(SpaceParameter.Area, out area);
-
-            double lightingGain = Analytical.Query.CalculatedLightingGain(space);
             if (!double.IsNaN(lightingGain) && lightingGain > 0 && !double.IsNaN(area) && area > 0)
             {
                 global::OpenStudio.Schedule lightingSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Lighting, name, openStudioConversionContext);
@@ -138,7 +143,6 @@ namespace SAM.Analytical.OpenStudio
             }
 
             // Electric equipment (sensible)
-            double equipmentGain = Analytical.Query.CalculatedEquipmentSensibleGain(space);
             if (!double.IsNaN(equipmentGain) && equipmentGain > 0 && !double.IsNaN(area) && area > 0)
             {
                 global::OpenStudio.Schedule equipmentSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.EquipmentSensible, name, openStudioConversionContext);
@@ -162,14 +166,49 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
-            if (internalCondition.GetProfileName(ProfileType.EquipmentLatent) != null)
+            // Electric equipment (latent): a dedicated instance with Fraction Latent = 1 so the
+            // sensible and latent gains keep independent profiles (coverage manifest:
+            // InternalConditionParameter.EquipmentLatentGain*). Radiant fraction stays 0 —
+            // fractions must sum to 1.
+            double equipmentLatentGain = Analytical.Query.CalculatedEquipmentLatentGain(space);
+            if (!double.IsNaN(equipmentLatentGain) && equipmentLatentGain > 0 && !double.IsNaN(area) && area > 0)
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Latent equipment gains are not converted in the MVP", internalCondition, name);
+                global::OpenStudio.Schedule equipmentLatentSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.EquipmentLatent, name, openStudioConversionContext);
+                if (equipmentLatentSchedule != null)
+                {
+                    global::OpenStudio.ElectricEquipmentDefinition electricEquipmentLatentDefinition = new global::OpenStudio.ElectricEquipmentDefinition(openStudioConversionContext.Target);
+                    electricEquipmentLatentDefinition.setName(name + "_ElectricEquipmentLatentDefinition");
+                    electricEquipmentLatentDefinition.setWattsperSpaceFloorArea(equipmentLatentGain / area);
+                    electricEquipmentLatentDefinition.setFractionLatent(1.0);
+                    electricEquipmentLatentDefinition.setFractionRadiant(0.0);
+
+                    global::OpenStudio.ElectricEquipment electricEquipmentLatent = new global::OpenStudio.ElectricEquipment(electricEquipmentLatentDefinition);
+                    electricEquipmentLatent.setName(name + "_ElectricEquipmentLatent");
+                    electricEquipmentLatent.setSchedule(equipmentLatentSchedule);
+                    electricEquipmentLatent.setSpaceType(result);
+                }
             }
 
-            // Infiltration
-            double infiltrationAirFlow = Analytical.Query.CalculatedInfiltrationAirFlow(space);
-            if (!double.IsNaN(infiltrationAirFlow) && infiltrationAirFlow > 0 && adjacencyCluster != null)
+            // Infiltration: the native Air Changes per Hour field when the condition carries
+            // ACH (coverage manifest: InternalConditionParameter.InfiltrationAirChangesPerHour);
+            // the flow-per-exterior-area derivation remains the fallback for other
+            // parameterisations.
+            double infiltrationAirChangesPerHour = double.NaN;
+            internalCondition.TryGetValue(InternalConditionParameter.InfiltrationAirChangesPerHour, out infiltrationAirChangesPerHour);
+
+            if (!double.IsNaN(infiltrationAirChangesPerHour) && infiltrationAirChangesPerHour > 0)
+            {
+                global::OpenStudio.Schedule infiltrationSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Infiltration, name, openStudioConversionContext);
+                if (infiltrationSchedule != null)
+                {
+                    global::OpenStudio.SpaceInfiltrationDesignFlowRate spaceInfiltrationDesignFlowRate = new global::OpenStudio.SpaceInfiltrationDesignFlowRate(openStudioConversionContext.Target);
+                    spaceInfiltrationDesignFlowRate.setName(name + "_Infiltration");
+                    spaceInfiltrationDesignFlowRate.setAirChangesperHour(infiltrationAirChangesPerHour);
+                    spaceInfiltrationDesignFlowRate.setSchedule(infiltrationSchedule);
+                    spaceInfiltrationDesignFlowRate.setSpaceType(result);
+                }
+            }
+            else if (!double.IsNaN(infiltrationAirFlow) && infiltrationAirFlow > 0 && adjacencyCluster != null)
             {
                 global::OpenStudio.Schedule infiltrationSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Infiltration, name, openStudioConversionContext);
                 if (infiltrationSchedule != null)
@@ -214,14 +253,133 @@ namespace SAM.Analytical.OpenStudio
                     else
                     {
                         openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Space has no sun-exposed panels; infiltration skipped", internalCondition, name);
+                        openStudioConversionContext.RegisterSkip();
                     }
                 }
             }
 
-            // Outdoor air is a space-level SAM parameter (SpaceParameter.OutsideSupplyAirFlow)
-            // and is assigned per OpenStudio Space by the orchestrator, not on the SpaceType.
+            // Outdoor air (ventilation): SpaceType-level DesignSpecificationOutdoorAir, method
+            // Sum, from the condition's supply parameters (per person / per area / ACH /
+            // absolute). SpaceParameter.OutsideSupplyAirFlow still takes precedence — the
+            // orchestrator assigns a per-space DSOA which overrides the SpaceType one in
+            // EnergyPlus. A named-but-unresolved ventilation profile is an error; without a
+            // named profile the rates are unscheduled (fraction 1).
+            double supplyAirFlowPerPerson = ParameterValue(internalCondition, InternalConditionParameter.SupplyAirFlowPerPerson);
+            double supplyAirFlowPerArea = ParameterValue(internalCondition, InternalConditionParameter.SupplyAirFlowPerArea);
+            double supplyAirChangesPerHour = ParameterValue(internalCondition, InternalConditionParameter.SupplyAirChangesPerHour);
+            double supplyAirFlow = ParameterValue(internalCondition, InternalConditionParameter.SupplyAirFlow);
+
+            if (supplyAirFlowPerPerson > 0 || supplyAirFlowPerArea > 0 || supplyAirChangesPerHour > 0 || supplyAirFlow > 0)
+            {
+                global::OpenStudio.DesignSpecificationOutdoorAir designSpecificationOutdoorAir = new global::OpenStudio.DesignSpecificationOutdoorAir(openStudioConversionContext.Target);
+                designSpecificationOutdoorAir.setName(name + "_DesignSpecificationOutdoorAir");
+                designSpecificationOutdoorAir.setOutdoorAirMethod("Sum");
+                designSpecificationOutdoorAir.setOutdoorAirFlowperPerson(supplyAirFlowPerPerson > 0 ? supplyAirFlowPerPerson : 0);
+                designSpecificationOutdoorAir.setOutdoorAirFlowperFloorArea(supplyAirFlowPerArea > 0 ? supplyAirFlowPerArea : 0);
+                designSpecificationOutdoorAir.setOutdoorAirFlowAirChangesperHour(supplyAirChangesPerHour > 0 ? supplyAirChangesPerHour : 0);
+                designSpecificationOutdoorAir.setOutdoorAirFlowRate(supplyAirFlow > 0 ? supplyAirFlow : 0);
+
+                string ventilationProfileName = internalCondition.GetProfileName(ProfileType.Ventilation);
+                if (ventilationProfileName != null)
+                {
+                    global::OpenStudio.Schedule ventilationSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Ventilation, name, openStudioConversionContext);
+                    if (ventilationSchedule != null)
+                    {
+                        designSpecificationOutdoorAir.setOutdoorAirFlowRateFractionSchedule(ventilationSchedule);
+                    }
+                }
+
+                result.setDesignSpecificationOutdoorAir(designSpecificationOutdoorAir);
+            }
+
+            // Pollutant modelling (generation rates / profile) has no safe EnergyPlus
+            // equivalent in scope — reported, never silently dropped.
+            double pollutantPerPerson = ParameterValue(internalCondition, InternalConditionParameter.PollutantGenerationPerPerson);
+            double pollutantPerArea = ParameterValue(internalCondition, InternalConditionParameter.PollutantGenerationPerArea);
+            if (pollutantPerPerson > 0 || pollutantPerArea > 0 || internalCondition.GetProfileName(ProfileType.Pollutant) != null)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Pollutant generation is not converted (EnergyPlus generic contaminant modelling is out of scope)", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            // TAS ventilation function expressions have no deterministic mapping.
+            if (!string.IsNullOrWhiteSpace(internalCondition.GetValue<string>(InternalConditionParameter.VentilationFunction))
+                || !double.IsNaN(ParameterValue(internalCondition, InternalConditionParameter.VentilationFunctionFactor))
+                || !double.IsNaN(ParameterValue(internalCondition, InternalConditionParameter.VentilationFunctionSetback)))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Ventilation function (TAS expression/factor/setback) is not converted", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            // TAS view coefficients and the lighting control function (coverage manifest,
+            // Unsupported SAM-OS-IC-001 info; review P1-01): OS:People and OS:ElectricEquipment
+            // have no visible-fraction field, and the TAS control expression has no
+            // deterministic daylighting-control mapping. Reported per SpaceType.
+            if (!double.IsNaN(ParameterValue(internalCondition, InternalConditionParameter.OccupancyViewCoefficient)))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Occupancy view coefficient is not converted — OS:People has no visible-fraction field", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            if (!double.IsNaN(ParameterValue(internalCondition, InternalConditionParameter.EquipmentViewCoefficient)))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Equipment view coefficient is not converted — OS:ElectricEquipment has no visible-fraction field", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            if (!string.IsNullOrWhiteSpace(internalCondition.GetValue<string>(InternalConditionParameter.LightingControlFunction)))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Lighting control function (TAS control expression) is not converted — no deterministic daylighting-control mapping", internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            // Deferred detailed-HVAC data (coverage manifest, Deferred SAM-OS-HVAC-001 info;
+            // review P1-01): Ideal Loads is a purely convective air system without fan/air-loop
+            // equipment, so emitter characteristics and exhaust flows wait for the HVAC
+            // programme. One diagnostic per group, naming every present parameter.
+            List<string> emitterParameterNames = PresentParameterNames(internalCondition,
+                InternalConditionParameter.HeatingEmitterRadiantProportion,
+                InternalConditionParameter.HeatingEmitterCoefficient,
+                InternalConditionParameter.CoolingEmitterRadiantProportion,
+                InternalConditionParameter.CoolingEmitterCoefficient);
+            if (emitterParameterNames.Count > 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Emitter characteristics ({0}) are not converted — Ideal Loads is a purely convective air system; emitters are deferred to the detailed-HVAC programme", string.Join(", ", emitterParameterNames)), internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
+
+            List<string> exhaustParameterNames = PresentParameterNames(internalCondition,
+                InternalConditionParameter.ExhaustAirFlowPerPerson,
+                InternalConditionParameter.ExhaustAirChangesPerHour,
+                InternalConditionParameter.ExhaustAirFlowPerArea,
+                InternalConditionParameter.ExhaustAirFlow);
+            if (exhaustParameterNames.Count > 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Exhaust air flows ({0}) are not converted — exhaust needs fan/air-loop equipment, deferred to the detailed-HVAC programme", string.Join(", ", exhaustParameterNames)), internalCondition, name);
+                openStudioConversionContext.RegisterSkip();
+            }
 
             return result;
+        }
+
+        private static List<string> PresentParameterNames(InternalCondition internalCondition, params InternalConditionParameter[] internalConditionParameters)
+        {
+            List<string> result = new List<string>();
+            foreach (InternalConditionParameter internalConditionParameter in internalConditionParameters)
+            {
+                if (!double.IsNaN(ParameterValue(internalCondition, internalConditionParameter)))
+                {
+                    result.Add(internalConditionParameter.ToString());
+                }
+            }
+
+            return result;
+        }
+
+        private static double ParameterValue(InternalCondition internalCondition, InternalConditionParameter internalConditionParameter)
+        {
+            double value;
+            return internalCondition.TryGetValue(internalConditionParameter, out value) ? value : double.NaN;
         }
 
         private static global::OpenStudio.Schedule RequiredSchedule(InternalCondition internalCondition, Dictionary<ProfileType, Profile> profileDictionary, ProfileType profileType, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
@@ -230,6 +388,7 @@ namespace SAM.Analytical.OpenStudio
             if (!profileDictionary.TryGetValue(profileType, out profile) || profile == null)
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("{0} gains are defined but the {0} profile '{1}' was not found; the load is skipped (never AlwaysOn)", profileType, internalCondition.GetProfileName(profileType)), internalCondition, openStudioObjectName);
+                openStudioConversionContext.RegisterSkip();
                 return null;
             }
 
@@ -239,14 +398,24 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>
         /// Deterministic content hash (8 hex chars) of an internal condition's full parameter
         /// content — parameters, profile-name references and nested parameter sets — with every
-        /// Guid excluded so clones hash identically regardless of their SAM Guids. Two conditions
-        /// with equal names and equal content share a hash; any content difference changes it.
+        /// Guid excluded so clones hash identically regardless of their SAM Guids, extended with
+        /// the per-space computed load densities so spaces with different evaluated densities
+        /// never share one SpaceType. Two conditions with equal names, equal content and equal
+        /// evaluated densities share a hash; any difference changes it.
         /// </summary>
-        private static string ContentHash(InternalCondition internalCondition)
+        private static string ContentHash(InternalCondition internalCondition, params double[] spaceDensities)
         {
             JsonObject jsonObject = internalCondition.ToJsonObject();
             StringBuilder stringBuilder = new StringBuilder();
             AppendContent(jsonObject, stringBuilder);
+
+            if (spaceDensities != null)
+            {
+                foreach (double density in spaceDensities)
+                {
+                    stringBuilder.Append("density=").Append(density.ToString("R", System.Globalization.CultureInfo.InvariantCulture)).Append(';');
+                }
+            }
 
             using (MD5 mD5 = MD5.Create())
             {

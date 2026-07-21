@@ -68,10 +68,66 @@ namespace SAM.Analytical.OpenStudio
             List<IClosedPlanar3D> internalEdges = face3D.GetInternalEdge3Ds();
             if (internalEdges != null && internalEdges.Count > 0)
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Panel face has {0} internal edge(s) (holes); holes are not converted in the MVP — only the external boundary is used", internalEdges.Count), panel, name);
+                // Holes are never fabricated into windows: the external boundary only is used,
+                // reported with the panel Guid (attached to the diagnostic) and a geometry
+                // summary (count, per-hole and total area).
+                System.Text.StringBuilder stringBuilder = new System.Text.StringBuilder();
+                double totalHoleArea = 0;
+                int reportedHoles = 0;
+                foreach (IClosedPlanar3D internalEdge in internalEdges)
+                {
+                    if (internalEdge == null)
+                    {
+                        continue;
+                    }
+
+                    double holeArea = double.NaN;
+                    try
+                    {
+                        holeArea = internalEdge.GetArea();
+                    }
+                    catch (System.Exception)
+                    {
+                        // geometry kernel failure — report the hole without its area
+                    }
+
+                    if (!double.IsNaN(holeArea))
+                    {
+                        totalHoleArea += holeArea;
+                        if (reportedHoles < 5)
+                        {
+                            stringBuilder.Append(string.Format(" hole{0}={1:G4} m²;", reportedHoles + 1, holeArea));
+                        }
+                    }
+
+                    reportedHoles++;
+                }
+
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Panel face has {0} internal edge(s) (holes, total area {1:G4} m²):{2}{3} holes are not converted — only the external boundary is used", internalEdges.Count, totalHoleArea, stringBuilder.ToString(), reportedHoles > 5 ? string.Format(" (+{0} more);", reportedHoles - 5) : string.Empty), panel, name);
+                openStudioConversionContext.RegisterSkip();
             }
 
-            global::OpenStudio.Point3dVector point3dVector = face3D.ToOpenStudio(openStudioConversionContext.Options.DistanceTolerance, openStudioConversionContext.Options.AngleTolerance);
+            // The Face3D external-edge order does NOT reliably wind about the panel's outward
+            // normal, so align it explicitly — the same normalisation the aperture already
+            // applies to its SubSurface. Without this every surface was emitted facing into the
+            // space: EnergyPlus reported "Floor is upside down", "Roof/Ceiling is upside down"
+            // and "Indicated Zone Volume <= 0.0", and rejected every window with
+            // "checkSubSurfAzTiltNorm: Outward facing angle of subsurface differs more than 90.0
+            // degrees from base surface" — fatal, because the aperture was wound outward while
+            // its host was wound inward.
+            List<Point3D> surfacePoint3Ds = Geometry.OpenStudio.Query.CleanVertices(point3Ds, openStudioConversionContext.Options.DistanceTolerance, openStudioConversionContext.Options.AngleTolerance);
+            if (surfacePoint3Ds == null || surfacePoint3Ds.Count < 3)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Panel boundary could not be converted to an OpenStudio polygon", panel, name);
+                return null;
+            }
+
+            if (Geometry.OpenStudio.Query.IsClockwise(surfacePoint3Ds, panel.Normal))
+            {
+                surfacePoint3Ds.Reverse();
+            }
+
+            global::OpenStudio.Point3dVector point3dVector = surfacePoint3Ds.ToOpenStudio();
             if (point3dVector == null || point3dVector.Count < 3)
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Panel boundary could not be converted to an OpenStudio polygon", panel, name);
@@ -92,6 +148,16 @@ namespace SAM.Analytical.OpenStudio
             {
                 openStudioConversionContext.PrimarySurfaceMap[panel.Guid] = result;
                 openStudioConversionContext.RegisterModelObject(panel, result);
+
+                // Panel-level feature shade (coverage manifest PanelParameter.FeatureShade,
+                // Unsupported SAM-OS-CON-002 info; review P1-01): SAM carries no shade/slat
+                // geometry to build shading surfaces or WindowShadingControl. Reported once per
+                // panel (with the primary side).
+                if (panel.GetValue<FeatureShade>(PanelParameter.FeatureShade) != null)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Panel feature shade is not converted — SAM carries no shade/slat geometry to build shading surfaces or WindowShadingControl", panel, name);
+                    openStudioConversionContext.RegisterSkip();
+                }
             }
 
             List<Aperture> apertures = panel.Apertures;

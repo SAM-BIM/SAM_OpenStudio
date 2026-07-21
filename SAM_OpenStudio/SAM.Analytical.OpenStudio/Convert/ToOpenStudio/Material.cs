@@ -2,6 +2,7 @@
 // Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using SAM.Core;
 
@@ -37,6 +38,16 @@ namespace SAM.Analytical.OpenStudio
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Unsupported material kind {0}", material.GetType().Name));
                 return null;
+            }
+
+            // Vapour diffusion factor (coverage manifest AnalyticalMaterialParameter
+            // .VapourDiffusionFactor, Unsupported SAM-OS-MAT-002 info; review P1-01): the
+            // EnergyPlus CTF heat balance carries no moisture transport, and HAMT/EMPD need
+            // data SAM does not hold. Reported once per material, any kind, thickness or usage.
+            if (sAMObject.TryGetValue(MaterialParameter.VapourDiffusionFactor, out double vapourDiffusionFactor) && !double.IsNaN(vapourDiffusionFactor) && vapourDiffusionFactor > 0
+                && openStudioConversionContext.RegisterOnce("SAM-OS-MAT-002:VapourDiffusionFactor:" + sAMObject.Guid.ToString("N")))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format(CultureInfo.InvariantCulture, "Vapour diffusion factor ({0:G4}) is not converted — EnergyPlus moisture modelling (HAMT/EMPD) needs data SAM does not carry", vapourDiffusionFactor), sAMObject);
             }
 
             if (material is GasMaterial gasMaterial)
@@ -93,6 +104,17 @@ namespace SAM.Analytical.OpenStudio
                     standardOpaqueMaterial.setVisibleAbsorptance(1 - externalLightReflectance);
                 }
 
+                // Single-sided approximation (coverage manifest OpaqueMaterialParameter
+                // .Internal*, Approximated SAM-OS-MAT-002 info when Internal differs from
+                // External; review P1-01): EnergyPlus opaque materials carry one absorptance
+                // set — the external-side values govern both sides. Reported once per material.
+                List<string> divergentInternalOptics = DivergentInternalOptics(sAMObject);
+                if (divergentInternalOptics.Count > 0
+                    && openStudioConversionContext.RegisterOnce("SAM-OS-MAT-002:InternalOptics:" + sAMObject.Guid.ToString("N")))
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Internal-side optical properties ({0}) differ from the external-side values — EnergyPlus opaque materials are single-sided; the external values govern both sides", string.Join(", ", divergentInternalOptics)), sAMObject, name);
+                }
+
                 result = standardOpaqueMaterial;
             }
             else if (material is TransparentMaterial transparentMaterial)
@@ -107,6 +129,11 @@ namespace SAM.Analytical.OpenStudio
                 {
                     openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Invalid thermal conductivity {0}", transparentMaterial.ThermalConductivity), sAMObject, name);
                     return null;
+                }
+
+                if (sAMObject.TryGetValue(TransparentMaterialParameter.IsBlind, out bool isBlind) && isBlind)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Material is flagged as a blind but SAM carries no slat geometry — converted as plain glazing (no WindowMaterial:Blind fabricated)", sAMObject, name);
                 }
 
                 global::OpenStudio.StandardGlazing standardGlazing = new global::OpenStudio.StandardGlazing(openStudioConversionContext.Target);
@@ -272,6 +299,33 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Names of the opaque Internal* optical parameters whose value is present and diverges
+        /// from its External* counterpart (or has no external counterpart to govern it) — the
+        /// cases where the single-sided EnergyPlus approximation loses information.
+        /// </summary>
+        private static List<string> DivergentInternalOptics(SAMObject sAMObject)
+        {
+            List<string> result = new List<string>();
+            AddDivergentInternalOptic(sAMObject, OpaqueMaterialParameter.InternalEmissivity, OpaqueMaterialParameter.ExternalEmissivity, result);
+            AddDivergentInternalOptic(sAMObject, OpaqueMaterialParameter.InternalSolarReflectance, OpaqueMaterialParameter.ExternalSolarReflectance, result);
+            AddDivergentInternalOptic(sAMObject, OpaqueMaterialParameter.InternalLightReflectance, OpaqueMaterialParameter.ExternalLightReflectance, result);
+            return result;
+        }
+
+        private static void AddDivergentInternalOptic(SAMObject sAMObject, OpaqueMaterialParameter internalParameter, OpaqueMaterialParameter externalParameter, List<string> divergent)
+        {
+            if (!sAMObject.TryGetValue(internalParameter, out double internalValue) || double.IsNaN(internalValue))
+            {
+                return;
+            }
+
+            if (!sAMObject.TryGetValue(externalParameter, out double externalValue) || double.IsNaN(externalValue) || Math.Abs(internalValue - externalValue) > 1e-9)
+            {
+                divergent.Add(internalParameter.ToString());
+            }
         }
 
         private static bool IsValidPositive(double value)

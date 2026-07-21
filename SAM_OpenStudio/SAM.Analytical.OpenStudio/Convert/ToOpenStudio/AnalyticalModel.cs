@@ -39,18 +39,108 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="openStudioConversionOptions">Conversion options; defaults when null.</param>
         /// <param name="openStudioRunOptions">Run options (CLI path, timeout); defaults when null.</param>
         /// <param name="run">False converts and saves OSM/OSW without executing the CLI.</param>
+        /// <param name="progress">Optional stage progress sink.</param>
+        /// <param name="cancellationToken">Cancellation; kills the CLI/EnergyPlus process tree when triggered.</param>
         /// <returns>Conversion result including RunResult and Loads; null when input is null.</returns>
-        public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true)
+        public static OpenStudioConversionResult ToOpenStudio(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
         {
-            OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions, FirstDayOfWeekOffset(epwPath, openStudioConversionOptions));
+            OpenStudioConversionContext context = ToOpenStudio_ContextWithSite(analyticalModel, epwPath, openStudioConversionOptions, openStudioRunOptions, run);
             if (context == null)
             {
                 return null;
             }
 
-            context.ToOpenStudio_Weather(epwPath);
+            return OpenStudioSimulationRunner.Run(context, context.EpwPath ?? epwPath, outputDirectory, openStudioRunOptions, run, progress, cancellationToken);
+        }
+
+        /// <summary>
+        /// Asynchronous full pipeline (C6): conversion executes inline (fast CPU work), the
+        /// save → OSW → CLI → parse pipeline on a worker thread; cancellation terminates the
+        /// CLI/EnergyPlus process tree. Progress stages are reported through
+        /// <paramref name="progress"/>.
+        /// </summary>
+        public static System.Threading.Tasks.Task<OpenStudioConversionResult> ToOpenStudioAsync(this AnalyticalModel analyticalModel, string epwPath, string outputDirectory, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions = null, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions = null, bool run = true, System.IProgress<Core.OpenStudio.OpenStudioSimulationProgress> progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        {
+            OpenStudioConversionContext context = ToOpenStudio_ContextWithSite(analyticalModel, epwPath, openStudioConversionOptions, openStudioRunOptions, run);
+            if (context == null)
+            {
+                return System.Threading.Tasks.Task.FromResult<OpenStudioConversionResult>(null);
+            }
+
+            return OpenStudioSimulationRunner.RunAsync(context, context.EpwPath ?? epwPath, outputDirectory, openStudioRunOptions, run, progress, cancellationToken);
+        }
+
+        private static OpenStudioConversionContext ToOpenStudio_ContextWithSite(AnalyticalModel analyticalModel, string epwPath, Core.OpenStudio.OpenStudioConversionOptions openStudioConversionOptions, Core.OpenStudio.OpenStudioRunOptions openStudioRunOptions, bool run)
+        {
+            // Annual weather source precedence (documented contract):
+            //   1. the explicit EPW path, when supplied and valid;
+            //   2. WeatherData embedded in the AnalyticalModel, exported through the existing
+            //      SAM.Weather ToEPW API when it carries hourly weather years;
+            //   3. otherwise a blocking diagnostic when an annual run was requested (a
+            //      conversion-only run stays valid with a warning).
+            // The source is resolved before the context is built: the run-calendar offset must
+            // be known before any profile is converted.
+            string epwPath_Effective = !string.IsNullOrWhiteSpace(epwPath) && System.IO.File.Exists(epwPath) ? epwPath : null;
+            bool embeddedWeatherSource = false;
+            bool invalidExplicitEpwPath = false;
+            if (epwPath_Effective == null)
+            {
+                invalidExplicitEpwPath = !string.IsNullOrWhiteSpace(epwPath);
+                epwPath_Effective = analyticalModel.EmbeddedAnnualWeatherPath();
+                embeddedWeatherSource = epwPath_Effective != null;
+            }
+
+            OpenStudioConversionContext context = ToOpenStudio_Context(analyticalModel, openStudioConversionOptions, FirstDayOfWeekOffset(epwPath_Effective, openStudioConversionOptions));
+            if (context == null)
+            {
+                return null;
+            }
+
+            if (invalidExplicitEpwPath)
+            {
+                context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The explicit EPW path is not usable: {0}; falling back to the AnalyticalModel WeatherData", epwPath));
+            }
+
+            context.EpwPath = epwPath_Effective;
+
+            context.ToOpenStudio_Weather(epwPath_Effective, run, embeddedWeatherSource);
+
+            // Design-day source precedence (documented contract):
+            //   1. an explicit DDY path (run option takes precedence over the conversion option);
+            //   2. HeatingDesignDays/CoolingDesignDays embedded in the AnalyticalModel;
+            //   3. no design days. Explicit DDY and embedded design days are never merged.
+            string ddyPath = !string.IsNullOrWhiteSpace(openStudioRunOptions?.DdyPath) ? openStudioRunOptions.DdyPath : openStudioConversionOptions?.DdyPath;
+            if (!string.IsNullOrWhiteSpace(ddyPath) && System.IO.File.Exists(ddyPath))
+            {
+                context.ToOpenStudio_DesignDays(ddyPath);
+                context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Design-day source: explicit DDY ({0}); embedded AnalyticalModel design days are not merged", System.IO.Path.GetFileName(ddyPath)));
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(ddyPath))
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The explicit DDY path is not usable: {0}; falling back to the AnalyticalModel design days", ddyPath));
+                }
+
+                Core.SAMCollection<DesignDay> heatingDesignDays = null;
+                context.Source?.TryGetValue(AnalyticalModelParameter.HeatingDesignDays, out heatingDesignDays);
+
+                Core.SAMCollection<DesignDay> coolingDesignDays = null;
+                context.Source?.TryGetValue(AnalyticalModelParameter.CoolingDesignDays, out coolingDesignDays);
+
+                int embeddedCount = context.ToOpenStudio_DesignDays(heatingDesignDays, coolingDesignDays);
+                if (embeddedCount > 0)
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Design-day source: AnalyticalModel heating/cooling design days ({0} imported)", embeddedCount));
+                }
+                else
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "No design-day source supplied; sizing-period runs stay disabled unless OpenStudioConversionOptions.RunSizingPeriods overrides");
+                }
+            }
+
             context.ToOpenStudio_SimulationSettings();
-            return OpenStudioSimulationRunner.Run(context, epwPath, outputDirectory, openStudioRunOptions, run);
+            return context;
         }
 
         /// <summary>
@@ -110,11 +200,27 @@ namespace SAM.Analytical.OpenStudio
 
             SortedList<double, global::OpenStudio.BuildingStory> buildingStories = context.ToOpenStudio_BuildingStories();
 
+            List<Panel> sourcePanels = adjacencyCluster.GetPanels();
+            int sourceApertureCount = 0;
+            if (sourcePanels != null)
+            {
+                foreach (Panel sourcePanel in sourcePanels)
+                {
+                    List<Aperture> sourceApertures = sourcePanel?.Apertures;
+                    if (sourceApertures != null)
+                    {
+                        sourceApertureCount += sourceApertures.Count;
+                    }
+                }
+            }
+
             Dictionary<Guid, List<global::OpenStudio.Surface>> surfacesByPanel = new Dictionary<Guid, List<global::OpenStudio.Surface>>();
             Dictionary<Guid, Panel> panelByGuid = new Dictionary<Guid, Panel>();
             Dictionary<Guid, List<global::OpenStudio.SubSurface>> subSurfacesByAperture = new Dictionary<Guid, List<global::OpenStudio.SubSurface>>();
+            HashSet<Guid> spacesWithSurfaces = new HashSet<Guid>();
 
             List<Space> spaces = adjacencyCluster.GetSpaces();
+            context.Statistics.SourceObjects = (spaces?.Count ?? 0) + (sourcePanels?.Count ?? 0) + sourceApertureCount;
             if (spaces == null || spaces.Count == 0)
             {
                 context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "AnalyticalModel contains no spaces", analyticalModel);
@@ -194,12 +300,14 @@ namespace SAM.Analytical.OpenStudio
                     catch (System.Exception exception)
                     {
                         context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("The space shell could not be computed ({0}); no surfaces were created for the space", exception.GetType().Name), space);
+                        context.RegisterSkip();
                         continue;
                     }
 
                     if (panels == null || panels.Count == 0)
                     {
                         context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Space has no related panels; no surfaces were created", space);
+                        context.RegisterSkip();
                         continue;
                     }
 
@@ -209,6 +317,7 @@ namespace SAM.Analytical.OpenStudio
                         if (panel == null)
                         {
                             context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Unsupported panel kind {0}; skipped", iPanel?.GetType()?.Name), space);
+                            context.RegisterSkip();
                             continue;
                         }
 
@@ -225,6 +334,7 @@ namespace SAM.Analytical.OpenStudio
                         catch (System.Exception exception)
                         {
                             context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Panel geometry could not be converted ({0}); the panel was skipped, never repaired", exception.GetType().Name), panel);
+                            context.RegisterSkip();
                             continue;
                         }
 
@@ -242,6 +352,7 @@ namespace SAM.Analytical.OpenStudio
 
                         surfaces.Add(surface);
                         panelByGuid[panel.Guid] = panel;
+                        spacesWithSurfaces.Add(space.Guid);
                     }
                 }
             }
@@ -275,6 +386,7 @@ namespace SAM.Analytical.OpenStudio
                         if (!surfacesByPanel.ContainsKey(relatedPanel.Guid) && reportedPanels.Add(relatedPanel.Guid))
                         {
                             context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "Panel related to a space produced no surface (excluded from the space shell — degenerate or disconnected geometry); it was skipped, never repaired", relatedPanel);
+                            context.RegisterSkip();
                         }
                     }
                 }
@@ -284,7 +396,7 @@ namespace SAM.Analytical.OpenStudio
             {
                 Panel panel = panelByGuid[keyValuePair.Key];
                 List<global::OpenStudio.Surface> surfaces = keyValuePair.Value;
-                string boundaryCondition = panel.PanelType.OutsideBoundaryCondition();
+                string boundaryCondition = panel.OutsideBoundaryCondition();
 
                 if (boundaryCondition == "Surface")
                 {
@@ -354,6 +466,7 @@ namespace SAM.Analytical.OpenStudio
                     {
                         constructionAirBoundary = new global::OpenStudio.ConstructionAirBoundary(context.Target);
                         constructionAirBoundary.setName("SAM_Construction_AirBoundary");
+                        ApplyAirBoundaryAirExchange(constructionAirBoundary, context);
                     }
 
                     foreach (global::OpenStudio.Surface surface in surfaces)
@@ -422,7 +535,7 @@ namespace SAM.Analytical.OpenStudio
                 }
 
                 List<global::OpenStudio.SubSurface> subSurfaces = keyValuePair.Value;
-                global::OpenStudio.Construction forwardConstruction = apertureConstruction.ToOpenStudio(true, context);
+                global::OpenStudio.Construction forwardConstruction = apertureConstruction.ToOpenStudio(true, context, aperture);
                 if (forwardConstruction == null)
                 {
                     continue;
@@ -432,7 +545,7 @@ namespace SAM.Analytical.OpenStudio
 
                 if (subSurfaces.Count >= 2)
                 {
-                    global::OpenStudio.Construction reverseConstruction = apertureConstruction.ToOpenStudio(false, context);
+                    global::OpenStudio.Construction reverseConstruction = apertureConstruction.ToOpenStudio(false, context, aperture);
                     if (reverseConstruction != null)
                     {
                         subSurfaces[1].setConstruction(reverseConstruction);
@@ -457,6 +570,16 @@ namespace SAM.Analytical.OpenStudio
                         continue;
                     }
 
+                    if (!spacesWithSurfaces.Contains(space.Guid))
+                    {
+                        // A conditioned zone without surfaces cannot be simulated (EnergyPlus
+                        // fatals on a conditioned zone with no envelope) — reject it explicitly
+                        // instead of attaching a thermostat and Ideal Loads to an empty zone.
+                        context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Conditioned space has no valid surfaces; thermostat and Ideal Loads were not assigned", space);
+                        context.RegisterSkip();
+                        continue;
+                    }
+
                     if (!context.TryGetModelObject(space.Guid, out global::OpenStudio.Space openStudioSpace))
                     {
                         continue;
@@ -472,6 +595,7 @@ namespace SAM.Analytical.OpenStudio
                     global::OpenStudio.ThermalZone thermalZone = optionalThermalZone.get();
 
                     global::OpenStudio.ThermostatSetpointDualSetpoint thermostat = space.ToOpenStudio_Thermostat(thermalZone, context);
+                    space.ToOpenStudio_Humidistat(thermalZone, context);
                     if (thermostat != null && options.AssignIdealLoads)
                     {
                         thermalZone.ToOpenStudio_IdealLoads(space, context);
@@ -480,6 +604,47 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return context;
+        }
+
+        /// <summary>
+        /// Applies the opt-in inter-zone air exchange to the shared air-boundary construction
+        /// (coverage manifest: PanelType.Air — Approximated when enabled).
+        /// <para>
+        /// An air boundary always groups its two zones for solar, daylighting and radiant
+        /// exchange; what the EnergyPlus <c>Air Exchange Method</c> field controls is whether AIR
+        /// moves between them. The default <c>None</c> leaves the zones convectively uncoupled,
+        /// which under-models a real opening — but SAM carries no per-panel airflow data, so a
+        /// rate can only come from the caller
+        /// (<see cref="Core.OpenStudio.OpenStudioConversionOptions.AirBoundaryAirChangesPerHour"/>)
+        /// and is never inferred. Whichever branch applies is named in a diagnostic: an assumed
+        /// mixing rate and a deliberately uncoupled boundary are both modelling decisions the
+        /// reader must see.
+        /// </para>
+        /// </summary>
+        private static void ApplyAirBoundaryAirExchange(global::OpenStudio.ConstructionAirBoundary constructionAirBoundary, OpenStudioConversionContext openStudioConversionContext)
+        {
+            double airChangesPerHour = openStudioConversionContext.Options.AirBoundaryAirChangesPerHour;
+
+            if (double.IsNaN(airChangesPerHour))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Air panel converted with Air Exchange Method 'None': the zones share one radiant/solar enclosure but exchange no air. SAM carries no airflow data for the opening — set OpenStudioConversionOptions.AirBoundaryAirChangesPerHour to model mixing");
+                return;
+            }
+
+            if (double.IsInfinity(airChangesPerHour) || airChangesPerHour < 0)
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "AirBoundaryAirChangesPerHour {0} is not a valid rate (finite, ≥ 0); Air Exchange Method 'None' kept", airChangesPerHour));
+                return;
+            }
+
+            if (!constructionAirBoundary.setAirExchangeMethod("SimpleMixing"))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "OpenStudio rejected the SimpleMixing air exchange method; Air Exchange Method 'None' kept");
+                return;
+            }
+
+            constructionAirBoundary.setSimpleMixingAirChangesPerHour(airChangesPerHour);
+            openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format(System.Globalization.CultureInfo.InvariantCulture, "Air panel converted with Air Exchange Method 'SimpleMixing' at {0} ACH (caller-supplied assumption — SAM carries no airflow data for the opening; EnergyPlus applies the rate to the smaller zone's volume, on an always-on schedule)", airChangesPerHour));
         }
     }
 }

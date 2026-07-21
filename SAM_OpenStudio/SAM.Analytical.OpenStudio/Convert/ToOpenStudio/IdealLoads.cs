@@ -7,9 +7,11 @@ namespace SAM.Analytical.OpenStudio
     {
         /// <summary>
         /// Attaches a ZoneHVACIdealLoadsAirSystem to a conditioned thermal zone (one system per
-        /// zone). MVP settings are the EnergyPlus object defaults: no capacity or air-flow
-        /// limits, no outdoor-air economizer, no heat recovery, no humidity control — documented
-        /// deliberately (plan §12).
+        /// zone). Settings are the EnergyPlus object defaults (no capacity or air-flow limits,
+        /// no outdoor-air economizer, no heat recovery) except humidity control: when the zone
+        /// carries a ZoneControlHumidistat with a humidifying and/or dehumidifying schedule, the
+        /// matching control type is set to Humidistat (coverage manifest:
+        /// InternalConditionParameter.Humidification/DehumidificationProfileName).
         /// </summary>
         /// <param name="thermalZone">Conditioned thermal zone.</param>
         /// <param name="space">Source SAM space (naming and diagnostics).</param>
@@ -24,6 +26,21 @@ namespace SAM.Analytical.OpenStudio
 
             global::OpenStudio.ZoneHVACIdealLoadsAirSystem result = new global::OpenStudio.ZoneHVACIdealLoadsAirSystem(openStudioConversionContext.Target);
             result.setName(Core.OpenStudio.Query.OpenStudioName("IdealLoads", space.Name, space.Guid));
+
+            global::OpenStudio.OptionalZoneControlHumidistat optionalHumidistat = thermalZone.zoneControlHumidistat();
+            if (optionalHumidistat != null && !optionalHumidistat.isNull())
+            {
+                global::OpenStudio.ZoneControlHumidistat humidistat = optionalHumidistat.get();
+                if (!humidistat.humidifyingRelativeHumiditySetpointSchedule().isNull())
+                {
+                    result.setHumidificationControlType("Humidistat");
+                }
+
+                if (!humidistat.dehumidifyingRelativeHumiditySetpointSchedule().isNull())
+                {
+                    result.setDehumidificationControlType("Humidistat");
+                }
+            }
 
             if (!result.addToThermalZone(thermalZone))
             {

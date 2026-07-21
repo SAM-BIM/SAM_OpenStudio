@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 // Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
 
+using System.Collections.Generic;
 using System.IO;
 
 namespace SAM.Analytical.OpenStudio
@@ -9,49 +10,265 @@ namespace SAM.Analytical.OpenStudio
     {
         /// <summary>
         /// Validates the EPW file, assigns it as the model's weather file and populates the Site
-        /// (latitude, longitude, time zone, elevation) from it. The EPW is an explicit input —
-        /// SAM weather data is not consulted in the MVP. Failures raise SAM-OS-RUN-001 errors.
+        /// (latitude, longitude, time zone, elevation). The EPW is an explicit input.
+        /// Precedence (never silently overridden): the SAM model Location overrides the EPW
+        /// site coordinates with an information diagnostic; ground temperatures come from the
+        /// SAM model WeatherData (nearest-to-surface set) when present, otherwise the EPW
+        /// header (imported by OpenStudio itself), otherwise the EnergyPlus 18 °C default is
+        /// named in a warning. Failures raise SAM-OS-RUN-001 errors.
         /// </summary>
         /// <param name="openStudioConversionContext">Conversion context.</param>
         /// <param name="epwPath">Path to the EPW weather file.</param>
         /// <returns>True when the weather file was assigned.</returns>
         public static bool ToOpenStudio_Weather(this OpenStudioConversionContext openStudioConversionContext, string epwPath)
         {
+            return ToOpenStudio_Weather(openStudioConversionContext, epwPath, true, false);
+        }
+
+        /// <summary>
+        /// Assigns the resolved annual weather source. Source precedence (documented contract):
+        /// an explicit EPW wins over the AnalyticalModel WeatherData; when no EPW source exists
+        /// the embedded WeatherData still supplies location/elevation/time zone and ground
+        /// temperatures. A missing source is a blocking error only when an annual run was
+        /// requested (<paramref name="run"/> true); conversion-only stays valid with a warning.
+        /// </summary>
+        /// <param name="openStudioConversionContext">Conversion context.</param>
+        /// <param name="epwPath">Resolved EPW path (explicit or exported from the embedded WeatherData); null when no annual source exists.</param>
+        /// <param name="run">True when an annual simulation was requested.</param>
+        /// <param name="embeddedSource">True when the EPW was exported from the embedded AnalyticalModel WeatherData.</param>
+        /// <returns>True when a weather file was assigned.</returns>
+        public static bool ToOpenStudio_Weather(this OpenStudioConversionContext openStudioConversionContext, string epwPath, bool run, bool embeddedSource)
+        {
             if (openStudioConversionContext == null)
             {
                 return false;
             }
 
+            bool weatherAssigned = false;
+
             if (string.IsNullOrWhiteSpace(epwPath) || !File.Exists(epwPath))
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("EPW weather file not found: {0}", epwPath));
-                return false;
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, run ? Core.OpenStudio.OpenStudioDiagnosticSeverity.Error : Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "No usable annual EPW source: supply an explicit EPW path or embed WeatherData with hourly weather years in the AnalyticalModel" + (run ? string.Empty : " (conversion-only: the OSM/OSW are saved without a weather file)"));
             }
-
-            global::OpenStudio.OptionalEpwFile optionalEpwFile = global::OpenStudio.EpwFile.load(global::OpenStudio.OpenStudioUtilitiesCore.toPath(epwPath));
-            if (optionalEpwFile == null || optionalEpwFile.isNull())
+            else
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("EPW weather file could not be parsed: {0}", epwPath));
-                return false;
+                global::OpenStudio.OptionalEpwFile optionalEpwFile = global::OpenStudio.EpwFile.load(global::OpenStudio.OpenStudioUtilitiesCore.toPath(epwPath));
+                if (optionalEpwFile == null || optionalEpwFile.isNull())
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("EPW weather file could not be parsed: {0}", epwPath));
+                }
+                else
+                {
+                    global::OpenStudio.EpwFile epwFile = optionalEpwFile.get();
+
+                    global::OpenStudio.OptionalWeatherFile optionalWeatherFile = global::OpenStudio.WeatherFile.setWeatherFile(openStudioConversionContext.Target, epwFile);
+                    if (optionalWeatherFile == null || optionalWeatherFile.isNull())
+                    {
+                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "OpenStudio rejected the EPW weather file");
+                    }
+                    else
+                    {
+                        weatherAssigned = true;
+
+                        global::OpenStudio.Site site = openStudioConversionContext.Target.getSite();
+                        site.setName("SAM_Site_" + Core.OpenStudio.Query.SanitizeName(Path.GetFileNameWithoutExtension(epwPath)));
+                        site.setLatitude(epwFile.latitude());
+                        site.setLongitude(epwFile.longitude());
+                        site.setTimeZone(epwFile.timeZone());
+                        site.setElevation(epwFile.elevation());
+
+                        openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, embeddedSource ? "Annual weather source: AnalyticalModel WeatherData (exported to an EPW file)" : string.Format("Annual weather source: explicit EPW ({0})", Path.GetFileName(epwPath)));
+                    }
+                }
             }
 
-            global::OpenStudio.EpwFile epwFile = optionalEpwFile.get();
-
-            global::OpenStudio.OptionalWeatherFile optionalWeatherFile = global::OpenStudio.WeatherFile.setWeatherFile(openStudioConversionContext.Target, epwFile);
-            if (optionalWeatherFile == null || optionalWeatherFile.isNull())
+            if (!weatherAssigned)
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "OpenStudio rejected the EPW weather file");
-                return false;
+                // Metadata fallback: the embedded WeatherData still supplies the site when no
+                // annual EPW exists. An explicit EPW wins over this metadata — the fallback
+                // never overrides an assigned weather file.
+                Weather.WeatherData weatherData = null;
+                openStudioConversionContext.Source?.TryGetValue(AnalyticalModelParameter.WeatherData, out weatherData);
+
+                Core.Location location_WeatherData = weatherData?.Location;
+                if (location_WeatherData != null && IsFinite(location_WeatherData.Latitude) && location_WeatherData.Latitude >= -90 && location_WeatherData.Latitude <= 90 && IsFinite(location_WeatherData.Longitude) && location_WeatherData.Longitude >= -180 && location_WeatherData.Longitude <= 180)
+                {
+                    global::OpenStudio.Site site = openStudioConversionContext.Target.getSite();
+                    site.setName("SAM_Site_" + Core.OpenStudio.Query.SanitizeName(weatherData.Name ?? "WeatherData"));
+                    site.setLatitude(location_WeatherData.Latitude);
+                    site.setLongitude(location_WeatherData.Longitude);
+                    if (IsFinite(location_WeatherData.Elevation))
+                    {
+                        site.setElevation(location_WeatherData.Elevation);
+                    }
+
+                    string timeZone = null;
+                    if (weatherData.TryGetValue(Weather.WeatherDataParameter.TimeZone, out timeZone) && !string.IsNullOrWhiteSpace(timeZone))
+                    {
+                        double timeZoneValue = Core.Query.Double(Core.Query.UTC(timeZone));
+                        if (IsFinite(timeZoneValue))
+                        {
+                            site.setTimeZone(timeZoneValue);
+                        }
+                    }
+
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Site coordinates taken from the AnalyticalModel WeatherData (lat {0}, lon {1}); an EPW path is still required for an annual run", location_WeatherData.Latitude, location_WeatherData.Longitude));
+                }
             }
 
-            global::OpenStudio.Site site = openStudioConversionContext.Target.getSite();
-            site.setName("SAM_Site_" + Core.OpenStudio.Query.SanitizeName(Path.GetFileNameWithoutExtension(epwPath)));
-            site.setLatitude(epwFile.latitude());
-            site.setLongitude(epwFile.longitude());
-            site.setTimeZone(epwFile.timeZone());
-            site.setElevation(epwFile.elevation());
+            // Review P2-03: the SAM Location override is validated — NaN or out-of-range
+            // coordinates never reach OS:Site (EnergyPlus would run them). Invalid coordinates
+            // keep the resolved site with a warning naming the rejected values; a non-finite
+            // elevation keeps the resolved elevation while valid coordinates still override.
+            Core.Location location = openStudioConversionContext.Source?.Location;
+            if (location != null)
+            {
+                bool validLatitude = IsFinite(location.Latitude) && location.Latitude >= -90 && location.Latitude <= 90;
+                bool validLongitude = IsFinite(location.Longitude) && location.Longitude >= -180 && location.Longitude <= 180;
 
-            return true;
+                global::OpenStudio.Site site = openStudioConversionContext.Target.getSite();
+
+                if (validLatitude && validLongitude)
+                {
+                    site.setLatitude(location.Latitude);
+                    site.setLongitude(location.Longitude);
+
+                    bool validElevation = IsFinite(location.Elevation);
+                    if (validElevation)
+                    {
+                        site.setElevation(location.Elevation);
+                    }
+
+                    string siteSource = weatherAssigned ? "the EPW header" : "the AnalyticalModel WeatherData";
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Site coordinates taken from the SAM model Location (lat {0}, lon {1}, elevation {2}), overriding {3}; the time zone stays with {3}", location.Latitude, location.Longitude, validElevation ? location.Elevation + " m" : string.Format("kept from {0} — SAM value {1} is not finite", siteSource, location.Elevation), siteSource));
+                }
+                else
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("SAM model Location has invalid coordinates (lat {0} [-90..90], lon {1} [-180..180]); the weather-source site is kept", location.Latitude, location.Longitude));
+                }
+            }
+
+            ApplyGroundTemperatures(openStudioConversionContext, epwPath);
+            return weatherAssigned;
+        }
+
+        private static bool IsFinite(double value)
+        {
+            return !double.IsNaN(value) && !double.IsInfinity(value);
+        }
+
+        /// <summary>
+        /// Ground-temperature precedence: SAM model WeatherData (nearest-to-surface set) →
+        /// EPW GROUND TEMPERATURES header (parsed via SAM.Weather's native EPW reader —
+        /// OpenStudio's setWeatherFile does NOT import them) → warning naming the EnergyPlus
+        /// 18 °C default. STAT parsing is deferred (no parser exists in the SAM ecosystem).
+        /// </summary>
+        private static void ApplyGroundTemperatures(OpenStudioConversionContext openStudioConversionContext, string epwPath)
+        {
+            Weather.WeatherData weatherData = null;
+            openStudioConversionContext.Source?.TryGetValue(AnalyticalModelParameter.WeatherData, out weatherData);
+
+            if (weatherData != null && weatherData.TryGetValue(Weather.WeatherDataParameter.GroundTemperatures, out Core.SAMCollection<Weather.GroundTemperature> groundTemperatures) && groundTemperatures != null)
+            {
+                Weather.GroundTemperature nearestToSurface = null;
+                foreach (Weather.GroundTemperature groundTemperature in groundTemperatures)
+                {
+                    if (groundTemperature?.Temperatures == null || groundTemperature.Temperatures.Length < 12)
+                    {
+                        continue;
+                    }
+
+                    if (nearestToSurface == null || (double.IsNaN(nearestToSurface.Depth) && !double.IsNaN(groundTemperature.Depth)) || (!double.IsNaN(groundTemperature.Depth) && groundTemperature.Depth < nearestToSurface.Depth))
+                    {
+                        nearestToSurface = groundTemperature;
+                    }
+                }
+
+                if (nearestToSurface != null)
+                {
+                    SetGroundTemperatures(openStudioConversionContext.Target, nearestToSurface.Temperatures);
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Ground temperatures taken from the SAM model WeatherData (depth {0} m set, 12 monthly values)", nearestToSurface.Depth));
+                    return;
+                }
+            }
+
+            List<Weather.GroundTemperature> epwGroundTemperatures = null;
+            if (!string.IsNullOrWhiteSpace(epwPath) && File.Exists(epwPath))
+            {
+                try
+                {
+                    // OpenStudio's setWeatherFile does NOT import ground temperatures — parse the
+                    // EPW header with SAM.Weather's native EPW reader.
+                    string[] lines = File.ReadAllLines(epwPath);
+                    int index = -1;
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        if (lines[i].IndexOf("GROUND TEMPERATURES", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            index = i;
+                            break;
+                        }
+
+                        if (lines[i].StartsWith("DATA PERIODS", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            break;
+                        }
+                    }
+
+                    if (index >= 0)
+                    {
+                        Weather.Query.TryGetGroundTemperatures(lines, index, out epwGroundTemperatures);
+                    }
+                }
+                catch (System.Exception)
+                {
+                    // header parse is best effort; the EPW itself was already validated
+                }
+            }
+
+            Weather.GroundTemperature epwNearestToSurface = null;
+            if (epwGroundTemperatures != null)
+            {
+                foreach (Weather.GroundTemperature groundTemperature in epwGroundTemperatures)
+                {
+                    if (groundTemperature?.Temperatures == null || groundTemperature.Temperatures.Length < 12)
+                    {
+                        continue;
+                    }
+
+                    if (epwNearestToSurface == null || (double.IsNaN(epwNearestToSurface.Depth) && !double.IsNaN(groundTemperature.Depth)) || (!double.IsNaN(groundTemperature.Depth) && groundTemperature.Depth < epwNearestToSurface.Depth))
+                    {
+                        epwNearestToSurface = groundTemperature;
+                    }
+                }
+            }
+
+            if (epwNearestToSurface != null)
+            {
+                SetGroundTemperatures(openStudioConversionContext.Target, epwNearestToSurface.Temperatures);
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Ground temperatures taken from the EPW GROUND TEMPERATURES header (depth {0} m set, 12 monthly values)", epwNearestToSurface.Depth));
+            }
+            else
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "No ground temperatures in the SAM model WeatherData or the EPW header; the EnergyPlus 18 °C default ground temperature applies");
+            }
+        }
+
+        private static void SetGroundTemperatures(global::OpenStudio.Model model, double[] temperatures)
+        {
+            global::OpenStudio.SiteGroundTemperatureBuildingSurface siteGroundTemperature = model.getSiteGroundTemperatureBuildingSurface();
+            siteGroundTemperature.setJanuaryGroundTemperature(temperatures[0]);
+            siteGroundTemperature.setFebruaryGroundTemperature(temperatures[1]);
+            siteGroundTemperature.setMarchGroundTemperature(temperatures[2]);
+            siteGroundTemperature.setAprilGroundTemperature(temperatures[3]);
+            siteGroundTemperature.setMayGroundTemperature(temperatures[4]);
+            siteGroundTemperature.setJuneGroundTemperature(temperatures[5]);
+            siteGroundTemperature.setJulyGroundTemperature(temperatures[6]);
+            siteGroundTemperature.setAugustGroundTemperature(temperatures[7]);
+            siteGroundTemperature.setSeptemberGroundTemperature(temperatures[8]);
+            siteGroundTemperature.setOctoberGroundTemperature(temperatures[9]);
+            siteGroundTemperature.setNovemberGroundTemperature(temperatures[10]);
+            siteGroundTemperature.setDecemberGroundTemperature(temperatures[11]);
         }
     }
 }

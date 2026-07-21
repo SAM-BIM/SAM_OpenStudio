@@ -1,4 +1,7 @@
-﻿using System;
+﻿// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
+
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SQLite;
@@ -427,7 +430,7 @@ namespace SAM.Analytical.OpenStudio
                                 DateTime? dateTime_Max = Core.OpenStudio.Query.DateTime(dataTable_Time, timeIndex_Max);
                                 if (dateTime_Max != null && dateTime_Max.HasValue)
                                 {
-                                    spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.MaxDryBulbTemperatureIndex, Core.Query.HourOfYear(dateTime_Max.Value));
+                                    spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.MaxDryBulbTemperatureIndex, Core.Query.IntervalHourOfYear(dateTime_Max.Value));
                                 }
 
                                 // Min Dry Bulb Temperture
@@ -438,7 +441,7 @@ namespace SAM.Analytical.OpenStudio
                                 DateTime? dateTime_Min = Core.OpenStudio.Query.DateTime(dataTable_Time, timeIndex_Min);
                                 if (dateTime_Min != null && dateTime_Min.HasValue)
                                 {
-                                    spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.MinDryBulbTemperatureIndex, Core.Query.HourOfYear(dateTime_Min.Value));
+                                    spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.MinDryBulbTemperatureIndex, Core.Query.IntervalHourOfYear(dateTime_Min.Value));
                                 }
                             }
                         }
@@ -463,7 +466,7 @@ namespace SAM.Analytical.OpenStudio
                             DateTime? dateTime = Core.OpenStudio.Query.DateTime(dataTable_Time, timeIndex_Load);
                             if (dateTime != null && dateTime.HasValue)
                             {
-                                spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.LoadIndex, Core.Query.HourOfYear(dateTime.Value));
+                                spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.LoadIndex, Core.Query.IntervalHourOfYear(dateTime.Value));
                             }
 
                             //if (sortedDictionary_TimeIndex != null && sortedDictionary_TimeIndex.ContainsKey(timeIndex_Temp))

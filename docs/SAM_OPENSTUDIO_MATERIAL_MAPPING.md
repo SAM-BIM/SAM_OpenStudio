@@ -136,7 +136,17 @@ layer — thickness alone is *not* a valid resistance model.
   A layer whose material name is not found in `AnalyticalModel.MaterialLibrary` → **error**
   SAM-OS-CON-001 naming the material. No hidden default materials, ever.
 * `ApertureConstruction.PaneConstructionLayers` → `OS:Construction` (`:Pane:Forward` /
-  `:Pane:Reverse` cache keys). Frame layers are NOT converted in the MVP (documented gap).
+  `:Pane:Reverse` cache keys).
+* `ApertureConstruction.FrameConstructionLayers` → `OS:WindowProperty:FrameAndDivider` (C3,
+  documented approximation): width from `ApertureConstructionParameter.DefaultFrameWidth` else
+  the SAM frame thickness; conductance U = 1/Σ(thickness/conductivity) over the frame layers
+  (no film coefficients); solar/visible absorptance = 1 − `External*Reflectance` of the
+  outermost frame layer. When a frame is applied the SubSurface polygon becomes the SAM **pane**
+  polygon (`Aperture.GetPaneFace3Ds()`), because EnergyPlus grows the frame outward from the
+  glass; area conservation (pane strictly inside the aperture) is validated. Any invalid or
+  incomplete frame data falls back to the full-polygon frameless conversion with a
+  SAM-OS-CON-002 warning — never wrong geometry. Frames on opaque doors are skipped
+  (information diagnostic).
 * `PanelType.Air` → one shared `OS:Construction:AirBoundary` (no direction variants),
   assigned to both sides of the panel.
 * OpenStudio rejecting a layer set (`setLayers` returns false, e.g. mixed opaque and

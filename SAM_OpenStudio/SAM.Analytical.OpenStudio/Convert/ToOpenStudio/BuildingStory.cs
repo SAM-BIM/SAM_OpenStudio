@@ -61,6 +61,42 @@ namespace SAM.Analytical.OpenStudio
 
             if (rawElevations.Count == 0)
             {
+                // Fallback: no floor-group panels exist (e.g. models without explicit slab
+                // panels) — derive levels from the space minimum elevations instead of leaving
+                // every space storyless.
+                List<Space> spaces = adjacencyCluster.GetSpaces();
+                if (spaces != null)
+                {
+                    foreach (Space space in spaces)
+                    {
+                        if (space == null)
+                        {
+                            continue;
+                        }
+
+                        try
+                        {
+                            double spaceElevation = space.MinElevation(adjacencyCluster);
+                            if (!double.IsNaN(spaceElevation))
+                            {
+                                rawElevations.Add(spaceElevation);
+                            }
+                        }
+                        catch (System.Exception exception)
+                        {
+                            openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryInvalidBoundary, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Space elevation could not be computed ({0}); space ignored for story grouping", exception.GetType().Name), space);
+                        }
+                    }
+                }
+
+                if (rawElevations.Count > 0)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "No floor-group panels found; building stories were derived from space minimum elevations");
+                }
+            }
+
+            if (rawElevations.Count == 0)
+            {
                 return result;
             }
 

@@ -1,4 +1,7 @@
-﻿using System;
+﻿// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
+
+using System;
 using System.Collections.Generic;
 using System.Data;
 
@@ -7,6 +10,18 @@ namespace SAM.Core.OpenStudio
     public static partial class Query
     {
         public static SortedDictionary<int, DateTime> TimeIndexDictionary(this DataTable dataTable, int environemntPeriodIndex, short year = 2017)
+        {
+            return TimeIndexDictionary(dataTable, environemntPeriodIndex, year, null);
+        }
+
+        /// <summary>
+        /// Maps TimeIndex values to normalised interval-end timestamps for one environment.
+        /// Raw EnergyPlus rows (hour 0–24, minute 0–60, year 0 on sizing environments) are
+        /// normalised through <see cref="Core.Query.TryGetDateTime"/>; rows that cannot form a valid
+        /// calendar date are skipped and reported through <paramref name="diagnostics"/>
+        /// instead of throwing.
+        /// </summary>
+        public static SortedDictionary<int, DateTime> TimeIndexDictionary(this DataTable dataTable, int environemntPeriodIndex, short year, IList<string> diagnostics)
         {
             if (dataTable == null || environemntPeriodIndex == -1)
             {
@@ -82,22 +97,17 @@ namespace SAM.Core.OpenStudio
                     continue;
                 }
 
-                if (year == 0)
-                {
-                    year_Temp = year;
-                }
-
-                if (!Core.Query.TryConvert(dataRow[index_Month], out byte month))
+                if (!Core.Query.TryConvert(dataRow[index_Month], out int month))
                 {
                     continue;
                 }
 
-                if (!Core.Query.TryConvert(dataRow[index_Day], out byte day))
+                if (!Core.Query.TryConvert(dataRow[index_Day], out int day))
                 {
                     continue;
                 }
 
-                if (!Core.Query.TryConvert(dataRow[index_Hour], out byte hour))
+                if (!Core.Query.TryConvert(dataRow[index_Hour], out int hour))
                 {
                     continue;
                 }
@@ -107,7 +117,7 @@ namespace SAM.Core.OpenStudio
                     continue;
                 }
 
-                byte minute = 0;
+                int minute = 0;
                 if (index_Minute != -1)
                 {
                     if (!Core.Query.TryConvert(dataRow[index_Minute], out minute))
@@ -116,7 +126,7 @@ namespace SAM.Core.OpenStudio
                     }
                 }
 
-                byte second = 0;
+                int second = 0;
                 if (index_Second != -1)
                 {
                     if (!Core.Query.TryConvert(dataRow[index_Second], out second))
@@ -125,7 +135,13 @@ namespace SAM.Core.OpenStudio
                     }
                 }
 
-                result[timeIndex] = new DateTime(year, month, day, hour - 1, minute, second);
+                if (!Core.Query.TryGetDateTime(year_Temp, month, day, hour, minute, second, year, out DateTime dateTime, out string diagnostic))
+                {
+                    diagnostics?.Add(string.Format("TimeIndex {0} (environment {1}): {2}", timeIndex, environemntPeriodIndex, diagnostic));
+                    continue;
+                }
+
+                result[timeIndex] = dateTime;
             }
 
             return result;

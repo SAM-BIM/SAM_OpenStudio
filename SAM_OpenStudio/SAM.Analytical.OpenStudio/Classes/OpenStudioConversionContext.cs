@@ -38,11 +38,14 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>Cache key (construction Guid + ":Forward"/":Reverse") → OpenStudio construction.</summary>
         public IDictionary<string, global::OpenStudio.Construction> ConstructionMap { get; } = new Dictionary<string, global::OpenStudio.Construction>();
 
-        /// <summary>SAM Profile Guid → OpenStudio schedule cache.</summary>
-        public IDictionary<Guid, global::OpenStudio.Schedule> ScheduleMap { get; } = new Dictionary<Guid, global::OpenStudio.Schedule>();
+        /// <summary>Cache key (profile Guid + ":" + ProfileType) → OpenStudio schedule cache. The same SAM profile reused under a different ProfileType produces a separate schedule with its own type limits and name.</summary>
+        public IDictionary<string, global::OpenStudio.Schedule> ScheduleMap { get; } = new Dictionary<string, global::OpenStudio.Schedule>();
 
         /// <summary>Diagnostics accumulated during the conversion.</summary>
         public IList<Core.OpenStudio.OpenStudioDiagnostic> Diagnostics { get; } = new List<Core.OpenStudio.OpenStudioDiagnostic>();
+
+        /// <summary>Translation statistics (source/created/skipped/unsupported counts); snapshotted onto the result.</summary>
+        public Core.OpenStudio.OpenStudioConversionStatistics Statistics { get; } = new Core.OpenStudio.OpenStudioConversionStatistics();
 
         /// <summary>
         /// Day-of-week offset of 1 Jan of the run calendar with Monday = 0 … Sunday = 6.
@@ -51,6 +54,19 @@ namespace SAM.Analytical.OpenStudio
         /// Default 0 (1 Jan treated as Monday) for weather-free conversions.
         /// </summary>
         public int FirstDayOfWeekOffset { get; set; }
+
+        /// <summary>True when design days were imported into the target model (drives sizing-period enablement).</summary>
+        public bool DesignDaysImported { get; set; }
+
+        /// <summary>
+        /// The effective EPW path for the run (OSW weather file), resolved by the weather step:
+        /// the explicit path when supplied and valid, otherwise the temp EPW exported from the
+        /// embedded AnalyticalModel WeatherData, otherwise null (no annual weather source).
+        /// </summary>
+        public string EpwPath { get; set; }
+
+        /// <summary>Keys already used through <see cref="RegisterOnce"/> in this conversion.</summary>
+        private readonly HashSet<string> onceKeys = new HashSet<string>();
 
         /// <summary>Creates a conversion context.</summary>
         /// <param name="analyticalModel">Source SAM analytical model (null only in contract tests).</param>
@@ -93,7 +109,57 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="openStudioObjectName">Related OpenStudio object name, when applicable.</param>
         public void AddDiagnostic(string code, Core.OpenStudio.OpenStudioDiagnosticSeverity severity, string message, Core.SAMObject sAMObject = null, string openStudioObjectName = null)
         {
-            Diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(code, severity, message, sAMObject?.Guid, sAMObject?.GetType().Name, openStudioObjectName));
+            // Lock: RunAsync reports from a worker thread while the caller may read.
+            lock (Diagnostics)
+            {
+                Diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(code, severity, message, sAMObject?.Guid, sAMObject?.GetType().Name, openStudioObjectName));
+
+                switch (severity)
+                {
+                    case Core.OpenStudio.OpenStudioDiagnosticSeverity.Information:
+                        Statistics.InformationCount++;
+                        break;
+
+                    case Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning:
+                        Statistics.WarningCount++;
+                        break;
+
+                    case Core.OpenStudio.OpenStudioDiagnosticSeverity.Error:
+                        Statistics.ErrorCount++;
+                        break;
+                }
+
+                if (code == Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter)
+                {
+                    Statistics.UnsupportedObjects++;
+                }
+            }
+        }
+
+        /// <summary>
+        /// True the first time the given key is seen in this conversion. Converters use it to
+        /// emit a per-source-object diagnostic exactly once when the same SAM object flows
+        /// through several cache paths (forward/reverse directions, per-thickness material
+        /// variants, opaque/fenestration usages).
+        /// </summary>
+        /// <param name="key">Stable key, conventionally "code:topic:guid"; null returns false.</param>
+        public bool RegisterOnce(string key)
+        {
+            if (key == null)
+            {
+                return false;
+            }
+
+            lock (onceKeys)
+            {
+                return onceKeys.Add(key);
+            }
+        }
+
+        /// <summary>Records an explicitly skipped source object or load in the statistics.</summary>
+        public void RegisterSkip()
+        {
+            Statistics.SkippedObjects++;
         }
 
         /// <summary>
@@ -115,6 +181,7 @@ namespace SAM.Analytical.OpenStudio
             if (result)
             {
                 ModelObjectMap[sAMObject.Guid] = modelObject;
+                Statistics.CreatedObjects++;
             }
 
             return result;

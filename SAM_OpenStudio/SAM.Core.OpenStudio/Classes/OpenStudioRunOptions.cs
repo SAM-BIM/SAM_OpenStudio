@@ -29,5 +29,20 @@ namespace SAM.Core.OpenStudio
 
         /// <summary>Maximum wall-clock time for the CLI process in seconds. Default 3600.</summary>
         public int TimeoutSeconds { get; set; } = 3600;
+
+        /// <summary>
+        /// When true (default) the run executes in a unique GUID subdirectory of the output
+        /// directory, so concurrent and repeated runs never collide. When false the given
+        /// directory is used directly and an in-progress lock file guards against concurrent
+        /// runs in the same directory (the previous run folder is cleaned before a new run).
+        /// </summary>
+        public bool UseUniqueRunDirectory { get; set; } = true;
+
+        /// <summary>
+        /// When true the extraction also loads the hourly zone temperature/operative/humidity
+        /// series into the result set. Default false (annual scalars, peaks and unmet hours
+        /// only) — series are 8760 values per zone per variable.
+        /// </summary>
+        public bool ExtractTimeSeries { get; set; } = false;
     }
 }
