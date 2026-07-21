@@ -396,7 +396,7 @@ namespace SAM.Analytical.OpenStudio
             {
                 Panel panel = panelByGuid[keyValuePair.Key];
                 List<global::OpenStudio.Surface> surfaces = keyValuePair.Value;
-                string boundaryCondition = panel.PanelType.OutsideBoundaryCondition();
+                string boundaryCondition = panel.OutsideBoundaryCondition();
 
                 if (boundaryCondition == "Surface")
                 {

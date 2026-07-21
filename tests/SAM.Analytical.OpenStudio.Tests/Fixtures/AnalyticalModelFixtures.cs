@@ -195,8 +195,10 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// 2 spaces (both conditioned offices sharing one InternalCondition, unless
         /// <paramref name="spaceBUnconditioned"/>), 11 panels (12 OpenStudio surfaces once the
         /// shared wall is duplicated per side), 1 aperture, full material and profile libraries.
+        /// <paramref name="sharedWallIsAir"/> replaces the shared wall by a construction-less
+        /// Air panel (PanelType.Air → OS:Construction:AirBoundary).
         /// </summary>
-        public static AnalyticalModel TwoAdjacentBoxes(bool spaceBUnconditioned = false, double? spaceBVolume = null, bool sharedWallWindow = false)
+        public static AnalyticalModel TwoAdjacentBoxes(bool spaceBUnconditioned = false, double? spaceBVolume = null, bool sharedWallWindow = false, bool sharedWallIsAir = false)
         {
             AdjacencyCluster adjacencyCluster = new AdjacencyCluster();
 
@@ -223,7 +225,9 @@ namespace SAM.Analytical.OpenStudio.Tests
             Panel wallWestA = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 0, 0), P(0, 4, 0), P(0, 4, 3), P(0, 0, 3)));
             Panel wallNorthA = AnalyticalCreate.Panel(WallConstruction, PanelType.WallExternal, F(P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3)));
 
-            Panel wallShared = AnalyticalCreate.Panel(WallConstruction, PanelType.WallInternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3)));
+            Panel wallShared = sharedWallIsAir
+                ? AnalyticalCreate.Panel(null, PanelType.Air, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3)))
+                : AnalyticalCreate.Panel(WallConstruction, PanelType.WallInternal, F(P(5, 0, 0), P(5, 4, 0), P(5, 4, 3), P(5, 0, 3)));
 
             Panel floorB = AnalyticalCreate.Panel(WallConstruction, PanelType.SlabOnGrade, F(P(5, 0, 0), P(10, 0, 0), P(10, 4, 0), P(5, 4, 0)));
             Panel roofB = AnalyticalCreate.Panel(WallConstruction, PanelType.Roof, F(P(5, 0, 3), P(10, 0, 3), P(10, 4, 3), P(5, 4, 3)));
