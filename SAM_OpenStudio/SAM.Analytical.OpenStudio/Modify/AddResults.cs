@@ -16,7 +16,7 @@ namespace SAM.Analytical.OpenStudio
         /// an internal panel represented by two engine surfaces receives two results related
         /// to the same panel; values are never summed across surfaces). EnergyPlus/OpenStudio
         /// names are resolved back to SAM objects by their deterministic Guid suffix
-        /// (SAM_<type>_<name>_<guid8>), never by display name alone; a zone or
+        /// (SAM_&lt;type&gt;_&lt;name&gt;_&lt;guid8&gt;), never by display name alone; a zone or
         /// surface that matches nothing is reported. A genuine zero value stays a valid
         /// result - only a zone absent from the SQL counts as missing and is diagnosed.
         /// Rerunning never duplicates: an identical result (type, name, reference, load type)
