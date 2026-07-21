@@ -138,7 +138,13 @@ namespace SAM.Analytical.OpenStudio
             }
 
             progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.WritingOsw, oswPath));
-            File.WriteAllText(oswPath, string.Format("{{\n  \"seed_file\": \"{0}\",\n  \"weather_file\": \"{1}\",\n  \"steps\": []\n}}\n", Path.GetFileName(osmPath), (epwPath ?? string.Empty).Replace('\\', '/')));
+
+            // OpenStudio resolves weather_file relative to the OSW, and the OSW lives in the run
+            // directory — a Guid subdirectory by default — not in the caller's working directory.
+            // A relative EPW path is therefore made absolute, as the standalone OSW writer does;
+            // an absent weather source (conversion-only) still writes an empty entry.
+            string weatherFile = string.IsNullOrWhiteSpace(epwPath) ? string.Empty : Path.GetFullPath(epwPath).Replace('\\', '/');
+            File.WriteAllText(oswPath, string.Format("{{\n  \"seed_file\": \"{0}\",\n  \"weather_file\": \"{1}\",\n  \"steps\": []\n}}\n", Path.GetFileName(osmPath), weatherFile));
 
             OpenStudioConversionResult result;
 

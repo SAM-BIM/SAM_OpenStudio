@@ -153,6 +153,30 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void RelativeEpwPath_OswWeatherFile_ResolvesFromTheRunDirectory()
+        {
+            // Codex review P2: with UseUniqueRunDirectory (the default) the OSW is written into a
+            // Guid subdirectory, but weather_file was recorded exactly as supplied. OpenStudio
+            // resolves weather_file relative to the OSW, so a relative EPW path that exists from
+            // the caller's working directory becomes unreachable and the run finds no weather.
+            string epwPath = WeatherPath(".epw");
+            Assert.That(File.Exists(epwPath), Is.True);
+
+            string epwPath_Relative = Path.GetRelativePath(Directory.GetCurrentDirectory(), epwPath);
+            Assert.That(Path.IsPathRooted(epwPath_Relative), Is.False, "The fixture must be reachable by a relative path for this test to mean anything");
+            Assert.That(File.Exists(epwPath_Relative), Is.True, "The relative path resolves from the caller's working directory");
+
+            OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox().ToOpenStudio(epwPath_Relative, WorkDirectory("c6_relative_epw"), run: false);
+
+            Assert.That(result.OswPath, Is.Not.Null);
+            string weatherFile = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(result.OswPath))["weather_file"].GetValue<string>();
+            Assert.That(weatherFile, Is.Not.Empty);
+
+            string resolved = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(result.OswPath), weatherFile));
+            Assert.That(File.Exists(resolved), Is.True, $"OpenStudio resolves weather_file against the OSW directory; '{weatherFile}' resolved to '{resolved}'");
+        }
+
+        [Test]
         [Category("Simulation")]
         public async Task SequentialRuns_RepeatedConversionAndDisposal()
         {
