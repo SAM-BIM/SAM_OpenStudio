@@ -92,8 +92,9 @@ jobs:
             # Feature branches off a quarterly sow branch (e.g. sow/2026-Q3-feature): the
             # quarter branch itself carries the matching dependency state. Without this a
             # push-event build (no head/base ref) falls straight to the stale fallback below.
-            foreach ($r in @($headRef, $baseRef, $refName)) {
-              if ($r -match '^sow/(\d{4}-Q\d)') {
+            # NOTE: the loop variable must NOT be $r — that is the outer repo-name variable.
+            foreach ($branchRef in @($headRef, $baseRef, $refName)) {
+              if ($branchRef -match '^sow/(\d{4}-Q\d)') {
                 $quarterRef = "sow/$($Matches[1])"
                 if ($candidates -notcontains $quarterRef) { $candidates += $quarterRef }
               }
