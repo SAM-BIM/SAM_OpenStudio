@@ -83,5 +83,13 @@ namespace SAM.Core.OpenStudio
         /// libraries when true (default), mirroring the SAM_LadybugTools reverse converter.
         /// </summary>
         public bool PruneUnreferencedLibraryEntries { get; set; } = true;
+
+        /// <summary>
+        /// When true (default) and the model's referenced EPW weather file exists on disk, its
+        /// hourly weather is loaded into SAM <c>WeatherData</c> and embedded in the imported
+        /// AnalyticalModel. When false, or when the file cannot be found, only the weather-file
+        /// path is recorded as metadata — a reference is never presented as embedded weather.
+        /// </summary>
+        public bool ImportWeatherData { get; set; } = true;
     }
 }

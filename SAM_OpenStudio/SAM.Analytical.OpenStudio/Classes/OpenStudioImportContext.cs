@@ -25,6 +25,13 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>Import options; never null.</summary>
         public Core.OpenStudio.OpenStudioImportOptions Options { get; }
 
+        /// <summary>
+        /// Directory of the source OSM, when the import came from a path. Used to resolve a
+        /// weather file recorded relative to the model. Null for an in-memory model, where no
+        /// source directory exists.
+        /// </summary>
+        public string SourceDirectory { get; set; }
+
         /// <summary>Diagnostics accumulated during the import.</summary>
         public IList<Core.OpenStudio.OpenStudioDiagnostic> Diagnostics { get; } = new List<Core.OpenStudio.OpenStudioDiagnostic>();
 

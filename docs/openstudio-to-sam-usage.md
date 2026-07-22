@@ -138,8 +138,12 @@ subsurface multipliers; sub-hourly schedules (averaged to hourly means); design 
 and heating/cooling role only — an EnergyPlus design day is parametric, a SAM `DesignDay` is an
 hourly weather day).
 
-**Not embedded.** A `OS:WeatherFile` names an EPW; it does not contain one. The path is recorded
-as metadata and no SAM `WeatherData` is created. Supply the EPW separately for annual simulation.
+**Weather.** A `OS:WeatherFile` names an EPW; it does not contain one. When that EPW is found on
+disk — as it is for a SAM round trip, whose forward export writes the file — its hourly weather is
+loaded into SAM `WeatherData` and embedded in the model, and the model round-trips back to an EPW
+on the next export. When the file is absent, or `OpenStudioImportOptions.ImportWeatherData` is
+off, only the path is recorded on `OpenStudioSourceParameter.WeatherFilePath` and a diagnostic
+states that no weather was embedded — a bare reference is never presented as embedded weather.
 
 **EnergyPlus measures.** They modify only the generated IDF, not the OpenStudio model, so their
 changes cannot appear in the imported SAM model. `SAM-OSI-OSW-007` states this whenever a workflow

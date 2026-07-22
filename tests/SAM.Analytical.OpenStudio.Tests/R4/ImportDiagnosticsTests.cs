@@ -193,29 +193,29 @@ namespace SAM.Analytical.OpenStudio.Tests
                     Assert.That(conversionResult.Model.save(global::OpenStudio.OpenStudioUtilitiesCore.toPath(path), true), Is.True);
                 }
 
-                // Break one side of the shared wall's adjacency: the boundary condition still says
-                // "Surface", but the partner handle no longer resolves.
+                // Break EVERY interzone adjacency reference: blank each "Outside Boundary
+                // Condition Object" field that follows a "Surface," boundary line. Editing all of
+                // them (not just the first) makes the outcome independent of the order OpenStudio
+                // happens to serialise the surfaces in.
                 string[] lines = System.IO.File.ReadAllLines(path);
-                bool edited = false;
-                for (int i = 0; i < lines.Length && !edited; i++)
+                int edited = 0;
+                for (int i = 1; i < lines.Length; i++)
                 {
-                    if (!lines[i].Trim().StartsWith("Surface,", System.StringComparison.Ordinal) || !lines[i].Contains("!- Outside Boundary Condition"))
+                    if (lines[i].Contains("!- Outside Boundary Condition Object")
+                        && lines[i - 1].Trim().StartsWith("Surface,", System.StringComparison.Ordinal)
+                        && lines[i - 1].Contains("!- Outside Boundary Condition"))
                     {
-                        continue;
-                    }
-
-                    // The next field is the Outside Boundary Condition Object; blank it out.
-                    if (i + 1 < lines.Length && lines[i + 1].Contains("!- Outside Boundary Condition Object"))
-                    {
-                        lines[i + 1] = "  ,                                       !- Outside Boundary Condition Object";
-                        edited = true;
+                        lines[i] = "  ,                                       !- Outside Boundary Condition Object";
+                        edited++;
                     }
                 }
 
-                Assert.That(edited, Is.True, "The test fixture must contain a surface with a resolvable adjacency to break");
+                Assert.That(edited, Is.GreaterThan(0), "The test fixture must contain at least one resolvable interzone adjacency to break");
                 System.IO.File.WriteAllLines(path, lines);
 
-                OpenStudioImportResult result = Convert.ToSAM(path);
+                // Disable the geometric fallback so the outcome is unambiguous: with no handle and
+                // no geometric matching, an interzone surface can only be demoted to adiabatic.
+                OpenStudioImportResult result = Convert.ToSAM(path, new Core.OpenStudio.OpenStudioImportOptions { AllowGeometricAdjacencyFallback = false });
                 foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
                 {
                     TestContext.Out.WriteLine(diagnostic.ToString());
@@ -223,10 +223,10 @@ namespace SAM.Analytical.OpenStudio.Tests
 
                 Assert.That(result.Successful, Is.True, "A dangling adjacency degrades the topology, not the import");
 
-                // Either the geometric fallback pairs it (reported as an inference) or it stays
-                // unpaired and is demoted to adiabatic - both are reported, neither is silent.
+                // The shared wall's surfaces, now handle-less "Surface" boundaries with the
+                // geometric fallback off, must be reported as unpaired and marked adiabatic.
                 Assert.That(
-                    result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyPairingFailed || x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyGeometricFallback),
+                    result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyPairingFailed),
                     Is.True,
                     "An interzone surface whose partner handle does not resolve must be reported");
             }

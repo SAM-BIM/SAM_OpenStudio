@@ -154,12 +154,15 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
-        /// Records the model's weather-file reference as metadata.
+        /// Imports the model's weather.
         /// <para>
-        /// A <c>OS:WeatherFile</c> object names an EPW; it does not contain one. Creating SAM
-        /// <c>WeatherData</c> from it would present a file path as a year of hourly weather, so
-        /// the path is stored on <see cref="OpenStudioSourceParameter.WeatherFilePath"/> and the
-        /// distinction is stated in a diagnostic.
+        /// A <c>OS:WeatherFile</c> object names an EPW; it does not contain one. When that EPW is
+        /// found on disk — as it is for a SAM round trip, whose forward export writes the file —
+        /// its hourly weather is loaded into SAM <c>WeatherData</c> and embedded in the model, so
+        /// the imported model carries real weather rather than a dangling path. When the file
+        /// cannot be found, or <see cref="Core.OpenStudio.OpenStudioImportOptions.ImportWeatherData"/>
+        /// is off, only the path is recorded and a diagnostic states that no weather was embedded:
+        /// a reference is never presented as embedded hourly weather.
         /// </para>
         /// </summary>
         private static void ToSAM_WeatherReference(OpenStudioImportContext openStudioImportContext, AnalyticalModel analyticalModel)
@@ -180,6 +183,7 @@ namespace SAM.Analytical.OpenStudio
             }
 
             global::OpenStudio.WeatherFile weatherFile = optionalWeatherFile.get();
+            string label = OpenStudioImportContext.OpenStudioObjectLabel(weatherFile);
 
             string path = null;
             global::OpenStudio.OptionalString optionalUrl = weatherFile.url();
@@ -202,7 +206,95 @@ namespace SAM.Analytical.OpenStudio
                 analyticalModel.SetValue(OpenStudioSourceParameter.WeatherFilePath, path);
             }
 
-            openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.WeatherLimitation, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("The model references the weather file '{0}' ({1}, {2}); an OSM stores only the reference, so no SAM WeatherData was embedded - supply the EPW separately for annual simulation", string.IsNullOrWhiteSpace(path) ? "path unavailable" : path, weatherFile.city(), weatherFile.country()), OpenStudioImportContext.OpenStudioObjectLabel(weatherFile));
+            string resolvedPath = ResolveWeatherPath(path, openStudioImportContext.SourceDirectory);
+
+            if (openStudioImportContext.Options.ImportWeatherData && resolvedPath != null && ToSAM_EmbedWeatherData(resolvedPath, analyticalModel, openStudioImportContext, label))
+            {
+                return;
+            }
+
+            openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.WeatherLimitation, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("The model references the weather file '{0}' ({1}, {2}) but it {3}, so no SAM WeatherData was embedded - supply the EPW separately for annual simulation", string.IsNullOrWhiteSpace(path) ? "path unavailable" : path, weatherFile.city(), weatherFile.country(), openStudioImportContext.Options.ImportWeatherData ? "could not be found on disk" : "was not loaded (weather import disabled)"), label);
+        }
+
+        /// <summary>
+        /// Loads an EPW into SAM <see cref="Weather.WeatherData"/> and embeds it in the model.
+        /// Returns false when the file carries no usable hourly weather. The embedded WeatherData
+        /// is the same slot the forward converter reads back on export, so this closes the weather
+        /// round trip. <see cref="Core.ParameterizedSAMObject.SetValue"/> mutates the model in
+        /// place, so no reconstruction is needed.
+        /// </summary>
+        private static bool ToSAM_EmbedWeatherData(string resolvedPath, AnalyticalModel analyticalModel, OpenStudioImportContext openStudioImportContext, string label)
+        {
+            Weather.WeatherData weatherData;
+            try
+            {
+                weatherData = Weather.Convert.ToSAM(resolvedPath);
+            }
+            catch (Exception exception)
+            {
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.WeatherLimitation, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The referenced EPW '{0}' could not be read ({1}: {2}); no SAM WeatherData was embedded", resolvedPath, exception.GetType().Name, exception.Message), label);
+                return false;
+            }
+
+            // A weather file with no hourly years is a header only — a reference, not weather.
+            if (weatherData == null || weatherData.Years == null || !System.Linq.Enumerable.Any(weatherData.Years))
+            {
+                return false;
+            }
+
+            analyticalModel.SetValue(AnalyticalModelParameter.WeatherData, weatherData);
+
+            int yearCount = System.Linq.Enumerable.Count(weatherData.Years);
+            openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.WeatherLimitation, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Hourly weather was loaded from the referenced EPW '{0}' ({1} year(s)) and embedded in the AnalyticalModel as SAM WeatherData", resolvedPath, yearCount), label);
+            return true;
+        }
+
+        /// <summary>
+        /// Resolves a weather-file reference to an existing EPW on disk: the path as given (after
+        /// stripping a <c>file:</c>/<c>file://</c> scheme), then — for a relative path — against
+        /// the source OSM directory. Returns null when nothing resolves to an existing file.
+        /// </summary>
+        private static string ResolveWeatherPath(string path, string sourceDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string candidate = path.Trim();
+            if (candidate.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            {
+                candidate = candidate.Substring("file://".Length);
+            }
+            else if (candidate.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+            {
+                candidate = candidate.Substring("file:".Length);
+            }
+
+            candidate = candidate.Replace('/', System.IO.Path.DirectorySeparatorChar);
+
+            try
+            {
+                if (System.IO.Path.IsPathRooted(candidate))
+                {
+                    return System.IO.File.Exists(candidate) ? System.IO.Path.GetFullPath(candidate) : null;
+                }
+
+                if (!string.IsNullOrWhiteSpace(sourceDirectory))
+                {
+                    string combined = System.IO.Path.GetFullPath(System.IO.Path.Combine(sourceDirectory, candidate));
+                    if (System.IO.File.Exists(combined))
+                    {
+                        return combined;
+                    }
+                }
+
+                return System.IO.File.Exists(candidate) ? System.IO.Path.GetFullPath(candidate) : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         /// <summary>

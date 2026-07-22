@@ -100,6 +100,7 @@ namespace SAM.Analytical.OpenStudio
             try
             {
                 OpenStudioImportContext context = new OpenStudioImportContext(model, options);
+                context.SourceDirectory = Path.GetDirectoryName(Path.GetFullPath(osmPath));
 
                 foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in diagnostics)
                 {

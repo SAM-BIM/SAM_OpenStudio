@@ -28,8 +28,8 @@ independent: a concept can be Native one way and Unsupported the other.
 | Status | Entries |
 |---|---|
 | Native | 55 |
-| Derived | 10 |
-| Approximated | 17 |
+| Derived | 11 |
+| Approximated | 16 |
 | Unsupported | 45 |
 | Deferred | 9 |
 | NotApplicable | 5 |
@@ -52,7 +52,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 | `Model.Site` | `Core.Location` | **Native** | `SAM-OSI-WEA-001` | No Location is created when latitude, longitude and elevation are all exactly zero - the OpenStudio default means the site was never set. |
 | `Model.Site.Terrain` | - | **Unsupported** | `SAM-OSI-WEA-001` | SAM Location carries no terrain class. |
 | `Model.Site.TimeZone` | - | **Unsupported** | `SAM-OSI-WEA-001` | SAM Location carries no time zone. |
-| `Model.WeatherFile` | `OpenStudioSourceParameter.WeatherFilePath` | **Approximated** | `SAM-OSI-WEA-001` | An OSM stores a reference, not weather data; no SAM WeatherData is embedded. |
+| `Model.WeatherFile` | `AnalyticalModelParameter.WeatherData + OpenStudioSourceParameter.WeatherFilePath` | **Derived** | `SAM-OSI-WEA-001` | When the referenced EPW is found on disk its hourly weather is loaded into SAM WeatherData and embedded (the slot the forward exporter reads back). When the file is absent, or ImportWeatherData is off, only the path is recorded - a reference is never presented as embedded weather. |
 | `Model.SizingPeriod.DesignDay` | `AnalyticalModelParameter.Heating/CoolingDesignDays` | **Approximated** | `SAM-OSI-WEA-001` | Imported by name, date and heating/cooling role only: an EnergyPlus design day is parametric while a SAM DesignDay is an hourly weather day. |
 | `Model.RunPeriod` | - | **Unsupported** | `SAM-OSI-SET-001` | SAM AnalyticalModel carries no run period; it is set by the forward conversion options. |
 | `Model.Timestep` | - | **Unsupported** | `SAM-OSI-SET-001` |  |
