@@ -217,13 +217,11 @@ namespace SAM.Analytical.OpenStudio
         /// directory is what provides that isolation.
         /// </para>
         /// <para>
-        /// <c>run_directory</c> is deliberately NOT pinned. Setting it makes the CLI write every
-        /// output — <c>eplusout.sql</c>, <c>eplusout.err</c>, <c>in.osm</c> — into that directory's
-        /// root instead of the conventional <c>&lt;osw&gt;/run/</c>, where
-        /// <see cref="OpenStudioSimulationRunner"/> looks for them. Pinning it therefore hid the
-        /// SQL results and, worse, silently swallowed the EnergyPlus severe-error report. Left
-        /// unset, the CLI's default run folder lands inside this staged directory anyway, so the
-        /// isolation is kept and the runner finds everything.
+        /// <c>run_directory</c> is pinned to <c>&lt;directory&gt;/run</c> — see the comment on the
+        /// assignment. Neither leaving it unset nor pinning the staged directory itself works:
+        /// the first lets the CLI's output escape to the original workflow's folder, the second
+        /// writes it to the staged root where <see cref="OpenStudioSimulationRunner"/> does not
+        /// look, silently losing the results and the EnergyPlus error report.
         /// </para>
         /// <para>
         /// Only path fields are rewritten — <c>steps</c> and their arguments are copied verbatim,
@@ -241,10 +239,19 @@ namespace SAM.Analytical.OpenStudio
 
             copy["root"] = Root.Replace('\\', '/');
 
-            // Any run_directory the source OSW carried is removed for the same reason it is not
-            // set here: it would redirect the CLI's output away from <osw>/run/, where the runner
-            // reads the results and the EnergyPlus error report.
-            copy.Remove("run_directory");
+            // run_directory must be pinned to <staged>/run — the "run" subdirectory matters.
+            //
+            // Neither obvious alternative works. Leaving it unset makes the CLI resolve the run
+            // folder relative to "root", which points at the ORIGINAL workflow's directory, so the
+            // output escapes the staged directory entirely and two parallel imports collide again.
+            // Pinning it to the staged directory itself makes the CLI write eplusout.sql,
+            // eplusout.err and in.osm into that directory's ROOT, with no run/ subdirectory, while
+            // OpenStudioSimulationRunner reads them from <working>/run — so the results and, worse,
+            // the EnergyPlus error report are silently missed.
+            //
+            // Pinning <staged>/run satisfies both: the output stays inside the staged directory
+            // (isolation) and lands exactly where the runner looks (diagnostics preserved).
+            copy["run_directory"] = System.IO.Path.Combine(System.IO.Path.GetFullPath(directory), "run").Replace('\\', '/');
 
             if (!string.IsNullOrWhiteSpace(resolvedSeedPath))
             {

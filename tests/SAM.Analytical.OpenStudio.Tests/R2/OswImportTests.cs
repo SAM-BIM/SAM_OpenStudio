@@ -235,14 +235,18 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
-        public void IsolatedCopy_DoesNotPinRunDirectory()
+        public void IsolatedCopy_PinsRunDirectoryToTheStagedRunSubdirectory()
         {
-            // Regression guard. Pinning run_directory makes the OpenStudio CLI write every output
-            // - eplusout.sql, eplusout.err, in.osm - into that directory's ROOT instead of the
-            // conventional <osw>/run/, which is where OpenStudioSimulationRunner reads them. On a
-            // real executed workflow that hid a 44 MB results file and, worse, silently swallowed
-            // the EnergyPlus severe-error report. Isolation comes from staging the copy in a
-            // unique directory, not from redirecting the CLI's output.
+            // Regression guard for a bug that took two wrong fixes to get right, verified against
+            // a real executed workflow:
+            //   - run_directory unset  -> the CLI resolves it against "root", which points at the
+            //                             ORIGINAL workflow's folder, so the output escapes the
+            //                             staged directory and parallel imports collide.
+            //   - run_directory = <staged> -> the CLI writes eplusout.sql / eplusout.err / in.osm
+            //                             into the staged ROOT, where OpenStudioSimulationRunner
+            //                             does not look, silently losing the results AND the
+            //                             EnergyPlus severe-error report.
+            // Only <staged>/run keeps the output isolated AND where the runner reads it.
             WriteSeedOsm();
             string oswPath = WriteOsw("{\n  \"seed_file\": \"seed.osm\",\n  \"run_directory\": \"C:/somewhere/else\",\n  \"steps\": []\n}");
 
@@ -250,10 +254,28 @@ namespace SAM.Analytical.OpenStudio.Tests
             OpenStudioWorkflow workflow = OpenStudioWorkflow.Parse(oswPath, out failureReason);
             Assert.That(workflow, Is.Not.Null, failureReason);
 
-            string copyPath = workflow.WriteIsolatedCopy(Path.Combine(directory, "run"), Path.Combine(directory, "seed.osm"));
-            string json = File.ReadAllText(copyPath);
+            string stagedDirectory = Path.Combine(directory, "staged");
+            string copyPath = workflow.WriteIsolatedCopy(stagedDirectory, Path.Combine(directory, "seed.osm"));
 
-            Assert.That(json, Does.Not.Contain("run_directory"), "The staged copy must not pin run_directory - it would redirect the CLI's output away from where the runner reads results and errors");
+            string runDirectory = ReadJsonString(copyPath, "run_directory");
+            Assert.That(runDirectory, Is.Not.Null, "The staged copy must pin run_directory");
+            Assert.That(runDirectory, Does.Not.Contain("somewhere/else"), "The source OSW's run_directory must not be honoured");
+
+            string expected = Path.Combine(Path.GetFullPath(stagedDirectory), "run").Replace('\\', '/');
+            Assert.That(runDirectory, Is.EqualTo(expected), "run_directory must be the staged directory's 'run' subdirectory - isolated, and where the runner reads results and errors");
+        }
+
+        /// <summary>Reads a top-level string property from a JSON file.</summary>
+        private static string ReadJsonString(string path, string key)
+        {
+            System.Text.Json.Nodes.JsonObject jsonObject = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path)) as System.Text.Json.Nodes.JsonObject;
+            System.Text.Json.Nodes.JsonNode jsonNode;
+            if (jsonObject == null || !jsonObject.TryGetPropertyValue(key, out jsonNode) || jsonNode == null)
+            {
+                return null;
+            }
+
+            return jsonNode.GetValue<string>();
         }
 
         [Test]
