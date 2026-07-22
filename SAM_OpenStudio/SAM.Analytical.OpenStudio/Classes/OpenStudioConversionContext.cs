@@ -182,6 +182,13 @@ namespace SAM.Analytical.OpenStudio
             {
                 ModelObjectMap[sAMObject.Guid] = modelObject;
                 Statistics.CreatedObjects++;
+
+                // Round-trip identity: the deterministic object name carries only the first 8
+                // hex characters of the Guid, so it cannot be inverted. Stamping the full
+                // identity into AdditionalProperties is the single point where every registered
+                // SAM object passes, and it is purely additive — OS:AdditionalProperties is a
+                // separate object, so no field, name or EnergyPlus input changes.
+                Core.OpenStudio.Modify.SetSAMIdentity(modelObject, sAMObject);
             }
 
             return result;

@@ -191,6 +191,11 @@ namespace SAM.Analytical.OpenStudio
                 context.FirstDayOfWeekOffset = ((int)options.FirstDayOfWeek.Value + 6) % 7;
             }
 
+            // Model-level round-trip identity on the Building (the OSM has no model-level object
+            // to hang it on). Additive metadata only: the Building name, north axis and every
+            // other field are left exactly as they were.
+            Core.OpenStudio.Modify.SetSAMIdentity(context.Target.getBuilding(), analyticalModel.Guid, analyticalModel.GetType().Name, analyticalModel.Name);
+
             AdjacencyCluster adjacencyCluster = analyticalModel_Temp.AdjacencyCluster;
             if (adjacencyCluster == null)
             {
