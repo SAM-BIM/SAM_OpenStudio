@@ -27,13 +27,13 @@ independent: a concept can be Native one way and Unsupported the other.
 
 | Status | Entries |
 |---|---|
-| Native | 56 |
+| Native | 57 |
 | Derived | 11 |
 | Approximated | 16 |
 | Unsupported | 45 |
 | Deferred | 9 |
-| NotApplicable | 5 |
-| **Total** | **142** |
+| NotApplicable | 6 |
+| **Total** | **144** |
 
 ## Explicitly deferred domains
 
@@ -244,3 +244,5 @@ EnergyManagementSystem; output requests and reporting configuration.
 | `Osw.ExecutionFailure` | - | **Unsupported** | `SAM-OSI-OSW-005` |  |
 | `Osw.FinalOsmNotFound` | - | **Unsupported** | `SAM-OSI-OSW-006` |  |
 | `Osw.EnergyPlusMeasure` | - | **Unsupported** | `SAM-OSI-OSW-007` | IDF-only changes cannot be represented in the OSM. |
+| `Osw.WorkflowExecuted` | - | **Native** | `SAM-OSI-OSW-008` | The workflow ran and its final post-model-measure OSM was located and imported. |
+| `Osw.NoSimulationResults` | - | **NotApplicable** | `SAM-OSI-OSW-009` | A workflow of model measures with no simulation step produces a model but no EnergyPlus results. An import needs the model, not the results, so the simulation runner's failure verdict is downgraded to information and never invalidates the imported model. |

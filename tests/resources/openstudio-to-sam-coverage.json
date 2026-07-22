@@ -166,6 +166,8 @@
     { "id": "Osw.SeedOnlyImport", "status": "Approximated", "diagnostic": "SAM-OSI-OSW-004", "notes": "The seed is imported and the unapplied measures are stated." },
     { "id": "Osw.ExecutionFailure", "status": "Unsupported", "diagnostic": "SAM-OSI-OSW-005" },
     { "id": "Osw.FinalOsmNotFound", "status": "Unsupported", "diagnostic": "SAM-OSI-OSW-006" },
-    { "id": "Osw.EnergyPlusMeasure", "status": "Unsupported", "diagnostic": "SAM-OSI-OSW-007", "notes": "IDF-only changes cannot be represented in the OSM." }
+    { "id": "Osw.EnergyPlusMeasure", "status": "Unsupported", "diagnostic": "SAM-OSI-OSW-007", "notes": "IDF-only changes cannot be represented in the OSM." },
+    { "id": "Osw.WorkflowExecuted", "status": "Native", "diagnostic": "SAM-OSI-OSW-008", "notes": "The workflow ran and its final post-model-measure OSM was located and imported." },
+    { "id": "Osw.NoSimulationResults", "status": "NotApplicable", "diagnostic": "SAM-OSI-OSW-009", "notes": "A workflow of model measures with no simulation step produces a model but no EnergyPlus results. An import needs the model, not the results, so the simulation runner's failure verdict is downgraded to information and never invalidates the imported model." }
   ]
 }

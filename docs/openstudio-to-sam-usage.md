@@ -97,6 +97,12 @@ The final OSM is located deterministically — `out.osw`'s recorded `osm_path`, 
 unverified filename is trusted, and a stale OSM from an earlier run cannot be mistaken for this
 run's output.
 
+A workflow of model measures with **no simulation step** produces a model but no EnergyPlus
+results. That is a *successful import* — an import needs the model, not the results — so the
+shared simulation runner's "no SQL results" verdict is downgraded to an informational
+`SAM-OSI-OSW-009` and never invalidates the imported model. Genuine CLI failures, fatal errors
+and EnergyPlus severe errors pass through unchanged at their original severity.
+
 ## 4. Round-trip identity
 
 The forward exporter stamps `SAM.Guid`, `SAM.Type` and `SAM.Name` into each object's

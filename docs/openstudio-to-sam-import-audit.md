@@ -240,6 +240,8 @@ All reverse-only codes live in `SAM.Core.OpenStudio.OpenStudioImportDiagnosticCo
 | `SAM-OSI-OSW-005` | Workflow execution failed |
 | `SAM-OSI-OSW-006` | Final post-model-measure OSM not found |
 | `SAM-OSI-OSW-007` | EnergyPlus-measure changes are not representable in the OSM |
+| `SAM-OSI-OSW-008` | Workflow executed; final post-model-measure OSM imported |
+| `SAM-OSI-OSW-009` | Workflow produced a model but no EnergyPlus results (irrelevant to an import; Information) |
 | `SAM-OSI-GEO-001` | Invalid or unconvertible geometry |
 | `SAM-OSI-GEO-002` | Duplicate/collinear vertices removed (shape unchanged; Information) |
 | `SAM-OSI-ADJ-001` | Adjacency resolved by geometric fallback, not by handle |

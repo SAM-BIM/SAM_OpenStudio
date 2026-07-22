@@ -3,6 +3,7 @@
 
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -250,6 +251,70 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(json, Does.Contain("SetWindowToWallRatio"));
             Assert.That(json, Does.Contain("0.42"), "Measure arguments must survive staging untouched");
             Assert.That(json, Does.Contain("0.8"));
+        }
+
+        [Test]
+        public void RunDiagnostics_AreReBadgedWhenAModelWasProducedWithoutSimulationResults()
+        {
+            // The shared simulation runner calls a run failed when EnergyPlus produced no SQLite
+            // results. For an import that is not a failure: a workflow of model measures with no
+            // simulation step legitimately produces a model and no results. Left as an Error it
+            // would make IsValid false and report a perfectly good import as failed - which is
+            // exactly what a real executed OSW did.
+            List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>();
+            List<Core.OpenStudio.OpenStudioDiagnostic> runDiagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>
+            {
+                new Core.OpenStudio.OpenStudioDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "OpenStudio CLI run failed (exit code 0, SQL missing, 0 fatal error(s))."),
+            };
+
+            // A clean run (exit 0, no fatal errors) that produced a model.
+            Core.OpenStudio.OpenStudioRunResult runResult = new Core.OpenStudio.OpenStudioRunResult(false, 0, null, null, null, null, new List<string>(), new List<string>());
+
+            InvokeAppendRunDiagnostics(diagnostics, runDiagnostics, runResult, true);
+
+            Assert.That(diagnostics.Any(x => x.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error), Is.False, "A results-less but successful workflow must not leave an Error that invalidates the import");
+            Assert.That(diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.OswNoSimulationResults), Is.True);
+        }
+
+        [Test]
+        public void RunDiagnostics_KeepTheirSeverityWhenNoModelWasProduced()
+        {
+            List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>();
+            List<Core.OpenStudio.OpenStudioDiagnostic> runDiagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>
+            {
+                new Core.OpenStudio.OpenStudioDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "OpenStudio CLI run failed (exit code 1)."),
+            };
+
+            Core.OpenStudio.OpenStudioRunResult runResult = new Core.OpenStudio.OpenStudioRunResult(false, 1, null, null, null, null, new List<string>(), new List<string> { "fatal" });
+
+            InvokeAppendRunDiagnostics(diagnostics, runDiagnostics, runResult, false);
+
+            Assert.That(diagnostics.Any(x => x.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error), Is.True, "A genuine run failure must stay an Error");
+        }
+
+        [Test]
+        public void RunDiagnostics_PreserveEnergyPlusSevereErrorsUntouched()
+        {
+            List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>();
+            List<Core.OpenStudio.OpenStudioDiagnostic> runDiagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>
+            {
+                new Core.OpenStudio.OpenStudioDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.EnergyPlusSevereError, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "** Severe ** something"),
+            };
+
+            Core.OpenStudio.OpenStudioRunResult runResult = new Core.OpenStudio.OpenStudioRunResult(false, 0, null, null, null, null, new List<string>(), new List<string>());
+
+            InvokeAppendRunDiagnostics(diagnostics, runDiagnostics, runResult, true);
+
+            Assert.That(diagnostics.Count, Is.EqualTo(1));
+            Assert.That(diagnostics[0].Code, Is.EqualTo(Core.OpenStudio.OpenStudioDiagnosticCodes.EnergyPlusSevereError), "Every diagnostic other than the results-only verdict must pass through unchanged");
+        }
+
+        /// <summary>Invokes the private re-badging helper under test.</summary>
+        private static void InvokeAppendRunDiagnostics(List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics, List<Core.OpenStudio.OpenStudioDiagnostic> runDiagnostics, Core.OpenStudio.OpenStudioRunResult runResult, bool modelProduced)
+        {
+            System.Reflection.MethodInfo methodInfo = typeof(Convert).GetMethod("AppendRunDiagnostics", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.That(methodInfo, Is.Not.Null, "AppendRunDiagnostics must exist");
+            methodInfo.Invoke(null, new object[] { diagnostics, runDiagnostics, runResult, modelProduced });
         }
 
         [Test]

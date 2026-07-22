@@ -45,6 +45,21 @@ namespace SAM.Core.OpenStudio
         /// <summary>The workflow contains EnergyPlus measures whose changes exist only in the generated IDF and cannot be represented in the OSM.</summary>
         public const string OswEnergyPlusMeasureNotRepresentable = "SAM-OSI-OSW-007";
 
+        /// <summary>
+        /// The workflow was executed and its final post-model-measure OSM was located and
+        /// imported. The counterpart of <see cref="OswWorkflowNotExecuted"/>, which states the
+        /// opposite — the two must never share a code, or a reader cannot tell from the code
+        /// whether the measures were applied.
+        /// </summary>
+        public const string OswWorkflowExecuted = "SAM-OSI-OSW-008";
+
+        /// <summary>
+        /// The workflow ran successfully but produced no EnergyPlus simulation results. Relevant
+        /// only to a simulation; an import needs the final OpenStudio model, not the results, so
+        /// this is informational and never invalidates the imported model.
+        /// </summary>
+        public const string OswNoSimulationResults = "SAM-OSI-OSW-009";
+
         /// <summary>Geometry could not be converted (degenerate, non-planar, too few vertices, below minimum area, aperture not contained by its host).</summary>
         public const string GeometryInvalid = "SAM-OSI-GEO-001";
 

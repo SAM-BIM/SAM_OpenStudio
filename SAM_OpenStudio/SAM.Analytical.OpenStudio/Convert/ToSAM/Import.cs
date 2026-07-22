@@ -239,11 +239,20 @@ namespace SAM.Analytical.OpenStudio
 
             progress?.Report(new Core.OpenStudio.OpenStudioSimulationProgress(Core.OpenStudio.OpenStudioSimulationStage.RunningCli, isolatedOswPath));
 
+            // The shared runner's diagnostics are collected separately, not straight into the
+            // import's list. It judges a run by whether EnergyPlus produced results, which is the
+            // right test for a simulation and the wrong one for an import: an import needs the
+            // final OpenStudio model and nothing else. Its verdict is re-badged below once we
+            // know whether a model was actually produced.
+            List<Core.OpenStudio.OpenStudioDiagnostic> runDiagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>();
+
             OpenStudioLoadSummary loadSummary;
-            Core.OpenStudio.OpenStudioRunResult runResult = OpenStudioSimulationRunner.Run(isolatedOswPath, null, runDirectory, runOptions, out loadSummary, diagnostics, cancellationToken);
+            Core.OpenStudio.OpenStudioRunResult runResult = OpenStudioSimulationRunner.Run(isolatedOswPath, null, runDirectory, runOptions, out loadSummary, runDiagnostics, cancellationToken);
 
             string how;
             string finalOsmPath = OpenStudioWorkflow.FindFinalOsm(runDirectory, runStartedUtc, out how);
+
+            AppendRunDiagnostics(diagnostics, runDiagnostics, runResult, finalOsmPath != null);
 
             if (finalOsmPath == null)
             {
@@ -259,14 +268,67 @@ namespace SAM.Analytical.OpenStudio
                 return new OpenStudioImportResult(diagnostics, workflow.Path, null, runResult);
             }
 
-            diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.OswWorkflowNotExecuted, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("The workflow was executed; the imported model is the final post-model-measure OSM, located by {0}", how)));
+            diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.OswWorkflowExecuted, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("The workflow was executed; the imported model is the final post-model-measure OSM, located by {0}", how)));
 
             OpenStudioImportResult result = ToSAM_Osm(finalOsmPath, workflow.Path, options, diagnostics);
+
 
             // Re-wrap so the workflow's run outcome travels with the imported model; the OSM
             // import already carries every diagnostic, including the run diagnostics passed into
             // it.
             return new OpenStudioImportResult(result.Diagnostics, result.AnalyticalModel, workflow.Path, finalOsmPath, result.OpenStudioVersion, runResult);
+        }
+
+        /// <summary>
+        /// Folds the shared simulation runner's diagnostics into the import's list, re-badging the
+        /// one verdict that does not transfer between the two jobs.
+        /// <para>
+        /// <see cref="OpenStudioSimulationRunner"/> calls a run failed when EnergyPlus produced no
+        /// SQLite results. For a simulation that is exactly right; for an import it is not a
+        /// failure at all — a workflow of model measures with no simulation step legitimately
+        /// produces a model and no results. Left as an Error it would make
+        /// <see cref="OpenStudioImportResult.IsValid"/> false and report a perfectly good import
+        /// as failed.
+        /// </para>
+        /// <para>
+        /// So when the workflow did produce a final model, the CLI exited cleanly and nothing was
+        /// fatal, that specific verdict is downgraded to an informational
+        /// <c>SAM-OSI-OSW-009</c> explaining why results are irrelevant here. Every other run
+        /// diagnostic — EnergyPlus severe errors, real CLI failures, cancellations — passes
+        /// through untouched at its original severity.
+        /// </para>
+        /// </summary>
+        /// <param name="diagnostics">The import's diagnostic list.</param>
+        /// <param name="runDiagnostics">Diagnostics produced by the simulation runner.</param>
+        /// <param name="runResult">Run outcome, used to tell a clean run from a failed one.</param>
+        /// <param name="modelProduced">True when the workflow's final OSM was located.</param>
+        private static void AppendRunDiagnostics(List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics, List<Core.OpenStudio.OpenStudioDiagnostic> runDiagnostics, Core.OpenStudio.OpenStudioRunResult runResult, bool modelProduced)
+        {
+            // A clean exit with no fatal errors: the CLI did its job, whatever it was asked to do.
+            bool cleanRun = runResult != null
+                && runResult.ExitCode == 0
+                && (runResult.FatalErrors == null || runResult.FatalErrors.Count == 0);
+
+            foreach (Core.OpenStudio.OpenStudioDiagnostic runDiagnostic in runDiagnostics)
+            {
+                if (runDiagnostic == null)
+                {
+                    continue;
+                }
+
+                bool resultsOnlyFailure = modelProduced
+                    && cleanRun
+                    && runDiagnostic.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error
+                    && runDiagnostic.Code == Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed;
+
+                if (resultsOnlyFailure)
+                {
+                    diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.OswNoSimulationResults, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("The workflow completed (exit code 0, no fatal errors) and produced the model that was imported, but no EnergyPlus simulation results - an import needs the OpenStudio model, not the results, so this does not affect the imported model. The simulation runner reported: {0}", runDiagnostic.Message)));
+                    continue;
+                }
+
+                diagnostics.Add(runDiagnostic);
+            }
         }
     }
 }
