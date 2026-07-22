@@ -80,7 +80,7 @@ namespace SAM.Analytical.OpenStudio
             // same SAM panel, which is then related to both SAM spaces in pass D.
             Dictionary<string, Panel> panelBySurfaceName = new Dictionary<string, Panel>();
             List<KeyValuePair<Space, List<Panel>>> spacePanels = new List<KeyValuePair<Space, List<Panel>>>();
-            List<global::OpenStudio.Surface> unpairedInterzoneSurfaces = new List<global::OpenStudio.Surface>();
+            List<UnpairedInterzoneSurface> unpairedInterzoneSurfaces = new List<UnpairedInterzoneSurface>();
 
             if (spaceVector != null)
             {
@@ -141,8 +141,11 @@ namespace SAM.Analytical.OpenStudio
             }
 
             // Interzone surfaces whose partner never materialised: try the geometric fallback
-            // once, across the whole model, then demote what is still unpaired.
-            ResolveUnpairedInterzoneSurfaces(unpairedInterzoneSurfaces, panelBySurfaceName, openStudioImportContext);
+            // once, across the whole model, then demote what is still unpaired. A pairing
+            // supersedes the second surface's panel with the first; those supersessions are
+            // recorded so the captured spacePanels lists can be remapped before topology.
+            Dictionary<Panel, Panel> supersededPanels = new Dictionary<Panel, Panel>();
+            ResolveUnpairedInterzoneSurfaces(unpairedInterzoneSurfaces, panelBySurfaceName, supersededPanels, openStudioImportContext);
 
             // Pass D: topology. A shared internal panel is added once and related to BOTH spaces —
             // that relation, not a second coincident panel, is how SAM represents one physical
@@ -151,10 +154,20 @@ namespace SAM.Analytical.OpenStudio
             {
                 adjacencyCluster.AddObject(keyValuePair.Key);
 
+                // A geometric-fallback pairing replaced the second panel with the first after
+                // this list was captured, so resolve each panel through the supersession map
+                // (and dedupe) or the cluster would keep two coincident panels for one partition.
+                HashSet<Panel> addedPanels = new HashSet<Panel>();
                 foreach (Panel panel in keyValuePair.Value)
                 {
-                    adjacencyCluster.AddObject(panel);
-                    adjacencyCluster.AddRelation(keyValuePair.Key, panel);
+                    Panel resolvedPanel = ResolveSupersededPanel(panel, supersededPanels);
+                    if (resolvedPanel == null || !addedPanels.Add(resolvedPanel))
+                    {
+                        continue;
+                    }
+
+                    adjacencyCluster.AddObject(resolvedPanel);
+                    adjacencyCluster.AddRelation(keyValuePair.Key, resolvedPanel);
                 }
             }
 
@@ -211,7 +224,7 @@ namespace SAM.Analytical.OpenStudio
         /// consulted later, for surfaces that claim a "Surface" boundary but carry no handle.
         /// </para>
         /// </summary>
-        private static Panel ResolvePanel(global::OpenStudio.Surface surface, global::OpenStudio.Transformation transformation, Dictionary<string, Panel> panelBySurfaceName, List<global::OpenStudio.Surface> unpairedInterzoneSurfaces, OpenStudioImportContext openStudioImportContext)
+        private static Panel ResolvePanel(global::OpenStudio.Surface surface, global::OpenStudio.Transformation transformation, Dictionary<string, Panel> panelBySurfaceName, List<UnpairedInterzoneSurface> unpairedInterzoneSurfaces, OpenStudioImportContext openStudioImportContext)
         {
             string surfaceName = surface.nameString();
 
@@ -259,7 +272,11 @@ namespace SAM.Analytical.OpenStudio
             }
             else if (string.Equals(surface.outsideBoundaryCondition(), "Surface", StringComparison.OrdinalIgnoreCase))
             {
-                unpairedInterzoneSurfaces.Add(surface);
+                // Snapshot the managed identity NOW. The native SWIG wrapper must not be retained
+                // and dereferenced after the model walk: doing so aborts the process with an
+                // unmanaged AccessViolationException. The name is the key back into
+                // panelBySurfaceName; the label is all the diagnostics need.
+                unpairedInterzoneSurfaces.Add(new UnpairedInterzoneSurface(surfaceName, OpenStudioImportContext.OpenStudioObjectLabel(surface)));
             }
 
             return panel;
@@ -281,7 +298,7 @@ namespace SAM.Analytical.OpenStudio
         /// exactly what the forward direction does with the mirror-image case.
         /// </para>
         /// </summary>
-        private static void ResolveUnpairedInterzoneSurfaces(List<global::OpenStudio.Surface> surfaces, Dictionary<string, Panel> panelBySurfaceName, OpenStudioImportContext openStudioImportContext)
+        private static void ResolveUnpairedInterzoneSurfaces(List<UnpairedInterzoneSurface> surfaces, Dictionary<string, Panel> panelBySurfaceName, Dictionary<Panel, Panel> supersededPanels, OpenStudioImportContext openStudioImportContext)
         {
             if (surfaces == null || surfaces.Count == 0)
             {
@@ -295,7 +312,7 @@ namespace SAM.Analytical.OpenStudio
             {
                 for (int i = 0; i < surfaces.Count; i++)
                 {
-                    string nameI = surfaces[i].nameString();
+                    string nameI = surfaces[i].Name;
                     if (paired.Contains(nameI))
                     {
                         continue;
@@ -309,7 +326,7 @@ namespace SAM.Analytical.OpenStudio
 
                     for (int j = i + 1; j < surfaces.Count; j++)
                     {
-                        string nameJ = surfaces[j].nameString();
+                        string nameJ = surfaces[j].Name;
                         if (paired.Contains(nameJ))
                         {
                             continue;
@@ -327,20 +344,22 @@ namespace SAM.Analytical.OpenStudio
                         }
 
                         // Both surfaces now resolve to the first panel; the second panel is
-                        // dropped, and the SAM space that owned it will relate to the first.
+                        // superseded. Record the supersession so the topology pass can rewrite
+                        // the already-captured space→panel list, and repoint the name ledger too.
                         panelBySurfaceName[nameJ] = panelI;
+                        supersededPanels[panelJ] = panelI;
                         paired.Add(nameI);
                         paired.Add(nameJ);
 
-                        openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyGeometricFallback, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Surfaces '{0}' and '{1}' declare an interzone boundary but carry no OpenStudio adjacency handle; they were paired into one SAM panel by validated geometric matching (coincident centroids, comparable areas, opposed normals) - verify the source model's adjacency", nameI, nameJ), OpenStudioImportContext.OpenStudioObjectLabel(surfaces[i]), panelI);
+                        openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyGeometricFallback, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Surfaces '{0}' and '{1}' declare an interzone boundary but carry no OpenStudio adjacency handle; they were paired into one SAM panel by validated geometric matching (coincident centroids, comparable areas, opposed normals) - verify the source model's adjacency", nameI, nameJ), surfaces[i].Label, panelI);
                         break;
                     }
                 }
             }
 
-            foreach (global::OpenStudio.Surface surface in surfaces)
+            foreach (UnpairedInterzoneSurface surface in surfaces)
             {
-                string name = surface.nameString();
+                string name = surface.Name;
                 if (paired.Contains(name))
                 {
                     continue;
@@ -353,8 +372,48 @@ namespace SAM.Analytical.OpenStudio
                 }
 
                 panel.SetValue(PanelParameter.Adiabatic, true);
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyPairingFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Surface '{0}' declares an interzone boundary but no partner could be resolved{1}; the SAM panel was marked adiabatic", name, openStudioImportContext.Options.AllowGeometricAdjacencyFallback ? " (neither by handle nor by geometric matching)" : " (by handle; geometric matching is disabled)"), OpenStudioImportContext.OpenStudioObjectLabel(surface), panel);
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyPairingFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Surface '{0}' declares an interzone boundary but no partner could be resolved{1}; the SAM panel was marked adiabatic", name, openStudioImportContext.Options.AllowGeometricAdjacencyFallback ? " (neither by handle nor by geometric matching)" : " (by handle; geometric matching is disabled)"), surface.Label, panel);
             }
+        }
+
+        /// <summary>
+        /// Follows the supersession map so a captured panel reference resolves to the panel that
+        /// replaced it during the geometric-adjacency fallback. The map is a flat old→new lookup,
+        /// but the walk is bounded so a pathological cycle can never loop forever.
+        /// </summary>
+        private static Panel ResolveSupersededPanel(Panel panel, Dictionary<Panel, Panel> supersededPanels)
+        {
+            Panel current = panel;
+            int guard = supersededPanels.Count + 1;
+            Panel next;
+            while (current != null && guard-- > 0 && supersededPanels.TryGetValue(current, out next))
+            {
+                current = next;
+            }
+
+            return current;
+        }
+
+        /// <summary>
+        /// Managed snapshot of an interzone surface that carried no OpenStudio adjacency handle:
+        /// its name — the key back into the panel-by-surface-name ledger — and its diagnostic
+        /// label. Captured during the model walk so the native SWIG <c>Surface</c> wrapper is
+        /// never retained and dereferenced afterwards, which can abort the process with an
+        /// unmanaged access violation.
+        /// </summary>
+        private struct UnpairedInterzoneSurface
+        {
+            public UnpairedInterzoneSurface(string name, string label)
+            {
+                Name = name;
+                Label = label;
+            }
+
+            /// <summary>OpenStudio surface name; the key into <c>panelBySurfaceName</c>.</summary>
+            public string Name { get; }
+
+            /// <summary>"&lt;name&gt; [&lt;handle&gt;]" diagnostic label captured at traversal time.</summary>
+            public string Label { get; }
         }
 
         /// <summary>

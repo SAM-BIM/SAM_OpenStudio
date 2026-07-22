@@ -157,15 +157,26 @@ namespace SAM.Analytical.OpenStudio
 
         /// <summary>
         /// Resolves the SAM aperture construction for a subsurface from the constructions already
-        /// imported into <see cref="OpenStudioImportContext.ApertureConstructionMap"/>, falling
-        /// back to a name-only placeholder with no invented layers. See the equivalent policy in
+        /// imported into <see cref="OpenStudioImportContext.ApertureConstructionMap"/>.
+        /// <para>
+        /// A solid (opaque-pane) door exports as an <c>OS:Construction</c> with opaque layers,
+        /// shape-identical to a wall construction, so — absent a <c>SAM.Type</c> stamp — the
+        /// construction pass classifies it by its layers and files it in
+        /// <see cref="OpenStudioImportContext.ConstructionMap"/> as an opaque
+        /// <see cref="Construction"/>. This resolver recognises that a subsurface's use of such a
+        /// construction makes it fenestration, and carries the real opaque layers onto a SAM
+        /// aperture construction as its pane layers rather than discarding them for an empty
+        /// placeholder. Only a construction that is genuinely absent falls back to a name-only
+        /// placeholder with no invented layers — see the equivalent policy in
         /// Convert/ToSAM/Panel.cs.
+        /// </para>
         /// </summary>
         private static ApertureConstruction ResolveApertureConstruction(global::OpenStudio.SubSurface subSurface, ApertureType apertureType, PanelType panelType, OpenStudioImportContext openStudioImportContext)
         {
             string constructionName = null;
             global::OpenStudio.OptionalConstructionBase optionalConstructionBase = subSurface.construction();
-            if (optionalConstructionBase != null && !optionalConstructionBase.isNull())
+            bool hasConstruction = optionalConstructionBase != null && !optionalConstructionBase.isNull();
+            if (hasConstruction)
             {
                 constructionName = optionalConstructionBase.get().nameString();
             }
@@ -182,6 +193,30 @@ namespace SAM.Analytical.OpenStudio
             ApertureConstruction result;
             if (openStudioImportContext.ApertureConstructionMap.TryGetValue(constructionName, out result))
             {
+                return result;
+            }
+
+            // The construction was classified opaque and filed under ConstructionMap because its
+            // layers are opaque, but a subsurface uses it: it is a solid door. Carry its layers
+            // across instead of inventing an empty placeholder.
+            Construction opaqueConstruction;
+            if (hasConstruction
+                && openStudioImportContext.ConstructionMap.TryGetValue(constructionName, out opaqueConstruction)
+                && opaqueConstruction != null
+                && opaqueConstruction.ConstructionLayers != null
+                && opaqueConstruction.ConstructionLayers.Count > 0)
+            {
+                global::OpenStudio.ConstructionBase constructionBase = optionalConstructionBase.get();
+                Guid guid = openStudioImportContext.ResolveGuid(constructionBase, typeof(ApertureConstruction).Name);
+                result = new ApertureConstruction(guid, constructionName, apertureType, new List<ConstructionLayer>(opaqueConstruction.ConstructionLayers), null);
+                Modify.SetOpenStudioSource(result, constructionBase);
+                openStudioImportContext.ApertureConstructionMap[constructionName] = result;
+
+                if (openStudioImportContext.RegisterOnce("SAM-OSI-APX-001:OpaqueApertureConstruction:" + constructionName))
+                {
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Construction '{0}' has opaque (non-glazing) layers but is used by a subsurface - a solid door or panel; its layers were carried onto a SAM aperture construction as pane layers (nothing was substituted)", constructionName), OpenStudioImportContext.OpenStudioObjectLabel(subSurface));
+                }
+
                 return result;
             }
 

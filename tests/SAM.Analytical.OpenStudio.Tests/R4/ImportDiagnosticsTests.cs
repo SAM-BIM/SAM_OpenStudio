@@ -243,6 +243,110 @@ namespace SAM.Analytical.OpenStudio.Tests
             }
         }
 
+        /// <summary>
+        /// Produces an OSM in a fresh temp directory whose interzone adjacency handles have all
+        /// been blanked — the handle-less "Surface" boundary state a third-party OSM reaches the
+        /// importer in. The caller owns the returned directory and must delete it.
+        /// </summary>
+        private static string CreateDanglingInterzoneOsm(out string directory)
+        {
+            directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SAM_OpenStudio_Adj_" + System.Guid.NewGuid().ToString("N").Substring(0, 8));
+            System.IO.Directory.CreateDirectory(directory);
+            string path = System.IO.Path.Combine(directory, "dangling.osm");
+
+            using (OpenStudioConversionResult conversionResult = AnalyticalModelFixtures.TwoAdjacentBoxes().ToOpenStudio())
+            {
+                Assert.That(conversionResult.Model.save(global::OpenStudio.OpenStudioUtilitiesCore.toPath(path), true), Is.True);
+            }
+
+            string[] lines = System.IO.File.ReadAllLines(path);
+            int edited = 0;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                if (lines[i].Contains("!- Outside Boundary Condition Object")
+                    && lines[i - 1].Trim().StartsWith("Surface,", System.StringComparison.Ordinal)
+                    && lines[i - 1].Contains("!- Outside Boundary Condition"))
+                {
+                    lines[i] = "  ,                                       !- Outside Boundary Condition Object";
+                    edited++;
+                }
+            }
+
+            Assert.That(edited, Is.GreaterThan(0), "The fixture must contain at least one resolvable interzone adjacency to break");
+            System.IO.File.WriteAllLines(path, lines);
+            return path;
+        }
+
+        private static void TryDeleteDirectory(string directory)
+        {
+            try
+            {
+                System.IO.Directory.Delete(directory, true);
+            }
+            catch (System.Exception)
+            {
+                // a locked temp directory must not fail an otherwise passing test
+            }
+        }
+
+        [Test]
+        public void GeometricAdjacencyFallback_PairsDanglingInterzoneSurfaces_IntoOneSharedPanel()
+        {
+            string directory;
+            string path = CreateDanglingInterzoneOsm(out directory);
+            try
+            {
+                // Fallback ON (the default): the two shared-wall surfaces are coincident opposites,
+                // so they must collapse into ONE SAM panel — 11, not 12 — and the pairing reported.
+                // Updating only the name ledger (the original bug) left the superseded panel in the
+                // captured space→panel lists, so the cluster kept two coincident panels.
+                OpenStudioImportResult result = Convert.ToSAM(path, new Core.OpenStudio.OpenStudioImportOptions { AllowGeometricAdjacencyFallback = true });
+                foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
+                {
+                    TestContext.Out.WriteLine(diagnostic.ToString());
+                }
+
+                Assert.That(result.Successful, Is.True);
+                Assert.That(result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyGeometricFallback), Is.True, "The geometric pairing must be reported");
+
+                AdjacencyCluster adjacencyCluster = result.AnalyticalModel.AdjacencyCluster;
+                Assert.That(adjacencyCluster.GetPanels().Count, Is.EqualTo(11), "The geometrically paired surfaces must collapse to one shared panel, not remain two coincident panels");
+                Assert.That(adjacencyCluster.GetPanels().Count(x => adjacencyCluster.GetSpaces(x)?.Count == 2), Is.EqualTo(1), "Exactly one panel is related to both spaces");
+            }
+            finally
+            {
+                TryDeleteDirectory(directory);
+            }
+        }
+
+        [Test]
+        public void RepeatedDanglingInterzoneImport_DoesNotDereferenceRetainedNativeSurfaces()
+        {
+            // The interzone fallback once retained native SWIG Surface wrappers and dereferenced
+            // them after the model walk; under GC pressure that aborts the process with an
+            // unmanaged AccessViolationException. Importing repeatedly, collecting between runs,
+            // exercises that path hard — it must stay a clean managed import.
+            string directory;
+            string path = CreateDanglingInterzoneOsm(out directory);
+            try
+            {
+                for (int iteration = 0; iteration < 40; iteration++)
+                {
+                    OpenStudioImportResult result = Convert.ToSAM(path, new Core.OpenStudio.OpenStudioImportOptions { AllowGeometricAdjacencyFallback = true });
+                    Assert.That(result.Successful, Is.True, "Import iteration " + iteration + " must not crash or fail");
+                    Assert.That(result.AnalyticalModel.AdjacencyCluster.GetPanels().Count, Is.EqualTo(11), "Every import must produce the stable shared-panel topology");
+
+                    System.GC.Collect();
+                    System.GC.WaitForPendingFinalizers();
+                    System.GC.Collect();
+                }
+            }
+            finally
+            {
+                TryDeleteDirectory(directory);
+            }
+        }
+
         [Test]
         public void OperableWindow_IsImportedAsAWindowAndReportedAsAnApproximation()
         {
@@ -585,6 +689,105 @@ namespace SAM.Analytical.OpenStudio.Tests
 
                 Assert.That(distinctValues.Contains(0.1), Is.True, "The default day value must be present");
                 Assert.That(distinctValues.Contains(0.9), Is.True, "The weekend rule value must be present - the schedule must not be flattened");
+            }
+        }
+
+        /// <summary>
+        /// Builds an office space with a Lights load driven by <paramref name="schedule"/>, imports
+        /// the model, and returns the SAM lighting profile the load resolves to (null when none was
+        /// produced). The lazy schedule→profile conversion only runs when a load references the
+        /// schedule, so the load is what makes the reverse expansion observable.
+        /// </summary>
+        private static Profile ImportLightingProfile(global::OpenStudio.Model model, global::OpenStudio.Space space, global::OpenStudio.Schedule schedule, out OpenStudioImportResult result)
+        {
+            global::OpenStudio.SpaceType spaceType = new global::OpenStudio.SpaceType(model);
+            spaceType.setName("Office");
+            space.setSpaceType(spaceType);
+
+            global::OpenStudio.LightsDefinition lightsDefinition = new global::OpenStudio.LightsDefinition(model);
+            lightsDefinition.setWattsperSpaceFloorArea(8);
+            global::OpenStudio.Lights lights = new global::OpenStudio.Lights(lightsDefinition);
+            lights.setSpaceType(spaceType);
+            lights.setSchedule(schedule);
+
+            Import(model, out result);
+
+            InternalCondition internalCondition = result.AnalyticalModel.AdjacencyCluster.GetSpaces()[0].InternalCondition;
+
+            string lightingProfileName;
+            if (internalCondition == null || !internalCondition.TryGetValue(InternalConditionParameter.LightingProfileName, out lightingProfileName))
+            {
+                return null;
+            }
+
+            return result.AnalyticalModel.ProfileLibrary.GetProfiles().Find(x => x.Name == lightingProfileName);
+        }
+
+        [Test]
+        public void ScheduleFixedInterval_WithDailyInterval_HoldsEachValueForItsWholeDay()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                // 365 daily values, a strictly increasing ramp so the failure mode is unmistakable:
+                // the old modulo/count expansion produced 1, 2, 3, ... across the first 24 hours
+                // instead of holding day 0's value for the whole day.
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(365u);
+                for (uint d = 0; d < 365u; d++)
+                {
+                    vector.__setitem__(d, d + 1);
+                }
+
+                global::OpenStudio.ScheduleFixedInterval schedule = new global::OpenStudio.ScheduleFixedInterval(model);
+                schedule.setName("Daily Interval Lighting");
+                // Time(days, hours, minutes, seconds): a one-day reporting interval.
+                global::OpenStudio.TimeSeries timeSeries = new global::OpenStudio.TimeSeries(new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1), new global::OpenStudio.Time(1, 0, 0, 0), vector, string.Empty);
+                Assert.That(schedule.setTimeSeries(timeSeries), Is.True, "The daily fixed-interval time series must be accepted");
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile, Is.Not.Null, "The daily interval schedule must expand to a profile");
+                Assert.That(profile.Max, Is.EqualTo(8759), "A fixed-interval schedule must expand to a full annual hourly profile");
+
+                Assert.That(profile[0], Is.EqualTo(1), "Hour 0 is day 0's value");
+                Assert.That(profile[1], Is.EqualTo(1), "Hour 1 must still hold day 0's value, not ramp to day 1");
+                Assert.That(profile[23], Is.EqualTo(1), "The whole first day holds day 0's value");
+                Assert.That(profile[24], Is.EqualTo(2), "Hour 24 is the first hour of day 1");
+                Assert.That(profile[47], Is.EqualTo(2), "The whole second day holds day 1's value");
+                Assert.That(profile[364 * 24], Is.EqualTo(365), "The last day holds the last value");
+            }
+        }
+
+        [Test]
+        public void ScheduleVariableInterval_IsReportedUnsupported_AndLeavesTheLoadWithoutAProfile()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                // A variable-interval series: irregular timestamps, no fixed cadence to resample.
+                global::OpenStudio.DateTimeVector dateTimeVector = new global::OpenStudio.DateTimeVector();
+                global::OpenStudio.Date startDate = new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1);
+                dateTimeVector.Add(new global::OpenStudio.DateTime(startDate, new global::OpenStudio.Time(0, 2, 0, 0)));
+                dateTimeVector.Add(new global::OpenStudio.DateTime(startDate, new global::OpenStudio.Time(0, 5, 0, 0)));
+                dateTimeVector.Add(new global::OpenStudio.DateTime(startDate, new global::OpenStudio.Time(0, 9, 0, 0)));
+
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(3u);
+                vector.__setitem__(0u, 0.2);
+                vector.__setitem__(1u, 0.6);
+                vector.__setitem__(2u, 0.9);
+
+                global::OpenStudio.ScheduleVariableInterval schedule = new global::OpenStudio.ScheduleVariableInterval(model);
+                schedule.setName("Variable Interval Lighting");
+                Assert.That(schedule.setTimeSeries(new global::OpenStudio.TimeSeries(dateTimeVector, vector, string.Empty)), Is.True, "The variable-interval time series must be accepted");
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile, Is.Null, "A variable-interval schedule has no fixed cadence and must not be expanded");
+                Assert.That(result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.ScheduleUnsupported && x.Message.Contains("variable-interval")), Is.True, "The variable-interval schedule must be reported unsupported, never guessed");
             }
         }
 

@@ -137,6 +137,62 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void OpaquePaneDoor_WithoutSamMetadata_KeepsItsOpaqueLayers()
+        {
+            // The same solid door as above, but with NO SAM identity stamp — a third-party model,
+            // or the forward-written door before identity was added. The construction pass then
+            // classifies it by its layers and files it as an opaque Construction; the aperture
+            // resolver must still carry those real layers across instead of an empty placeholder.
+            using (global::OpenStudio.Model model = new global::OpenStudio.Model())
+            {
+                global::OpenStudio.Space space = new global::OpenStudio.Space(model);
+                space.setName("Room");
+                global::OpenStudio.ThermalZone thermalZone = new global::OpenStudio.ThermalZone(model);
+                thermalZone.setName("Zone");
+                space.setThermalZone(thermalZone);
+
+                global::OpenStudio.Surface wall = AddSurface(model, space, "Wall", "Outdoors", new[] { new[] { 0.0, 0.0, 0.0 }, new[] { 4.0, 0.0, 0.0 }, new[] { 4.0, 0.0, 2.7 }, new[] { 0.0, 0.0, 2.7 } });
+
+                global::OpenStudio.StandardOpaqueMaterial timber = new global::OpenStudio.StandardOpaqueMaterial(model, "MediumSmooth", 0.04, 0.15, 600, 1600);
+                timber.setName("Door Timber");
+
+                global::OpenStudio.OpaqueMaterialVector layers = new global::OpenStudio.OpaqueMaterialVector();
+                layers.Add(timber);
+                global::OpenStudio.Construction doorConstruction = new global::OpenStudio.Construction(layers);
+                doorConstruction.setName("Plain Opaque Door");
+                // Deliberately NO Core.OpenStudio.Modify.SetSAMIdentity call.
+
+                global::OpenStudio.SubSurface door = new global::OpenStudio.SubSurface(ToVector(new[] { new[] { 1.0, 0.0, 0.9 }, new[] { 2.0, 0.0, 0.9 }, new[] { 2.0, 0.0, 2.1 }, new[] { 1.0, 0.0, 2.1 } }), model);
+                door.setSurface(wall);
+                door.setSubSurfaceType("Door");
+                door.setConstruction(doorConstruction);
+
+                OpenStudioImportResult result = model.ToSAM();
+                foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
+                {
+                    TestContext.Out.WriteLine(diagnostic.ToString());
+                }
+
+                List<Aperture> apertures = new List<Aperture>();
+                foreach (Panel panel in result.AnalyticalModel.AdjacencyCluster.GetPanels())
+                {
+                    if (panel.Apertures != null)
+                    {
+                        apertures.AddRange(panel.Apertures);
+                    }
+                }
+
+                Assert.That(apertures.Count, Is.EqualTo(1), "The door must import as one SAM aperture");
+
+                ApertureConstruction apertureConstruction = apertures[0].ApertureConstruction;
+                Assert.That(apertureConstruction, Is.Not.Null);
+                Assert.That(apertureConstruction.PaneConstructionLayers, Is.Not.Null.And.Not.Empty, "A metadata-free opaque door must keep its opaque layers, not fall back to an empty placeholder");
+                Assert.That(apertureConstruction.PaneConstructionLayers[0].Name, Is.EqualTo("Door Timber"));
+                Assert.That(apertureConstruction.ApertureType, Is.EqualTo(ApertureType.Door), "The aperture type comes from the subsurface, not the construction");
+            }
+        }
+
+        [Test]
         public void SpaceThatClosesOnlyAtMillimetre_StillGetsAnInternalPointLocation()
         {
             using (global::OpenStudio.Model model = new global::OpenStudio.Model())

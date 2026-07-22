@@ -182,10 +182,23 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
-        /// Expands a ScheduleInterval (fixed or variable) from its time series. Hourly and
-        /// coarser intervals map directly; a sub-hourly series is averaged into hourly means and
-        /// reported as an approximation, because a SAM profile has no sub-hourly slot to put the
-        /// detail in.
+        /// Expands a ScheduleInterval from its time series, resampling onto whole-hour boundaries
+        /// using the series' own reporting interval rather than guessing the cadence from the
+        /// value count.
+        /// <para>
+        /// A fixed-interval series reports its interval, so the mapping is exact: an hourly series
+        /// maps value-for-hour; a coarser series (a daily value, say) holds each value across
+        /// every hour it spans — <em>not</em> spread one value per hour, which would turn 365
+        /// daily values into a meaningless 1,2,3… ramp over the first days; a sub-hourly series is
+        /// averaged into hourly means (averaged, not sampled, so a fractional schedule keeps its
+        /// daily total). Coverage shorter than a year is held at the last value and reported;
+        /// leap-year excess is dropped, as SAM profiles are always 8760 hours.
+        /// </para>
+        /// <para>
+        /// A variable-interval series has no fixed cadence to resample deterministically and has
+        /// no SAM equivalent; it is reported unsupported (SAM-OSI-SCH-001) and imported without a
+        /// profile rather than fabricating one, matching the reverse-coverage manifest.
+        /// </para>
         /// </summary>
         private static double[] AnnualHourlyValues(global::OpenStudio.ScheduleInterval scheduleInterval, OpenStudioImportContext openStudioImportContext, string label)
         {
@@ -223,38 +236,52 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
+            // The reporting interval is what distinguishes a fixed-interval series (which carries
+            // a value here) from a variable-interval one (which does not).
+            double intervalHours = 0;
+            try
+            {
+                global::OpenStudio.OptionalTime optionalIntervalLength = timeSeries.intervalLength();
+                if (optionalIntervalLength != null && !optionalIntervalLength.isNull())
+                {
+                    intervalHours = optionalIntervalLength.get().totalHours();
+                }
+            }
+            catch (Exception)
+            {
+                intervalHours = 0;
+            }
+
+            if (intervalHours <= 0)
+            {
+                // Variable interval (or an interval that could not be read): no fixed cadence to
+                // resample. Unsupported by contract - reported, never guessed.
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ScheduleUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "The interval schedule has no fixed reporting interval (a variable-interval schedule); it has no SAM equivalent and the load it drives was imported without a profile", label);
+                openStudioImportContext.RegisterSkip();
+                return null;
+            }
+
             // OpenStudio.Vector is the SWIG numeric vector: size()/__getitem__, not Count/[].
             int count = (int)vector.size();
             double[] result = new double[AnnualHourCount];
 
-            if (count == AnnualHourCount || count == AnnualHourCount + 24)
+            if (intervalHours < 1)
             {
-                // Exactly hourly (a leap year contributes 24 extra hours, which SAM drops).
-                for (int i = 0; i < AnnualHourCount; i++)
-                {
-                    result[i] = vector.__getitem__((uint)i);
-                }
-
-                return result;
-            }
-
-            if (count > AnnualHourCount)
-            {
-                // Sub-hourly: average whole blocks into each hour. Averaging, not sampling, so a
-                // fractional schedule keeps its correct daily total.
-                int perHour = count / AnnualHourCount;
+                // Sub-hourly: average the whole sub-hour block that falls in each hour.
+                int perHour = (int)Math.Round(1.0 / intervalHours);
                 if (perHour < 1)
                 {
                     perHour = 1;
                 }
 
-                for (int i = 0; i < AnnualHourCount; i++)
+                int filledHours = 0;
+                for (int hour = 0; hour < AnnualHourCount; hour++)
                 {
                     double sum = 0;
                     int taken = 0;
                     for (int j = 0; j < perHour; j++)
                     {
-                        int index = (i * perHour) + j;
+                        int index = (hour * perHour) + j;
                         if (index >= count)
                         {
                             break;
@@ -264,21 +291,61 @@ namespace SAM.Analytical.OpenStudio
                         taken++;
                     }
 
-                    result[i] = taken == 0 ? 0 : sum / taken;
+                    if (taken == 0)
+                    {
+                        break;
+                    }
+
+                    result[hour] = sum / taken;
+                    filledHours = hour + 1;
                 }
 
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The sub-hourly interval schedule ({0} values, {1} per hour) was averaged into hourly means; SAM profiles are hour-indexed and cannot carry the sub-hourly detail", count, perHour), label);
+                HoldTailAndReportPartial(result, filledHours, openStudioImportContext, label);
+
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "The sub-hourly interval schedule ({0:G4} h interval, {1} per hour) was averaged into hourly means; SAM profiles are hour-indexed and cannot carry the sub-hourly detail", intervalHours, perHour), label);
                 return result;
             }
 
-            // Shorter than a year: hold the pattern by repeating it, and say so.
-            for (int i = 0; i < AnnualHourCount; i++)
+            // Hourly (interval == 1) or coarser (interval > 1): each hour takes the value of the
+            // interval that spans it. For an hourly series this is value-for-hour and the exact
+            // inverse of the forward direction; for a daily series each value holds for its 24
+            // hours.
+            int filled = 0;
+            for (int hour = 0; hour < AnnualHourCount; hour++)
             {
-                result[i] = vector.__getitem__((uint)(i % count));
+                int index = (int)(hour / intervalHours);
+                if (index >= count)
+                {
+                    break;
+                }
+
+                result[hour] = vector.__getitem__((uint)index);
+                filled = hour + 1;
             }
 
-            openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The interval schedule carries {0} values, fewer than the {1} hours of a year; the pattern was tiled to fill the year", count, AnnualHourCount), label);
+            HoldTailAndReportPartial(result, filled, openStudioImportContext, label);
             return result;
+        }
+
+        /// <summary>
+        /// Fills any hours a schedule did not cover: holds them at the last defined value rather
+        /// than dropping them to zero, and reports the partial coverage. A schedule that covers
+        /// the whole year (<paramref name="filledHours"/> == 8760) is left untouched and silent.
+        /// </summary>
+        private static void HoldTailAndReportPartial(double[] result, int filledHours, OpenStudioImportContext openStudioImportContext, string label)
+        {
+            if (filledHours >= AnnualHourCount)
+            {
+                return;
+            }
+
+            double last = filledHours > 0 ? result[filledHours - 1] : 0;
+            for (int i = filledHours; i < AnnualHourCount; i++)
+            {
+                result[i] = last;
+            }
+
+            openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "The interval schedule covers only {0} of {1} hours; the remaining hours were held at the last defined value ({2:G4})", filledHours, AnnualHourCount, last), label);
         }
     }
 }
