@@ -761,6 +761,92 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void ScheduleFixedInterval_LeapYearSkipsFebruary29WithoutShiftingTheCalendar()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(8784u);
+                for (uint hour = 0; hour < 8784u; hour++)
+                {
+                    vector.__setitem__(hour, (hour / 24u) + 1u);
+                }
+
+                global::OpenStudio.ScheduleFixedInterval schedule = new global::OpenStudio.ScheduleFixedInterval(model);
+                schedule.setName("Leap Year Interval Lighting");
+                global::OpenStudio.TimeSeries timeSeries = new global::OpenStudio.TimeSeries(new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1, 2020), new global::OpenStudio.Time(0, 1, 0, 0), vector, string.Empty);
+                Assert.That(schedule.setTimeSeries(timeSeries), Is.True);
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile[58 * 24], Is.EqualTo(59), "28 February remains aligned");
+                Assert.That(profile[59 * 24], Is.EqualTo(61), "1 March skips the source leap day");
+                Assert.That(profile[364 * 24], Is.EqualTo(366), "31 December must not be truncated");
+            }
+        }
+
+        [Test]
+        public void ScheduleFixedInterval_PartialYearHonoursStartDateAndOutOfRangeValue()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(24u);
+                for (uint hour = 0; hour < 24u; hour++)
+                {
+                    vector.__setitem__(hour, 7);
+                }
+
+                global::OpenStudio.TimeSeries timeSeries = new global::OpenStudio.TimeSeries(new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(7), 1, 2021), new global::OpenStudio.Time(0, 1, 0, 0), vector, string.Empty);
+
+                global::OpenStudio.ScheduleFixedInterval schedule = new global::OpenStudio.ScheduleFixedInterval(model);
+                schedule.setName("Partial Year Interval Lighting");
+                Assert.That(schedule.setTimeSeries(timeSeries), Is.True);
+                Assert.That(schedule.setOutOfRangeValue(-1), Is.True);
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile[0], Is.EqualTo(-1), "January is outside the series coverage");
+                Assert.That(profile[181 * 24], Is.EqualTo(7), "1 July uses the series value");
+                Assert.That(profile[(181 * 24) + 23], Is.EqualTo(7));
+                Assert.That(profile[182 * 24], Is.EqualTo(-1), "2 July is outside the one-day series");
+                Assert.That(result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied && x.Message.Contains("out-of-range")), Is.True);
+            }
+        }
+
+        [Test]
+        public void ScheduleFixedInterval_IntervalsCrossingHourBoundariesAreWeighted()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(2u);
+                vector.__setitem__(0u, 2);
+                vector.__setitem__(1u, 4);
+
+                global::OpenStudio.TimeSeries timeSeries = new global::OpenStudio.TimeSeries(new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1, 2021), new global::OpenStudio.Time(0, 1, 30, 0), vector, string.Empty);
+
+                global::OpenStudio.ScheduleFixedInterval schedule = new global::OpenStudio.ScheduleFixedInterval(model);
+                schedule.setName("Ninety Minute Interval Lighting");
+                Assert.That(schedule.setTimeSeries(timeSeries), Is.True);
+                Assert.That(schedule.setOutOfRangeValue(-1), Is.True);
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile[0], Is.EqualTo(2));
+                Assert.That(profile[1], Is.EqualTo(3), "The hour straddles equal parts of the two reporting intervals");
+                Assert.That(profile[2], Is.EqualTo(4));
+                Assert.That(profile[3], Is.EqualTo(-1));
+            }
+        }
+
+        [Test]
         public void ScheduleVariableInterval_IsReportedUnsupported_AndLeavesTheLoadWithoutAProfile()
         {
             global::OpenStudio.Space space;

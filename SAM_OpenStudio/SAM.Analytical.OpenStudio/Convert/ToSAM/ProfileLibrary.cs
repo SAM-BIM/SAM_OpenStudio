@@ -191,8 +191,9 @@ namespace SAM.Analytical.OpenStudio
         /// every hour it spans — <em>not</em> spread one value per hour, which would turn 365
         /// daily values into a meaningless 1,2,3… ramp over the first days; a sub-hourly series is
         /// averaged into hourly means (averaged, not sampled, so a fractional schedule keeps its
-        /// daily total). Coverage shorter than a year is held at the last value and reported;
-        /// leap-year excess is dropped, as SAM profiles are always 8760 hours.
+        /// daily total). Hours outside a partial series use its configured out-of-range value and
+        /// are reported; leap day is skipped without shifting March-December, as SAM profiles are
+        /// always 8760 hours.
         /// </para>
         /// <para>
         /// A variable-interval series has no fixed cadence to resample deterministically and has
@@ -238,21 +239,21 @@ namespace SAM.Analytical.OpenStudio
 
             // The reporting interval is what distinguishes a fixed-interval series (which carries
             // a value here) from a variable-interval one (which does not).
-            double intervalHours = 0;
+            long intervalSeconds = 0;
             try
             {
                 global::OpenStudio.OptionalTime optionalIntervalLength = timeSeries.intervalLength();
                 if (optionalIntervalLength != null && !optionalIntervalLength.isNull())
                 {
-                    intervalHours = optionalIntervalLength.get().totalHours();
+                    intervalSeconds = optionalIntervalLength.get().totalSeconds();
                 }
             }
             catch (Exception)
             {
-                intervalHours = 0;
+                intervalSeconds = 0;
             }
 
-            if (intervalHours <= 0)
+            if (intervalSeconds <= 0)
             {
                 // Variable interval (or an interval that could not be read): no fixed cadence to
                 // resample. Unsupported by contract - reported, never guessed.
@@ -265,87 +266,138 @@ namespace SAM.Analytical.OpenStudio
             int count = (int)vector.size();
             double[] result = new double[AnnualHourCount];
 
-            if (intervalHours < 1)
+            long seriesStartSeconds;
+            int sourceYear;
+            int sourceMonth;
+            int sourceDayOfMonth;
+            try
             {
-                // Sub-hourly: average the whole sub-hour block that falls in each hour.
-                int perHour = (int)Math.Round(1.0 / intervalHours);
-                if (perHour < 1)
-                {
-                    perHour = 1;
-                }
-
-                int filledHours = 0;
-                for (int hour = 0; hour < AnnualHourCount; hour++)
-                {
-                    double sum = 0;
-                    int taken = 0;
-                    for (int j = 0; j < perHour; j++)
-                    {
-                        int index = (hour * perHour) + j;
-                        if (index >= count)
-                        {
-                            break;
-                        }
-
-                        sum += vector.__getitem__((uint)index);
-                        taken++;
-                    }
-
-                    if (taken == 0)
-                    {
-                        break;
-                    }
-
-                    result[hour] = sum / taken;
-                    filledHours = hour + 1;
-                }
-
-                HoldTailAndReportPartial(result, filledHours, openStudioImportContext, label);
-
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "The sub-hourly interval schedule ({0:G4} h interval, {1} per hour) was averaged into hourly means; SAM profiles are hour-indexed and cannot carry the sub-hourly detail", intervalHours, perHour), label);
-                return result;
+                global::OpenStudio.DateTime startDateTime = timeSeries.startDateTime();
+                seriesStartSeconds = startDateTime.toEpoch();
+                global::OpenStudio.Date startDate = startDateTime.date();
+                sourceYear = startDate.year();
+                sourceMonth = startDate.monthOfYear().value();
+                sourceDayOfMonth = (int)startDate.dayOfMonth();
+            }
+            catch (Exception exception)
+            {
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ScheduleUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The fixed-interval schedule's start date could not be read ({0}: {1}); the load it drives was imported without a profile", exception.GetType().Name, exception.Message), label);
+                openStudioImportContext.RegisterSkip();
+                return null;
             }
 
-            // Hourly (interval == 1) or coarser (interval > 1): each hour takes the value of the
-            // interval that spans it. For an hourly series this is value-for-hour and the exact
-            // inverse of the forward direction; for a daily series each value holds for its 24
-            // hours.
-            int filled = 0;
-            for (int hour = 0; hour < AnnualHourCount; hour++)
+            long seriesEndSeconds = seriesStartSeconds + (count * intervalSeconds);
+            double outOfRangeValue = timeSeries.outOfRangeValue();
+            try
             {
-                int index = (int)(hour / intervalHours);
-                if (index >= count)
+                global::OpenStudio.OptionalScheduleFixedInterval optionalScheduleFixedInterval = global::OpenStudio.OpenStudioModelResources.toScheduleFixedInterval(scheduleInterval);
+                if (optionalScheduleFixedInterval != null && !optionalScheduleFixedInterval.isNull())
                 {
-                    break;
+                    outOfRangeValue = optionalScheduleFixedInterval.get().outOfRangeValue();
                 }
-
-                result[hour] = vector.__getitem__((uint)index);
-                filled = hour + 1;
+            }
+            catch (Exception)
+            {
+                // The TimeSeries value above is the same default and remains a safe fallback.
             }
 
-            HoldTailAndReportPartial(result, filled, openStudioImportContext, label);
+            global::OpenStudio.Date januaryFirst = new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1, sourceYear);
+            long sourceYearStartSeconds = new global::OpenStudio.DateTime(januaryFirst).toEpoch();
+            long nextYearStartSeconds = sourceYearStartSeconds + (System.DateTime.IsLeapYear(sourceYear) ? 366L : 365L) * 24L * 60L * 60L;
+            bool inferredLeapSeries = !System.DateTime.IsLeapYear(sourceYear)
+                && sourceMonth == 1
+                && sourceDayOfMonth == 1
+                && seriesEndSeconds - seriesStartSeconds >= 366L * 24L * 60L * 60L;
+            long coveredSeconds = 0;
+
+            // SAM's annual index is a non-leap Jan-Dec calendar. Map every canonical month/day
+            // back to the TimeSeries calendar instead of copying the first 8760 values: that
+            // skips 29 February without shifting March-December, honours a non-January start,
+            // and also handles a series that crosses into the following calendar year.
+            System.DateTime canonicalDate = new System.DateTime(2001, 1, 1);
+            int resultHour = 0;
+            for (int day = 0; day < 365; day++)
+            {
+                System.DateTime monthAndDay = canonicalDate.AddDays(day);
+                int sourceDay = new System.DateTime(sourceYear, monthAndDay.Month, monthAndDay.Day).DayOfYear - 1;
+                if (inferredLeapSeries && monthAndDay.Month > 2)
+                {
+                    // ScheduleFixedInterval stores month/day but not the year. OpenStudio therefore
+                    // reconstructs an assumed non-leap year even when 366 days of values were set;
+                    // the duration is the remaining evidence that the source included 29 February.
+                    sourceDay++;
+                }
+                int nextSourceDay = new System.DateTime(sourceYear + 1, monthAndDay.Month, monthAndDay.Day).DayOfYear - 1;
+
+                for (int hour = 0; hour < 24; hour++)
+                {
+                    long sourceHourStart = sourceYearStartSeconds + (((sourceDay * 24L) + hour) * 60L * 60L);
+                    long nextSourceHourStart = nextYearStartSeconds + (((nextSourceDay * 24L) + hour) * 60L * 60L);
+
+                    long sourceOverlap = OverlapSeconds(sourceHourStart, sourceHourStart + 3600L, seriesStartSeconds, seriesEndSeconds);
+                    long nextSourceOverlap = OverlapSeconds(nextSourceHourStart, nextSourceHourStart + 3600L, seriesStartSeconds, seriesEndSeconds);
+                    long selectedHourStart = nextSourceOverlap > sourceOverlap ? nextSourceHourStart : sourceHourStart;
+
+                    result[resultHour++] = AverageFixedIntervalHour(vector, count, intervalSeconds, seriesStartSeconds, seriesEndSeconds, selectedHourStart, outOfRangeValue);
+                    coveredSeconds += Math.Max(sourceOverlap, nextSourceOverlap);
+                }
+            }
+
+            if (coveredSeconds < AnnualHourCount * 3600L)
+            {
+                double coveredHours = coveredSeconds / 3600.0;
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "The interval schedule covers {0:G6} of {1} annual hours; its configured out-of-range value ({2:G4}) was used outside that coverage", coveredHours, AnnualHourCount, outOfRangeValue), label);
+            }
+
+            if (intervalSeconds < 3600L)
+            {
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "The sub-hourly interval schedule ({0:G4} h interval) was averaged into hourly means; SAM profiles are hour-indexed and cannot carry the sub-hourly detail", intervalSeconds / 3600.0), label);
+            }
+
             return result;
         }
 
-        /// <summary>
-        /// Fills any hours a schedule did not cover: holds them at the last defined value rather
-        /// than dropping them to zero, and reports the partial coverage. A schedule that covers
-        /// the whole year (<paramref name="filledHours"/> == 8760) is left untouched and silent.
-        /// </summary>
-        private static void HoldTailAndReportPartial(double[] result, int filledHours, OpenStudioImportContext openStudioImportContext, string label)
+        /// <summary>Returns the duration shared by two half-open time ranges, in seconds.</summary>
+        private static long OverlapSeconds(long start_1, long end_1, long start_2, long end_2)
         {
-            if (filledHours >= AnnualHourCount)
+            return Math.Max(0L, Math.Min(end_1, end_2) - Math.Max(start_1, start_2));
+        }
+
+        /// <summary>
+        /// Averages the piecewise-constant OpenStudio reporting intervals over one SAM hour.
+        /// Weighting by overlap (rather than grouping or sampling values) also handles reporting
+        /// intervals and start times that do not fall on whole-hour boundaries.
+        /// </summary>
+        private static double AverageFixedIntervalHour(global::OpenStudio.Vector vector, int count, long intervalSeconds, long seriesStartSeconds, long seriesEndSeconds, long hourStartSeconds, double outOfRangeValue)
+        {
+            long hourEndSeconds = hourStartSeconds + 3600L;
+            long cursor = hourStartSeconds;
+            double weightedValue = 0;
+
+            while (cursor < hourEndSeconds)
             {
-                return;
+                double value = outOfRangeValue;
+                long segmentEnd = hourEndSeconds;
+
+                if (cursor < seriesStartSeconds)
+                {
+                    segmentEnd = Math.Min(segmentEnd, seriesStartSeconds);
+                }
+                else if (cursor < seriesEndSeconds)
+                {
+                    int index = (int)((cursor - seriesStartSeconds) / intervalSeconds);
+                    if (index >= 0 && index < count)
+                    {
+                        value = vector.__getitem__((uint)index);
+                        segmentEnd = Math.Min(segmentEnd, seriesStartSeconds + ((index + 1L) * intervalSeconds));
+                    }
+                }
+
+                weightedValue += value * (segmentEnd - cursor);
+                cursor = segmentEnd;
             }
 
-            double last = filledHours > 0 ? result[filledHours - 1] : 0;
-            for (int i = filledHours; i < AnnualHourCount; i++)
-            {
-                result[i] = last;
-            }
-
-            openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "The interval schedule covers only {0} of {1} hours; the remaining hours were held at the last defined value ({2:G4})", filledHours, AnnualHourCount, last), label);
+            return weightedValue / 3600.0;
         }
     }
 }
