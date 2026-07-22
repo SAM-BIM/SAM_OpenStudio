@@ -230,9 +230,30 @@ namespace SAM.Analytical.OpenStudio.Tests
             foreach (string path in new[] { first, second })
             {
                 string json = File.ReadAllText(path);
-                Assert.That(json, Does.Contain("run_directory"), "Each copy must pin its own run directory");
                 Assert.That(json, Does.Contain("seed.osm"));
             }
+        }
+
+        [Test]
+        public void IsolatedCopy_DoesNotPinRunDirectory()
+        {
+            // Regression guard. Pinning run_directory makes the OpenStudio CLI write every output
+            // - eplusout.sql, eplusout.err, in.osm - into that directory's ROOT instead of the
+            // conventional <osw>/run/, which is where OpenStudioSimulationRunner reads them. On a
+            // real executed workflow that hid a 44 MB results file and, worse, silently swallowed
+            // the EnergyPlus severe-error report. Isolation comes from staging the copy in a
+            // unique directory, not from redirecting the CLI's output.
+            WriteSeedOsm();
+            string oswPath = WriteOsw("{\n  \"seed_file\": \"seed.osm\",\n  \"run_directory\": \"C:/somewhere/else\",\n  \"steps\": []\n}");
+
+            string failureReason;
+            OpenStudioWorkflow workflow = OpenStudioWorkflow.Parse(oswPath, out failureReason);
+            Assert.That(workflow, Is.Not.Null, failureReason);
+
+            string copyPath = workflow.WriteIsolatedCopy(Path.Combine(directory, "run"), Path.Combine(directory, "seed.osm"));
+            string json = File.ReadAllText(copyPath);
+
+            Assert.That(json, Does.Not.Contain("run_directory"), "The staged copy must not pin run_directory - it would redirect the CLI's output away from where the runner reads results and errors");
         }
 
         [Test]

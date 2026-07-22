@@ -209,13 +209,25 @@ namespace SAM.Analytical.OpenStudio
 
         /// <summary>
         /// Writes a copy of this workflow into <paramref name="directory"/> with every path field
-        /// made absolute and <c>run_directory</c> pointed at that directory.
+        /// made absolute.
         /// <para>
         /// The copy exists so concurrent imports of the same OSW cannot collide: the CLI writes
         /// its run folder next to the workflow file, so running the original in place would give
-        /// two parallel imports one shared <c>run</c> directory. Only path fields are rewritten —
-        /// <c>steps</c> and their arguments are copied verbatim, so the workflow that executes is
-        /// the one the caller supplied.
+        /// two parallel imports one shared <c>run</c> directory. Staging the copy in a unique
+        /// directory is what provides that isolation.
+        /// </para>
+        /// <para>
+        /// <c>run_directory</c> is deliberately NOT pinned. Setting it makes the CLI write every
+        /// output — <c>eplusout.sql</c>, <c>eplusout.err</c>, <c>in.osm</c> — into that directory's
+        /// root instead of the conventional <c>&lt;osw&gt;/run/</c>, where
+        /// <see cref="OpenStudioSimulationRunner"/> looks for them. Pinning it therefore hid the
+        /// SQL results and, worse, silently swallowed the EnergyPlus severe-error report. Left
+        /// unset, the CLI's default run folder lands inside this staged directory anyway, so the
+        /// isolation is kept and the runner finds everything.
+        /// </para>
+        /// <para>
+        /// Only path fields are rewritten — <c>steps</c> and their arguments are copied verbatim,
+        /// so the workflow that executes is the one the caller supplied.
         /// </para>
         /// </summary>
         /// <param name="directory">Isolated run directory; created when absent.</param>
@@ -228,7 +240,11 @@ namespace SAM.Analytical.OpenStudio
             JsonObject copy = Document.DeepClone() as JsonObject;
 
             copy["root"] = Root.Replace('\\', '/');
-            copy["run_directory"] = System.IO.Path.GetFullPath(directory).Replace('\\', '/');
+
+            // Any run_directory the source OSW carried is removed for the same reason it is not
+            // set here: it would redirect the CLI's output away from <osw>/run/, where the runner
+            // reads the results and the EnergyPlus error report.
+            copy.Remove("run_directory");
 
             if (!string.IsNullOrWhiteSpace(resolvedSeedPath))
             {
