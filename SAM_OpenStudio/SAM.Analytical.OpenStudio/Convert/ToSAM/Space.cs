@@ -58,7 +58,18 @@ namespace SAM.Analytical.OpenStudio
                     Shell shell = new Shell(faces);
                     if (shell != null)
                     {
-                        location = shell.InternalPoint3D(openStudioImportContext.Options.DistanceTolerance);
+                        // MacroDistance, not the raw distance tolerance: real exported geometry
+                        // closes at the millimetre, not the micron, so InternalPoint3D at 1e-6 m
+                        // fails on almost every real space (the shell is not watertight there).
+                        // The forward direction uses MacroDistance for the same shell operations.
+                        double tolerance = Core.Tolerance.MacroDistance;
+
+                        location = shell.InternalPoint3D(Core.Tolerance.MacroDistance, tolerance);
+                        if (location == null)
+                        {
+                            location = Geometry.Spatial.Query.CalculatedInternalPoint3D(shell, Core.Tolerance.MacroDistance, tolerance);
+                        }
+
                         area = Geometry.Spatial.Query.Area(shell, 0.1);
                         volume = Geometry.Spatial.Query.Volume(shell);
                     }
@@ -71,9 +82,20 @@ namespace SAM.Analytical.OpenStudio
 
             if (location == null)
             {
-                // No usable shell: the space still imports (its surfaces are real), but nothing
-                // that depends on a closed volume can be derived from SAM geometry.
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ZoneIncomplete, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The space has no closed shell ({0} bounding face(s)); its SAM location is not set and area/volume come from OpenStudio where available", faces?.Count ?? 0), label);
+                // The shell would not close (non-manifold or slightly open exported geometry).
+                // A space with no location loses its identity point for every downstream
+                // space-in-point query and label, so the vertex centroid is used instead of
+                // leaving it null. The centroid is not guaranteed inside a concave space, so it
+                // is reported as the approximation it is — but an approximate point beats none.
+                location = VertexCentroid(faces);
+                if (location != null)
+                {
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The space shell would not close from its {0} bounding face(s); its SAM location was set to the vertex centroid (approximate, may fall outside a concave space) and area/volume come from OpenStudio where available", faces?.Count ?? 0), label);
+                }
+                else
+                {
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ZoneIncomplete, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The space has no usable geometry ({0} bounding face(s)); its SAM location is not set and area/volume come from OpenStudio where available", faces?.Count ?? 0), label);
+                }
             }
 
             if (double.IsNaN(area))
@@ -127,6 +149,45 @@ namespace SAM.Analytical.OpenStudio
 
             openStudioImportContext.RegisterCreated();
             return result;
+        }
+
+        /// <summary>
+        /// Centroid of every vertex of the space's bounding faces — the last-resort space
+        /// location when no closed shell can be formed. Averaging all boundary vertices gives a
+        /// point near the space's centre of mass; it is not guaranteed inside a concave space,
+        /// which is why the caller reports it as approximate.
+        /// </summary>
+        private static Point3D VertexCentroid(List<Face3D> faces)
+        {
+            if (faces == null || faces.Count == 0)
+            {
+                return null;
+            }
+
+            List<Point3D> point3Ds = new List<Point3D>();
+            foreach (Face3D face3D in faces)
+            {
+                Geometry.Spatial.ISegmentable3D segmentable3D = face3D?.GetExternalEdge3D() as Geometry.Spatial.ISegmentable3D;
+                List<Point3D> facePoints = segmentable3D?.GetPoints();
+                if (facePoints != null)
+                {
+                    point3Ds.AddRange(facePoints);
+                }
+            }
+
+            if (point3Ds.Count == 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                return Geometry.Spatial.Query.Centroid(point3Ds);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         /// <summary>

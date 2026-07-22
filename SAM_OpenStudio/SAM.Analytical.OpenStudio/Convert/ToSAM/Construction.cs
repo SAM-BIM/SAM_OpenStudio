@@ -116,7 +116,16 @@ namespace SAM.Analytical.OpenStudio
             global::OpenStudio.Construction construction = optionalConstruction.get();
 
             List<ConstructionLayer> constructionLayers = new List<ConstructionLayer>();
-            bool fenestration = false;
+
+            // The stamped SAM type is authoritative when present. An aperture construction with
+            // opaque panes — a solid door — exports as an OS:Construction with opaque layers,
+            // indistinguishable from a wall construction by its materials alone. Only the
+            // SAM.Type feature says it is fenestration, and trusting it both restores the GUID
+            // (the type-guard would otherwise reject it) and files it in the aperture-construction
+            // map, so the door keeps its real construction instead of a placeholder.
+            string stampedType;
+            bool fenestration = Core.OpenStudio.Query.TryGetSAMType(constructionBase, out stampedType)
+                && string.Equals(stampedType, typeof(ApertureConstruction).Name, StringComparison.Ordinal);
             bool anyLayer = false;
 
             global::OpenStudio.MaterialVector materialVector = construction.layers();
