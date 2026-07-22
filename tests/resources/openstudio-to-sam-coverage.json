@@ -55,6 +55,7 @@
     { "id": "OS:Surface.AdjacencyByGeometry", "status": "Approximated", "diagnostic": "SAM-OSI-ADJ-001", "notes": "Only for a Surface boundary with no adjacency handle; requires coincident internal points, areas within 1 percent and opposed normals." },
     { "id": "OS:Surface.AdjacencyUnresolved", "status": "Approximated", "diagnostic": "SAM-OSI-ADJ-002", "notes": "Demoted to adiabatic, matching the forward direction's single-sided internal panel." },
     { "id": "OS:Surface.Geometry", "status": "Native", "diagnostic": "SAM-OSI-GEO-001", "notes": "Validated for vertex count, planarity, duplicates, self-intersection and minimum area; never repaired." },
+    { "id": "OS:Surface.Geometry.VertexCleaning", "status": "Native", "diagnostic": "SAM-OSI-GEO-002", "notes": "Duplicate and collinear vertices are removed while normalising a boundary. Shape, area and normal are unchanged, so this is reported at Information severity and kept distinct from invalid geometry." },
     { "id": "OS:Surface.SunWindExposure", "status": "NotApplicable", "notes": "Derived by EnergyPlus from the boundary condition; SAM re-derives it on export." },
 
     { "id": "OS:SubSurface.FixedWindow", "status": "Native", "target": "ApertureType.Window" },

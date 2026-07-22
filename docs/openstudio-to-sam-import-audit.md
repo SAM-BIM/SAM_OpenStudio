@@ -99,11 +99,13 @@ Status vocabulary matches the forward manifest: **Native**, **Derived**, **Appro
 | `Site.terrain`, `Site` ground temperatures | model metadata / not represented | Approximated | `SAM-OSI-WEA-001` | OSM-12 |
 | `BuildingStory` | `SpaceParameter.LevelName` per space | Native | – | OSM-M1 |
 | `DesignDay` (`SizingPeriod:DesignDay`) | `AnalyticalModelParameter.Heating/CoolingDesignDays` | Approximated | `SAM-OSI-WEA-001` | OSM-12 |
-| `WeatherFile` (`OS:WeatherFile`) | weather-file **reference metadata only** | Approximated | `SAM-OSI-WEA-001` | OSM-12 |
+| `WeatherFile` (`OS:WeatherFile`) | `AnalyticalModelParameter.WeatherData` when the EPW is on disk, else path metadata | Derived | `SAM-OSI-WEA-001` | OSM-12 |
 | `SimulationControl`, `Timestep`, `RunPeriod`, `ShadowCalculation` | model metadata where a SAM equivalent exists | Approximated | `SAM-OSI-SET-001` | OSM-12 |
 
-An OSM import **never requires an EPW**. Embedded SAM `WeatherData` is created only when actual
-hourly weather data are available — a `WeatherFile` path alone is metadata, never embedded weather.
+An OSM import **never requires an EPW** to convert geometry and analytical data. Embedded SAM
+`WeatherData` is created only when actual hourly weather is available: when the referenced EPW is
+found on disk it is loaded and embedded, and when it is not, only the path is recorded — a
+`WeatherFile` reference alone is never presented as embedded weather.
 
 ### 4.2 Spaces and zones
 
@@ -112,7 +114,7 @@ hourly weather data are available — a `WeatherFile` path alone is metadata, ne
 | `Space` | `Space` (1:1, never collapsed by zone) | Native | – | OSM-1, OSM-2 |
 | `Space.name` | `Space.Name` | Native | – | OSM-1 |
 | `Space.buildingStory` | `SpaceParameter.LevelName` | Native | – | OSM-M1 |
-| space shell → internal point | `Space.Location` | Derived | `SAM-OSI-GEO-001` when no closed shell | OSM-1 |
+| space shell → internal point | `Space.Location` | Derived | `SAM-OSI-APX-001` when the shell will not close and the vertex centroid is used | OSM-1 |
 | `Space.floorArea()` / shell area | `SpaceParameter.Area` | Derived | – | OSM-1 |
 | `Space.volume()` / shell volume | `SpaceParameter.Volume` | Derived | – | OSM-1 |
 | `ThermalZone` with N > 1 spaces | N SAM spaces sharing zone-derived controls | Native | `SAM-OSI-ZONE-001` (information) | OSM-M2 |
@@ -239,6 +241,7 @@ All reverse-only codes live in `SAM.Core.OpenStudio.OpenStudioImportDiagnosticCo
 | `SAM-OSI-OSW-006` | Final post-model-measure OSM not found |
 | `SAM-OSI-OSW-007` | EnergyPlus-measure changes are not representable in the OSM |
 | `SAM-OSI-GEO-001` | Invalid or unconvertible geometry |
+| `SAM-OSI-GEO-002` | Duplicate/collinear vertices removed (shape unchanged; Information) |
 | `SAM-OSI-ADJ-001` | Adjacency resolved by geometric fallback, not by handle |
 | `SAM-OSI-ADJ-002` | Adjacency pairing failed |
 | `SAM-OSI-BC-001` | Unsupported outside boundary condition |

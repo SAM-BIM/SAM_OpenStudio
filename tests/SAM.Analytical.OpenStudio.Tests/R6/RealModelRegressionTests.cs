@@ -191,6 +191,42 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void CollinearVertices_AreCleanedAsInformationNotWarning()
+        {
+            using (global::OpenStudio.Model model = new global::OpenStudio.Model())
+            {
+                global::OpenStudio.Space space = new global::OpenStudio.Space(model);
+                space.setName("Room");
+                global::OpenStudio.ThermalZone thermalZone = new global::OpenStudio.ThermalZone(model);
+                thermalZone.setName("Zone");
+                space.setThermalZone(thermalZone);
+
+                // A rectangle with a redundant vertex at the midpoint of its bottom edge — exactly
+                // what a real exported model carries, and what produced ten warnings on the real
+                // building. The point lies ON the edge, so the polygon is geometrically identical.
+                AddSurface(model, space, "Wall", "Outdoors", new[] { new[] { 0.0, 0.0, 0.0 }, new[] { 2.0, 0.0, 0.0 }, new[] { 4.0, 0.0, 0.0 }, new[] { 4.0, 0.0, 2.7 }, new[] { 0.0, 0.0, 2.7 } });
+
+                OpenStudioImportResult result = model.ToSAM();
+                foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
+                {
+                    TestContext.Out.WriteLine(diagnostic.ToString());
+                }
+
+                Core.OpenStudio.OpenStudioDiagnostic cleaned = result.Diagnostics.FirstOrDefault(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.GeometryVerticesCleaned);
+                Assert.That(cleaned, Is.Not.Null, "Vertex cleaning must be reported under its own code");
+                Assert.That(cleaned.Severity, Is.EqualTo(Core.OpenStudio.OpenStudioDiagnosticSeverity.Information), "Removing a collinear vertex changes nothing, so it must not be a warning");
+
+                // It must NOT be reported as invalid geometry, which is what buried real failures.
+                Assert.That(result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.GeometryInvalid), Is.False);
+
+                // And the panel must still be imported, with its true 4 m x 2.7 m area.
+                List<Panel> panels = result.AnalyticalModel.AdjacencyCluster.GetPanels();
+                Assert.That(panels.Count, Is.EqualTo(1));
+                Assert.That(panels[0].GetFace3D().GetArea(), Is.EqualTo(4.0 * 2.7).Within(0.01));
+            }
+        }
+
+        [Test]
         public void MultiSpaceBuilding_EveryImportedSpaceGetsALocation()
         {
             using (global::OpenStudio.Model model = new global::OpenStudio.Model())

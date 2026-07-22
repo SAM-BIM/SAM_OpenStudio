@@ -81,11 +81,22 @@ namespace SAM.Geometry.OpenStudio
 
             // Reuse the forward validator so both directions reject the same geometry. Its codes
             // are forward codes, so they are re-badged with the import equivalents: a consumer
-            // filtering on SAM-OSI-* must see every import geometry failure.
+            // filtering on SAM-OSI-* must see every import geometry event.
+            //
+            // Vertex cleaning keeps its own code and drops to Information: removing a collinear
+            // vertex leaves the polygon's shape, area and normal identical, so reporting it at the
+            // same code and severity as genuinely invalid geometry buries the real failures among
+            // routine normalisation (a real model produces one per surface).
             bool valid = true;
             foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in Query.ValidatePolygon(point3Ds, distanceTolerance, angleTolerance, minimumArea))
             {
-                diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.GeometryInvalid, diagnostic.Severity, diagnostic.Message));
+                bool verticesCleaned = diagnostic.Code == Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryVerticesCleaned;
+
+                diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(
+                    verticesCleaned ? Core.OpenStudio.OpenStudioImportDiagnosticCodes.GeometryVerticesCleaned : Core.OpenStudio.OpenStudioImportDiagnosticCodes.GeometryInvalid,
+                    verticesCleaned ? Core.OpenStudio.OpenStudioDiagnosticSeverity.Information : diagnostic.Severity,
+                    diagnostic.Message));
+
                 if (diagnostic.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)
                 {
                     valid = false;

@@ -27,13 +27,13 @@ independent: a concept can be Native one way and Unsupported the other.
 
 | Status | Entries |
 |---|---|
-| Native | 55 |
+| Native | 56 |
 | Derived | 11 |
 | Approximated | 16 |
 | Unsupported | 45 |
 | Deferred | 9 |
 | NotApplicable | 5 |
-| **Total** | **141** |
+| **Total** | **142** |
 
 ## Explicitly deferred domains
 
@@ -102,6 +102,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 | `OS:Surface.AdjacencyByGeometry` | - | **Approximated** | `SAM-OSI-ADJ-001` | Only for a Surface boundary with no adjacency handle; requires coincident internal points, areas within 1 percent and opposed normals. |
 | `OS:Surface.AdjacencyUnresolved` | - | **Approximated** | `SAM-OSI-ADJ-002` | Demoted to adiabatic, matching the forward direction's single-sided internal panel. |
 | `OS:Surface.Geometry` | - | **Native** | `SAM-OSI-GEO-001` | Validated for vertex count, planarity, duplicates, self-intersection and minimum area; never repaired. |
+| `OS:Surface.Geometry.VertexCleaning` | - | **Native** | `SAM-OSI-GEO-002` | Duplicate and collinear vertices are removed while normalising a boundary. Shape, area and normal are unchanged, so this is reported at Information severity and kept distinct from invalid geometry. |
 | `OS:Surface.SunWindExposure` | - | **NotApplicable** | - | Derived by EnergyPlus from the boundary condition; SAM re-derives it on export. |
 
 ### SubSurfaces and fenestration detail

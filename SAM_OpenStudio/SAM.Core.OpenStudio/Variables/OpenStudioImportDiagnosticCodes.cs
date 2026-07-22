@@ -48,6 +48,16 @@ namespace SAM.Core.OpenStudio
         /// <summary>Geometry could not be converted (degenerate, non-planar, too few vertices, below minimum area, aperture not contained by its host).</summary>
         public const string GeometryInvalid = "SAM-OSI-GEO-001";
 
+        /// <summary>
+        /// Duplicate or collinear vertices were removed while normalising a boundary. Purely
+        /// cosmetic — a collinear vertex lies on the edge it splits, so removing it leaves the
+        /// polygon's shape, area and normal identical. Kept distinct from
+        /// <see cref="GeometryInvalid"/> (and reported at Information severity) so routine
+        /// normalisation of geometry OpenStudio happens to store with redundant points is not
+        /// mistaken for a defect. Mirrors the forward SAM-OS-GEO-002.
+        /// </summary>
+        public const string GeometryVerticesCleaned = "SAM-OSI-GEO-002";
+
         /// <summary>Adjacency was resolved by validated geometric matching because no OpenStudio adjacency handle was available.</summary>
         public const string AdjacencyGeometricFallback = "SAM-OSI-ADJ-001";
 
