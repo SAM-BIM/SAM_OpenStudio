@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>SAM.Analytical.OpenStudio.Benchmark</RootNamespace>
+    <!-- The CLI is invoked as `benchmark-openstudio` (see Program.cs / handover). -->
+    <AssemblyName>benchmark-openstudio</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenStudio" Version="3.10.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Core.OpenStudio\SAM.Core.OpenStudio.csproj" />
+    <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Geometry.OpenStudio\SAM.Geometry.OpenStudio.csproj" />
+    <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Analytical.OpenStudio\SAM.Analytical.OpenStudio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Benchmark schema (B1a). Flat HintPath matches the repo's existing SAM\build convention;
+         built into SAM_Validation\build by CI before this repo (see build.yml). -->
+    <Reference Include="SAM.Analytical.Benchmark">
+      <HintPath>..\..\..\SAM_Validation\build\SAM.Analytical.Benchmark.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SAM.Core">
+      <HintPath>..\..\..\SAM\build\SAM.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="SAM.Geometry">
+      <HintPath>..\..\..\SAM\build\SAM.Geometry.dll</HintPath>
+    </Reference>
+    <Reference Include="SAM.Analytical">
+      <HintPath>..\..\..\SAM\build\SAM.Analytical.dll</HintPath>
+    </Reference>
+    <Reference Include="SAM.Architectural">
+      <HintPath>..\..\..\SAM\build\SAM.Architectural.dll</HintPath>
+    </Reference>
+    <Reference Include="SAM.Weather">
+      <HintPath>..\..\..\SAM\build\SAM.Weather.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
