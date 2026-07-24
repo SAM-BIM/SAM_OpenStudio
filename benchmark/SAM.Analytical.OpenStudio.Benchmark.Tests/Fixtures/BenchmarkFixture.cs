@@ -114,15 +114,35 @@ namespace SAM.Analytical.OpenStudio.Benchmark.Tests
                 0);
         }
 
-        /// <summary>A context with valid provenance, ready to feed a successful benchmark document.</summary>
+        /// <summary>
+        /// The full offline golden document: the one-space model mapped through the deterministic
+        /// result set and a fixed-provenance context (pinned <see cref="OpenStudioBenchmarkContext.RunTimestampUtc"/>),
+        /// so its serialization is byte-stable and can be asserted against a committed fixture.
+        /// </summary>
+        public static BenchmarkDocument GoldenDocument()
+        {
+            AnalyticalModel model = SingleSpaceModel();
+            OpenStudioSimulationResultSet resultSet = ResultSet();
+            OpenStudioBenchmarkContext context = Context(model, resultSet);
+            return model.ToBenchmark(context);
+        }
+
+        /// <summary>
+        /// A context with valid, fully deterministic provenance, ready to feed a successful benchmark
+        /// document. Both model-identity fields are pinned to fixed literals (not derived from the
+        /// live model) so the document serializes byte-for-byte identically on every run: the model
+        /// and its nested libraries/cluster take fresh random GUIDs each construction, which would
+        /// otherwise leak into <c>sourceModelGuid</c> and <c>canonicalModelHash</c>. The producer's
+        /// real hash computation is covered separately by the hashing test.
+        /// </summary>
         public static OpenStudioBenchmarkContext Context(AnalyticalModel model, OpenStudioSimulationResultSet resultSet)
         {
             return new OpenStudioBenchmarkContext
             {
                 SourceModelName = model.Name,
-                SourceModelGuid = model.Guid.ToString("N"),
+                SourceModelGuid = "cccccccc000000000000000000000009",
                 SourceFileHash = BenchmarkHash.ComputeSha256(new byte[] { 1, 2, 3, 4 }),
-                CanonicalModelHash = BenchmarkCanonicalJson.ComputeSha256(model.ToJsonObject().ToJsonString()),
+                CanonicalModelHash = BenchmarkCanonicalJson.ComputeSha256("{\"model\":\"benchmark-golden-fixture\"}"),
                 CanonicalizationVersion = BenchmarkCanonicalization.CurrentVersion,
                 SamCommit = "0123456789abcdef",
                 RunnerCommit = "fedcba9876543210",

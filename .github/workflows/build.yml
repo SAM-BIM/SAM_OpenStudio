@@ -252,6 +252,27 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Rebuild failed: $($it.Repo)" }
           }
 
+      - name: Run benchmark producer tests (offline)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $repo = '${{ env.REPO_NAME }}'
+
+          # Run the portable B1b producer tests: the C5 -> B1a mapping, the committed golden
+          # JSON byte-stability check and the CLI contract tests. The single live end-to-end
+          # test is [Category("Simulation")] and is excluded here (it needs an OpenStudio/
+          # EnergyPlus install); it remains available for an environment-gated run.
+          $testProject = Join-Path $repo 'benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests/SAM.Analytical.OpenStudio.Benchmark.Tests.csproj'
+          Write-Host "==> Testing (excluding Simulation): $testProject"
+          & dotnet test $testProject `
+            -c Release `
+            '/p:Platform=x64' `
+            '/p:SAMVersion=${{ steps.ver.outputs.samversion }}' `
+            --filter 'TestCategory!=Simulation' `
+            --logger 'console;verbosity=normal'
+          if ($LASTEXITCODE -ne 0) { throw "Benchmark producer tests failed" }
+
       - name: Upload build folders (optional)
         uses: actions/upload-artifact@v4
         with:

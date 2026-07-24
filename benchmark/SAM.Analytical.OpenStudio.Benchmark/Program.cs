@@ -18,55 +18,52 @@ namespace SAM.Analytical.OpenStudio.Benchmark
     /// (<c>route = Native-OpenStudio</c>). The two provenance hashes are computed with the B1a
     /// helpers exactly as the schema requires: <c>sourceFileHash</c> over the raw model bytes and
     /// <c>canonicalModelHash</c> over the neutral SAM model BEFORE any OpenStudio translation.
+    /// <para>
+    /// Argument parsing, invariant-culture, exception mapping and exit codes are delegated to the
+    /// shared benchmark CLI host (<see cref="BenchmarkCliHost"/>) so this producer honours the same
+    /// contract as every other producer: <c>0</c> success, <c>2</c> usage, <c>3</c> input/IO/
+    /// serialization, <c>4</c> validation, <c>5</c> producer failure (see <see cref="BenchmarkExitCode"/>).
+    /// </para>
     /// </summary>
     public static class Program
     {
         private static readonly Regex CommitPattern = new Regex("^[0-9a-f]{7,64}$", RegexOptions.CultureInvariant);
 
+        private static readonly string[] RequiredOptions = { "model", "weather", "out" };
+
         public static int Main(string[] args)
         {
-            try
-            {
-                if (!TryParseArguments(args, out Arguments arguments, out string parseError))
-                {
-                    Console.Error.WriteLine(parseError);
-                    Console.Error.WriteLine();
-                    Console.Error.WriteLine(Usage);
-                    return (int)ExitCode.Usage;
-                }
-
-                return Run(arguments);
-            }
-            catch (Exception exception)
-            {
-                Console.Error.WriteLine("Unexpected error: " + exception);
-                return (int)ExitCode.Unexpected;
-            }
+            return Run(args, Console.Out, Console.Error);
         }
 
-        private static int Run(Arguments arguments)
+        /// <summary>
+        /// Testable entry point: the shared host drives parsing, culture, help and exception mapping;
+        /// <see cref="Execute"/> carries the producer logic. Writers are injectable so CLI tests can
+        /// capture the output without touching the process <see cref="Console"/>.
+        /// </summary>
+        internal static int Run(string[] args, TextWriter standardOutput, TextWriter standardError)
         {
-            if (!File.Exists(arguments.ModelPath))
-            {
-                Console.Error.WriteLine("Model file not found: " + arguments.ModelPath);
-                return (int)ExitCode.Input;
-            }
+            return BenchmarkCliHost.Run(
+                args,
+                Usage,
+                RequiredOptions,
+                (arguments, _) => Execute(arguments, standardOutput),
+                standardOutput,
+                standardError);
+        }
 
-            if (!File.Exists(arguments.WeatherPath))
-            {
-                Console.Error.WriteLine("Weather file not found: " + arguments.WeatherPath);
-                return (int)ExitCode.Input;
-            }
+        private static int Execute(BenchmarkArguments arguments, TextWriter standardOutput)
+        {
+            // Path validation throws mapped exceptions: a missing input file is a FileNotFoundException
+            // (input/IO), a bad output directory a DirectoryNotFoundException (input/IO).
+            string modelPath = BenchmarkCliPaths.ValidateInputFile(arguments.RequireOption("model"));
+            string weatherPath = BenchmarkCliPaths.ValidateInputFile(arguments.RequireOption("weather"));
+            string outputPath = BenchmarkCliPaths.ValidateOutputFile(arguments.RequireOption("out"));
 
             // Provenance hashes (B1a helpers, exactly per SCHEMA.md "Canonical model hashing").
-            string sourceFileHash = BenchmarkHash.ComputeSha256(File.ReadAllBytes(arguments.ModelPath));
+            string sourceFileHash = BenchmarkHash.ComputeSha256(File.ReadAllBytes(modelPath));
 
-            AnalyticalModel model = Core.Convert.ToSAM<AnalyticalModel>(arguments.ModelPath)?.FirstOrDefault();
-            if (model == null)
-            {
-                Console.Error.WriteLine("The model file did not deserialize to a SAM AnalyticalModel: " + arguments.ModelPath);
-                return (int)ExitCode.Input;
-            }
+            AnalyticalModel model = LoadModel(modelPath);
 
             // The canonical hash covers the neutral loaded model BEFORE any engine-specific mutation.
             string neutralJson = model.ToJsonObject().ToJsonString();
@@ -79,13 +76,13 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                 SourceFileHash = sourceFileHash,
                 CanonicalModelHash = canonicalModelHash,
                 CanonicalizationVersion = BenchmarkCanonicalization.CurrentVersion,
-                SamCommit = ResolveCommit(arguments.SamCommit, "SAM_COMMIT", typeof(AnalyticalModel), allowLocalGit: false),
-                RunnerCommit = ResolveCommit(arguments.RunnerCommit, "RUNNER_COMMIT", typeof(Program), allowLocalGit: true),
+                SamCommit = ResolveCommit(arguments.GetOption("sam-commit"), "SAM_COMMIT", typeof(AnalyticalModel), allowLocalGit: false),
+                RunnerCommit = ResolveCommit(arguments.GetOption("runner-commit"), "RUNNER_COMMIT", typeof(Program), allowLocalGit: true),
                 EngineName = "EnergyPlus",
                 EngineVersion = SafeVersion(Core.OpenStudio.Query.EnergyPlusVersion),
                 SdkVersion = SafeVersion(Core.OpenStudio.Query.OpenStudioVersion),
-                WeatherIdentity = Path.GetFileNameWithoutExtension(arguments.WeatherPath),
-                WeatherHash = BenchmarkHash.ComputeSha256(File.ReadAllBytes(arguments.WeatherPath)),
+                WeatherIdentity = Path.GetFileNameWithoutExtension(weatherPath),
+                WeatherHash = BenchmarkHash.ComputeSha256(File.ReadAllBytes(weatherPath)),
                 DesignDaySource = DesignDaySource.None,
                 RunTimestampUtc = DateTimeOffset.UtcNow,
             };
@@ -96,11 +93,11 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                 context.Notes.Add("EnergyPlus version was unavailable from the loaded OpenStudio SDK at run time.");
             }
 
-            string workDirectory = arguments.WorkDirectory ?? Path.Combine(Path.GetTempPath(), "sam_benchmark_openstudio_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            string workDirectory = arguments.GetOption("work") ?? Path.Combine(Path.GetTempPath(), "sam_benchmark_openstudio_" + Guid.NewGuid().ToString("N").Substring(0, 8));
             Directory.CreateDirectory(workDirectory);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            using (OpenStudioConversionResult conversionResult = model.ToOpenStudio(arguments.WeatherPath, workDirectory))
+            using (OpenStudioConversionResult conversionResult = model.ToOpenStudio(weatherPath, workDirectory))
             {
                 stopwatch.Stop();
 
@@ -121,23 +118,55 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                 }
 
                 BenchmarkDocument document = model.ToBenchmark(context);
-
-                BenchmarkValidationResult validation = BenchmarkValidator.Validate(document);
-                if (!validation.IsValid)
-                {
-                    Console.Error.WriteLine("The produced benchmark document is invalid:");
-                    foreach (ValidationIssue issue in validation.Errors)
-                    {
-                        Console.Error.WriteLine("  [" + issue.Code + "] " + issue.Path + ": " + issue.Message);
-                    }
-
-                    return (int)ExitCode.Validation;
-                }
-
-                BenchmarkSerializer.Write(arguments.OutputPath, document);
-                Console.Out.WriteLine("Wrote " + arguments.OutputPath + " (state=" + context.State + ", route=Native-OpenStudio).");
-                return success ? (int)ExitCode.Success : (int)ExitCode.Run;
+                return Emit(document, outputPath, success, standardOutput);
             }
+        }
+
+        /// <summary>
+        /// Validates, writes and reports a produced document, returning the shared exit code: a
+        /// document that fails schema validation throws <see cref="BenchmarkValidationException"/>
+        /// (host maps to <see cref="BenchmarkExitCode.ValidationFailure"/>); a valid document whose
+        /// run did not succeed returns <see cref="BenchmarkExitCode.ProducerFailure"/>; otherwise
+        /// <see cref="BenchmarkExitCode.Success"/>. Internal so the producer's exit-code decisions
+        /// are exercised offline without an OpenStudio install.
+        /// </summary>
+        internal static int Emit(BenchmarkDocument document, string outputPath, bool runSucceeded, TextWriter standardOutput)
+        {
+            BenchmarkValidationResult validation = BenchmarkValidator.Validate(document);
+            if (!validation.IsValid)
+            {
+                throw new BenchmarkValidationException(validation);
+            }
+
+            BenchmarkSerializer.Write(outputPath, document);
+            standardOutput.WriteLine("Wrote " + outputPath + " (state=" + (runSucceeded ? RunState.Success : RunState.Failure) + ", route=Native-OpenStudio).");
+            return runSucceeded ? (int)BenchmarkExitCode.Success : (int)BenchmarkExitCode.ProducerFailure;
+        }
+
+        /// <summary>
+        /// Loads the source model. A file that exists but does not carry a SAM AnalyticalModel —
+        /// whether it deserializes to nothing or the SAM deserializer throws part way through — is a
+        /// deserialization failure, reported as <see cref="System.Text.Json.JsonException"/> so the
+        /// shared host maps it to input/IO/serialization (exit 3), never a producer failure (5).
+        /// </summary>
+        private static AnalyticalModel LoadModel(string modelPath)
+        {
+            AnalyticalModel model;
+            try
+            {
+                model = Core.Convert.ToSAM<AnalyticalModel>(modelPath)?.FirstOrDefault();
+            }
+            catch (Exception exception) when (!(exception is IOException) && !(exception is UnauthorizedAccessException) && !(exception is System.Text.Json.JsonException))
+            {
+                throw new System.Text.Json.JsonException("The model file could not be read as a SAM AnalyticalModel: " + modelPath, exception);
+            }
+
+            if (model == null)
+            {
+                throw new System.Text.Json.JsonException("The model file did not deserialize to a SAM AnalyticalModel: " + modelPath);
+            }
+
+            return model;
         }
 
         private static IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> EnumerateErrors(OpenStudioConversionResult conversionResult)
@@ -270,90 +299,10 @@ namespace SAM.Analytical.OpenStudio.Benchmark
             }
         }
 
-        private static bool TryParseArguments(string[] args, out Arguments arguments, out string error)
-        {
-            arguments = new Arguments();
-            error = null;
-
-            for (int i = 0; i < args.Length; i++)
-            {
-                string key = args[i];
-                switch (key)
-                {
-                    case "--model":
-                    case "--weather":
-                    case "--out":
-                    case "--work":
-                    case "--sam-commit":
-                    case "--runner-commit":
-                        if (i + 1 >= args.Length)
-                        {
-                            error = "Missing value for " + key + ".";
-                            return false;
-                        }
-
-                        string value = args[++i];
-                        switch (key)
-                        {
-                            case "--model": arguments.ModelPath = value; break;
-                            case "--weather": arguments.WeatherPath = value; break;
-                            case "--out": arguments.OutputPath = value; break;
-                            case "--work": arguments.WorkDirectory = value; break;
-                            case "--sam-commit": arguments.SamCommit = value; break;
-                            case "--runner-commit": arguments.RunnerCommit = value; break;
-                        }
-
-                        break;
-
-                    case "-h":
-                    case "--help":
-                        error = Usage;
-                        return false;
-
-                    default:
-                        error = "Unknown argument: " + key + ".";
-                        return false;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(arguments.ModelPath) || string.IsNullOrWhiteSpace(arguments.WeatherPath) || string.IsNullOrWhiteSpace(arguments.OutputPath))
-            {
-                error = "--model, --weather and --out are all required.";
-                return false;
-            }
-
-            return true;
-        }
-
         private const string Usage =
             "Usage: benchmark-openstudio --model <model.json> --weather <weather.epw> --out <benchmark-OpenStudio.json>\n" +
             "                            [--work <run-directory>] [--sam-commit <sha>] [--runner-commit <sha>]\n" +
             "\n" +
-            "Exit codes: 0 success, 1 unexpected error, 2 usage error, 3 input error, 4 run failure, 5 invalid document.";
-
-        private sealed class Arguments
-        {
-            public string ModelPath { get; set; }
-
-            public string WeatherPath { get; set; }
-
-            public string OutputPath { get; set; }
-
-            public string WorkDirectory { get; set; }
-
-            public string SamCommit { get; set; }
-
-            public string RunnerCommit { get; set; }
-        }
-
-        private enum ExitCode
-        {
-            Success = 0,
-            Unexpected = 1,
-            Usage = 2,
-            Input = 3,
-            Run = 4,
-            Validation = 5,
-        }
+            "Exit codes: 0 success, 2 usage error, 3 input/IO/serialization error, 4 validation failure, 5 producer failure.";
     }
 }

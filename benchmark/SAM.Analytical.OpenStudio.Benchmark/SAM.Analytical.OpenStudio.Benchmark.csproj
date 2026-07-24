@@ -20,6 +20,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The offline producer tests drive the CLI entry point (Run) and the exit-code decision
+         (Emit) directly, capturing output through injected writers with no OpenStudio install. -->
+    <InternalsVisibleTo Include="SAM.Analytical.OpenStudio.Benchmark.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Core.OpenStudio\SAM.Core.OpenStudio.csproj" />
     <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Geometry.OpenStudio\SAM.Geometry.OpenStudio.csproj" />
     <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Analytical.OpenStudio\SAM.Analytical.OpenStudio.csproj" />

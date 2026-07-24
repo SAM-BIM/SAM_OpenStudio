@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 // Copyright (c) 2020-2026 Michal Dengusiak & Jakub Ziolkowski and contributors
 
+using System;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -20,10 +22,7 @@ namespace SAM.Analytical.OpenStudio.Benchmark.Tests
     {
         private static BenchmarkDocument Golden()
         {
-            AnalyticalModel model = BenchmarkFixture.SingleSpaceModel();
-            OpenStudioSimulationResultSet resultSet = BenchmarkFixture.ResultSet();
-            OpenStudioBenchmarkContext context = BenchmarkFixture.Context(model, resultSet);
-            return model.ToBenchmark(context);
+            return BenchmarkFixture.GoldenDocument();
         }
 
         [Test]
@@ -102,6 +101,54 @@ namespace SAM.Analytical.OpenStudio.Benchmark.Tests
             BenchmarkDocument reloaded = BenchmarkSerializer.Deserialize(json);
             Assert.That(reloaded.Model.ConsumptionHeating.Value, Is.EqualTo(BenchmarkFixture.AnnualHeatingKwh).Within(1e-9));
             Assert.That(reloaded.Spaces.Single().Heating.PeakLoad.Value, Is.EqualTo(BenchmarkFixture.PeakHeatingKw * 1000.0).Within(1e-9));
+        }
+
+        /// <summary>
+        /// The producer's serialized bytes must equal a committed golden fixture, exactly. This is
+        /// the byte-stable contract the whole benchmark rests on: the serializer canonicalizes
+        /// (sorted spaces/warnings/notes, UTC timestamp, LF newlines, UTF-8 no BOM) and the fixture
+        /// pins a fixed run timestamp, so any drift in the C5 -> B1a mapping, unit tokens or
+        /// serializer layout fails here. Regenerate intentionally with
+        /// <c>SAM_BENCHMARK_UPDATE_GOLDEN=1</c> after reviewing the diff.
+        /// </summary>
+        [Test]
+        public void Golden_Bytes_MatchCommittedFixture()
+        {
+            byte[] produced = BenchmarkSerializer.SerializeToUtf8(Golden());
+            string goldenPath = GoldenFixturePath();
+
+            if (Environment.GetEnvironmentVariable("SAM_BENCHMARK_UPDATE_GOLDEN") == "1")
+            {
+                File.WriteAllBytes(goldenPath, produced);
+                TestContext.Out.WriteLine("Rewrote golden fixture: " + goldenPath);
+            }
+
+            Assert.That(File.Exists(goldenPath), Is.True, "Committed golden fixture missing: " + goldenPath);
+
+            byte[] committed = File.ReadAllBytes(goldenPath);
+            Assert.That(produced, Is.EqualTo(committed),
+                "Producer output drifted from the committed golden fixture. If the schema/mapping change was intentional, regenerate with SAM_BENCHMARK_UPDATE_GOLDEN=1 and review the diff.");
+        }
+
+        /// <summary>
+        /// Resolves the committed golden fixture in the source tree by walking up from the test
+        /// output directory to the Tests project root (identified by its Fixtures folder).
+        /// </summary>
+        private static string GoldenFixturePath()
+        {
+            DirectoryInfo directory = new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+            while (directory != null)
+            {
+                string fixtures = Path.Combine(directory.FullName, "Fixtures");
+                if (File.Exists(Path.Combine(fixtures, "BenchmarkFixture.cs")))
+                {
+                    return Path.Combine(fixtures, "golden-openstudio-benchmark.json");
+                }
+
+                directory = directory.Parent;
+            }
+
+            return Path.GetFullPath(Path.Combine("Fixtures", "golden-openstudio-benchmark.json"));
         }
 
         /// <summary>
