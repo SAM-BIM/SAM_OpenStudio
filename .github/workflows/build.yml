@@ -117,6 +117,60 @@ jobs:
           }
 
 
+      - name: Build benchmark schema (SAM_Validation)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $org = '${{ env.ORG_NAME }}'
+          $r   = 'SAM_Validation'
+
+          # Clone SAM_Validation as a sibling (same branch-candidate fallback as the deps step
+          # above), then build ONLY the engine-neutral benchmark schema (B1a) into its build\
+          # folder. The B1b producer references it by HintPath
+          # (..\..\..\SAM_Validation\build\SAM.Analytical.Benchmark.dll), so it must exist before
+          # SAM_OpenStudio is built below. The schema project is standalone (netstandard2.0,
+          # System.Text.Json only) — no other SAM_Validation project is built.
+          if (-not (Test-Path $r)) {
+            $headRef = '${{ github.head_ref }}'
+            $baseRef = '${{ github.base_ref }}'
+            $refName = '${{ github.ref_name }}'
+            $candidates = @()
+            if ($headRef) { $candidates += $headRef }
+            $sowRef = if ($baseRef -match '^sow/') { $baseRef } elseif ($refName -match '^sow/') { $refName } else { '' }
+            if ($sowRef -and $sowRef -ne $headRef) { $candidates += $sowRef }
+            foreach ($branchRef in @($headRef, $baseRef, $refName)) {
+              if ($branchRef -match '^sow/(\d{4}-Q\d)') {
+                $quarterRef = "sow/$($Matches[1])"
+                if ($candidates -notcontains $quarterRef) { $candidates += $quarterRef }
+              }
+            }
+            $candidates += 'sow/2026-Q2'
+            $cloned = $false
+            foreach ($cand in $candidates) {
+              $has = (git ls-remote --heads "https://github.com/$org/$r.git" $cand 2>$null | Out-String).Trim()
+              if ($has) {
+                Write-Host "Cloning $org/$r @ $cand"
+                git clone --depth 1 --branch $cand "https://github.com/$org/$r.git" $r
+                $cloned = $true
+                break
+              }
+            }
+            if (-not $cloned) {
+              Write-Host "Cloning $org/$r @ default branch"
+              git clone --depth 1 "https://github.com/$org/$r.git" $r
+            }
+          }
+
+          $csproj = Join-Path $r 'SAM.Analytical.Benchmark/SAM.Analytical.Benchmark.csproj'
+          Write-Host "==> Building benchmark schema: $csproj"
+          & dotnet build $csproj -c Release '/p:SAMVersion=${{ steps.ver.outputs.samversion }}'
+          if ($LASTEXITCODE -ne 0) { throw "Benchmark schema build failed" }
+
+          $dll = Join-Path $r 'build/SAM.Analytical.Benchmark.dll'
+          if (-not (Test-Path $dll)) { throw "Expected schema DLL missing after build: $dll" }
+          Write-Host "Schema DLL present: $dll"
+
       - name: Restore + Rebuild in order (safe Platform handling)
         shell: pwsh
         run: |
