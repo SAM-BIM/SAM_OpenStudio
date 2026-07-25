@@ -17,6 +17,16 @@ namespace SAM.Analytical.OpenStudio
     /// </summary>
     public sealed class OpenStudioSimulationResultSet
     {
+        /// <summary>
+        /// Zone sizing outcomes read from the SQL <c>ZoneSizes</c> table — one entry per zone and load
+        /// type, produced by the DESIGN-DAY sizing periods. Empty when the run performed no sizing (or
+        /// reported none), never null. Keyed by the EnergyPlus ThermalZone name, unlike the annual
+        /// dictionaries above which key on the Ideal Loads system name: the sizing table is written by
+        /// the zone sizing calculation, not by a system output variable. Ordered deterministically by
+        /// <see cref="OpenStudioZoneSizingResult.Key"/>.
+        /// </summary>
+        public IReadOnlyList<OpenStudioZoneSizingResult> ZoneSizing { get; }
+
         /// <summary>Annual heating energy per zone key [kWh].</summary>
         public IReadOnlyDictionary<string, double> AnnualHeatingEnergy { get; }
 
@@ -122,8 +132,10 @@ namespace SAM.Analytical.OpenStudio
             double runtimeSeconds,
             int warningCount,
             int severeCount,
-            int fatalCount)
+            int fatalCount,
+            IReadOnlyList<OpenStudioZoneSizingResult> zoneSizing = null)
         {
+            ZoneSizing = Copy(zoneSizing);
             AnnualHeatingEnergy = Copy(annualHeatingEnergy);
             AnnualCoolingEnergy = Copy(annualCoolingEnergy);
             PeakHeatingLoad = Copy(peakHeatingLoad);
@@ -162,6 +174,28 @@ namespace SAM.Analytical.OpenStudio
         public double TotalAnnualCooling
         {
             get { return Sum(AnnualCoolingEnergy); }
+        }
+
+        /// <summary>
+        /// Defensive copy, ordered by <see cref="OpenStudioZoneSizingResult.Key"/> so the result set is
+        /// deterministic whatever order the SQL reader produced. Null entries are dropped.
+        /// </summary>
+        private static List<OpenStudioZoneSizingResult> Copy(IReadOnlyList<OpenStudioZoneSizingResult> source)
+        {
+            List<OpenStudioZoneSizingResult> result = new List<OpenStudioZoneSizingResult>();
+            if (source != null)
+            {
+                foreach (OpenStudioZoneSizingResult zoneSizingResult in source)
+                {
+                    if (zoneSizingResult != null)
+                    {
+                        result.Add(zoneSizingResult);
+                    }
+                }
+            }
+
+            result.Sort((left, right) => string.CompareOrdinal(left.Key, right.Key));
+            return result;
         }
 
         private static Dictionary<string, double> Copy(IReadOnlyDictionary<string, double> source)
