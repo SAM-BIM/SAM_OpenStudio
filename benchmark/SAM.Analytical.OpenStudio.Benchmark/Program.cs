@@ -130,11 +130,15 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                 if (!success)
                 {
                     context.Notes.Add("The OpenStudio/EnergyPlus run did not complete successfully; measurements are unavailable.");
-                    foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in EnumerateErrors(conversionResult))
-                    {
-                        context.Warnings.Add(diagnostic.ToString());
-                    }
                 }
+
+                // Record what the conversion itself reported, on EVERY run rather than only failures.
+                // The route documents its own approximations (hourly humidity collapsed to a constant
+                // dew point, hourly solar replaced by ASHRAEClearSky, a substituted barometric pressure,
+                // the weather/design-day/ground-temperature basis); a successful document that omitted
+                // them presented the comparison as cleaner than it was. This also normalizes the
+                // producer-generated notes added above, so both arrays are deterministic.
+                Modify.ApplyConversionDiagnostics(context, conversionResult?.Diagnostics);
 
                 BenchmarkDocument document = model.ToBenchmark(context);
                 return Emit(document, outputPath, success, standardOutput);
@@ -224,22 +228,6 @@ namespace SAM.Analytical.OpenStudio.Benchmark
 
                 default:
                     return DesignDaySource.None;
-            }
-        }
-
-        private static IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> EnumerateErrors(OpenStudioConversionResult conversionResult)
-        {
-            if (conversionResult?.Diagnostics == null)
-            {
-                yield break;
-            }
-
-            foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in conversionResult.Diagnostics)
-            {
-                if (diagnostic != null && diagnostic.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)
-                {
-                    yield return diagnostic;
-                }
             }
         }
 
