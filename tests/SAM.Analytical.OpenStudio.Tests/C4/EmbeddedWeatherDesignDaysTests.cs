@@ -61,6 +61,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(designDays.Count(x => x.dayType() == "SummerDesignDay"), Is.EqualTo(1), "The embedded cooling day becomes a SummerDesignDay");
             Assert.That(result.Model.getSimulationControl().runSimulationforSizingPeriods(), Is.True, "Embedded design days enable sizing periods");
             Assert.That(result.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Information && d.Message.Contains("Design-day source: AnalyticalModel heating/cooling design days")), Is.True, "The embedded source is named");
+            Assert.That(result.DesignDaySource, Is.EqualTo(Core.OpenStudio.OpenStudioDesignDaySource.EmbeddedModel), "The established basis is reported structurally (provenance reads this, not the diagnostic text)");
         }
 
         [Test]
@@ -122,6 +123,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(names.Count(x => System.Text.RegularExpressions.Regex.IsMatch(x, @"Ann\s+Htg\s+99\.6\s*%\s+Condns\s+DB", System.Text.RegularExpressions.RegexOptions.IgnoreCase)), Is.EqualTo(1), "The DDY heating 99.6% day wins");
             Assert.That(names.Count(x => System.Text.RegularExpressions.Regex.IsMatch(x, @"Ann\s+Clg\s+0?\.4\s*%\s+Condns\s+DB\s*=>\s*M(C)?WB", System.Text.RegularExpressions.RegexOptions.IgnoreCase)), Is.EqualTo(1), "The DDY cooling .4% day wins");
             Assert.That(result.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Information && d.Message.Contains("Design-day source: explicit DDY")), Is.True, "The explicit source is named");
+            Assert.That(result.DesignDaySource, Is.EqualTo(Core.OpenStudio.OpenStudioDesignDaySource.Ddy), "An explicit DDY is reported as the established basis, not the embedded model");
         }
 
         [Test]
@@ -265,6 +267,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(result.IsValid, Is.True, "Conversion-only without weather is valid");
             Assert.That(result.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("No usable annual EPW source")), Is.True);
             Assert.That(result.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error), Is.False, "No error when no annual run was requested");
+            Assert.That(result.DesignDaySource, Is.EqualTo(Core.OpenStudio.OpenStudioDesignDaySource.None), "A model with no design days establishes no basis");
             Assert.That(File.Exists(result.OsmPath), Is.True, "The OSM is saved");
         }
 

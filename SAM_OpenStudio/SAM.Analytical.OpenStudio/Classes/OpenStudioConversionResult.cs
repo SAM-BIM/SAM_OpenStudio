@@ -43,6 +43,13 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>SAM Guid → deterministic OpenStudio object name.</summary>
         public IReadOnlyDictionary<Guid, string> ObjectMap { get; }
 
+        /// <summary>
+        /// The design-day basis the conversion actually established (explicit DDY, the design days
+        /// embedded in the AnalyticalModel, or none). Snapshotted from the context, so provenance
+        /// reporting records what the route did rather than what was supplied to it.
+        /// </summary>
+        public Core.OpenStudio.OpenStudioDesignDaySource DesignDaySource { get; }
+
         /// <summary>Creates a result snapshot from a conversion context.</summary>
         /// <param name="openStudioConversionContext">Context to snapshot; required.</param>
         public OpenStudioConversionResult(OpenStudioConversionContext openStudioConversionContext)
@@ -56,6 +63,7 @@ namespace SAM.Analytical.OpenStudio
             Diagnostics = new List<Core.OpenStudio.OpenStudioDiagnostic>(openStudioConversionContext.Diagnostics);
             Statistics = openStudioConversionContext.Statistics.Snapshot();
             ObjectMap = openStudioConversionContext.References.ToNameDictionary();
+            DesignDaySource = openStudioConversionContext.DesignDaySource;
         }
 
         /// <summary>Releases the owned OpenStudio model's native resources. Idempotent.</summary>
