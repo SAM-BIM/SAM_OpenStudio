@@ -59,6 +59,15 @@ namespace SAM.Analytical.OpenStudio
         public bool DesignDaysImported { get; set; }
 
         /// <summary>
+        /// Which source the design days in the target model came from — the outcome of the
+        /// design-day step, not the intent: a DDY or embedded collection that yielded no usable
+        /// design day leaves this <see cref="Core.OpenStudio.OpenStudioDesignDaySource.None"/>.
+        /// Set in lockstep with <see cref="DesignDaysImported"/> (last import wins; the route
+        /// never merges sources) and snapshotted onto the result for provenance reporting.
+        /// </summary>
+        public Core.OpenStudio.OpenStudioDesignDaySource DesignDaySource { get; set; } = Core.OpenStudio.OpenStudioDesignDaySource.None;
+
+        /// <summary>
         /// The effective EPW path for the run (OSW weather file), resolved by the weather step:
         /// the explicit path when supplied and valid, otherwise the temp EPW exported from the
         /// embedded AnalyticalModel WeatherData, otherwise null (no annual weather source).

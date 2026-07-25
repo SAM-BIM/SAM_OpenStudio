@@ -83,7 +83,11 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                 SdkVersion = SafeVersion(Core.OpenStudio.Query.OpenStudioVersion),
                 WeatherIdentity = Path.GetFileNameWithoutExtension(weatherPath),
                 WeatherHash = BenchmarkHash.ComputeSha256(File.ReadAllBytes(weatherPath)),
-                DesignDaySource = DesignDaySource.None,
+                // Design-day basis derived from the source model (as the TAS producer does), then
+                // replaced below by what the route actually established. Never hardcoded: the B3
+                // comparator treats a designDaySource difference as provenance-incompatible, so a
+                // fixed value would report a genuinely paired cross-engine run as incomparable.
+                DesignDaySource = ResolveDesignDaySource(model),
                 RunTimestampUtc = DateTimeOffset.UtcNow,
             };
 
@@ -107,6 +111,21 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                     ? conversionResult.Results.RuntimeSeconds
                     : stopwatch.Elapsed.TotalSeconds;
                 context.ResultSet = conversionResult?.Results;
+
+                // The route reports its own design-day outcome (explicit DDY / embedded model /
+                // none), which is the provenance-grade answer: embedded days that were all skipped
+                // as invalid must not be reported as an embedded basis. The model-derived value
+                // above stands in only when no conversion result exists at all.
+                if (conversionResult != null)
+                {
+                    DesignDaySource modelDesignDaySource = context.DesignDaySource;
+                    context.DesignDaySource = ToBenchmarkDesignDaySource(conversionResult.DesignDaySource);
+
+                    if (context.DesignDaySource == DesignDaySource.None && modelDesignDaySource != DesignDaySource.None)
+                    {
+                        context.Notes.Add("The source model carries design days but the OpenStudio route imported none; designDaySource records the run's actual basis (None).");
+                    }
+                }
 
                 if (!success)
                 {
@@ -167,6 +186,45 @@ namespace SAM.Analytical.OpenStudio.Benchmark
             }
 
             return model;
+        }
+
+        /// <summary>
+        /// The design-day basis derivable from the source model before the run: <see
+        /// cref="DesignDaySource.EmbeddedModel"/> only when the model actually carries heating or
+        /// cooling design days, otherwise <see cref="DesignDaySource.None"/> — the same derivation
+        /// the TAS producer uses, so both documents populate the field on the same terms. This
+        /// producer passes no DDY to the route, so <see cref="DesignDaySource.Ddy"/> can only come
+        /// from the route's own report (an explicit DDY set through the conversion/run options).
+        /// </summary>
+        internal static DesignDaySource ResolveDesignDaySource(AnalyticalModel analyticalModel)
+        {
+            bool hasDesignDays = HasDesignDays(analyticalModel, AnalyticalModelParameter.HeatingDesignDays)
+                || HasDesignDays(analyticalModel, AnalyticalModelParameter.CoolingDesignDays);
+            return hasDesignDays ? DesignDaySource.EmbeddedModel : DesignDaySource.None;
+        }
+
+        private static bool HasDesignDays(AnalyticalModel analyticalModel, AnalyticalModelParameter analyticalModelParameter)
+        {
+            return analyticalModel != null
+                && analyticalModel.TryGetValue(analyticalModelParameter, out Core.SAMCollection<DesignDay> designDays)
+                && designDays != null
+                && designDays.Count > 0;
+        }
+
+        /// <summary>Maps the design-day basis the route established onto the B1a provenance enum.</summary>
+        internal static DesignDaySource ToBenchmarkDesignDaySource(Core.OpenStudio.OpenStudioDesignDaySource openStudioDesignDaySource)
+        {
+            switch (openStudioDesignDaySource)
+            {
+                case Core.OpenStudio.OpenStudioDesignDaySource.Ddy:
+                    return DesignDaySource.Ddy;
+
+                case Core.OpenStudio.OpenStudioDesignDaySource.EmbeddedModel:
+                    return DesignDaySource.EmbeddedModel;
+
+                default:
+                    return DesignDaySource.None;
+            }
         }
 
         private static IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> EnumerateErrors(OpenStudioConversionResult conversionResult)

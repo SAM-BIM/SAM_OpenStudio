@@ -32,7 +32,8 @@ namespace SAM.Analytical.OpenStudio
         /// A missing side raises a warning; when neither side matches, the import falls back to
         /// all days with a warning. OpenStudioConversionOptions.ImportAllDesignDays imports
         /// every design day. Sets OpenStudioConversionContext.DesignDaysImported (drives
-        /// sizing-period enablement).
+        /// sizing-period enablement) and DesignDaySource (Ddy when at least one day was
+        /// imported, otherwise None — provenance records the outcome, not the intent).
         /// </summary>
         /// <param name="openStudioConversionContext">Conversion context.</param>
         /// <param name="ddyPath">DDY file path; null/empty or unreadable → no import (warning when a path was given).</param>
@@ -90,6 +91,7 @@ namespace SAM.Analytical.OpenStudio
             }
 
             openStudioConversionContext.DesignDaysImported = selected.Count > 0;
+            openStudioConversionContext.DesignDaySource = selected.Count > 0 ? Core.OpenStudio.OpenStudioDesignDaySource.Ddy : Core.OpenStudio.OpenStudioDesignDaySource.None;
             openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Imported {0} design day(s) from {1}", selected.Count, Path.GetFileName(ddyPath)));
             return selected.Count;
         }
@@ -108,7 +110,9 @@ namespace SAM.Analytical.OpenStudio
         /// pressure becomes the daily mean, and the solar model is ASHRAEClearSky with
         /// clearness 0.0 for heating days / 1.0 for cooling days (the hourly SAM radiation
         /// profile is not fitted). Heating days become WinterDesignDay, cooling days
-        /// SummerDesignDay day types. Sets OpenStudioConversionContext.DesignDaysImported.
+        /// SummerDesignDay day types. Sets OpenStudioConversionContext.DesignDaysImported and
+        /// DesignDaySource (EmbeddedModel when at least one day was translated, otherwise None —
+        /// every day skipped as invalid leaves the model without an embedded basis).
         /// </summary>
         /// <param name="openStudioConversionContext">Conversion context.</param>
         /// <param name="heatingDesignDays">Embedded SAM heating design days.</param>
@@ -147,6 +151,7 @@ namespace SAM.Analytical.OpenStudio
 
             int result = heatingCount + coolingCount;
             openStudioConversionContext.DesignDaysImported = result > 0;
+            openStudioConversionContext.DesignDaySource = result > 0 ? Core.OpenStudio.OpenStudioDesignDaySource.EmbeddedModel : Core.OpenStudio.OpenStudioDesignDaySource.None;
             return result;
         }
 
