@@ -111,6 +111,52 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void EmbeddedDesignDay_MissingPressure_WritesElevationStandardNotTheIddFloor()
+        {
+            // Many real SAM embedded design days carry no barometric-pressure profile at all
+            // (the HungaryHouse benchmark model is one: its design-day data holds dry bulb,
+            // RH, wind and solar only). The conversion must still WRITE the field: an unset
+            // OpenStudio design-day pressure is the 31000 Pa IDD floor, which reached the IDF
+            // of a real benchmark run and made EnergyPlus log a substitution warning.
+            AnalyticalModel analyticalModel = ModelWithEmbeddedWeather();
+            analyticalModel.TryGetValue(AnalyticalModelParameter.HeatingDesignDays, out SAMCollection<DesignDay> heatingDesignDays);
+            DesignDay heatingDesignDay = new DesignDay(heatingDesignDays.First());
+            Assert.That(heatingDesignDay.Remove(Weather.WeatherDataType.AtmosphericPressure), Is.True, "The fixture design day must start with a pressure profile for this test to remove it");
+
+            Analytical.Modify.UpdateWeather(analyticalModel, null, null, new System.Collections.Generic.List<DesignDay> { heatingDesignDay });
+
+            OpenStudioConversionResult result = analyticalModel.ToOpenStudio(WeatherPath(".epw"), OutputDirectory("dd_missing_pressure"), run: false);
+
+            global::OpenStudio.DesignDay designDay = result.Model.getDesignDays().Single(x => x.dayType() == "WinterDesignDay");
+            Assert.That(designDay.barometricPressure(), Is.GreaterThan(90000.0).And.LessThan(110000.0), "The elevation-based standard is written when SAM has no pressure");
+            Assert.That(designDay.barometricPressure(), Is.Not.EqualTo(31000.0), "The EnergyPlus 31000 Pa IDD floor must never reach the IDF");
+            Assert.That(result.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("no usable barometric-pressure profile")), Is.True, "The substitution is named: " + string.Join(" | ", result.Diagnostics.Select(d => d.Message)));
+        }
+
+        [Test]
+        public void EmbeddedDesignDay_PlausiblePressure_IsRetained()
+        {
+            // The complement of the two substitution cases: a pressure within 10% of the
+            // elevation-based standard is the SAM value and must be converted unchanged.
+            AnalyticalModel analyticalModel = ModelWithEmbeddedWeather();
+            analyticalModel.TryGetValue(AnalyticalModelParameter.HeatingDesignDays, out SAMCollection<DesignDay> heatingDesignDays);
+            DesignDay heatingDesignDay = new DesignDay(heatingDesignDays.First());
+            const double plausiblePressure = 100200.0;
+            for (int i = 0; i < 24; i++)
+            {
+                heatingDesignDay[Weather.WeatherDataType.AtmosphericPressure, i] = plausiblePressure;
+            }
+
+            Analytical.Modify.UpdateWeather(analyticalModel, null, null, new System.Collections.Generic.List<DesignDay> { heatingDesignDay });
+
+            OpenStudioConversionResult result = analyticalModel.ToOpenStudio(WeatherPath(".epw"), OutputDirectory("dd_good_pressure"), run: false);
+
+            global::OpenStudio.DesignDay designDay = result.Model.getDesignDays().Single(x => x.dayType() == "WinterDesignDay");
+            Assert.That(designDay.barometricPressure(), Is.EqualTo(plausiblePressure).Within(1e-6), "A plausible SAM pressure is retained, not replaced");
+            Assert.That(result.Diagnostics.Any(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning && d.Message.Contains("barometric-pressure")), Is.False, "No substitution is reported when nothing was substituted");
+        }
+
+        [Test]
         public void ExplicitDdy_OverridesEmbeddedDesignDays_NoDuplicates()
         {
             AnalyticalModel analyticalModel = ModelWithEmbeddedWeather();

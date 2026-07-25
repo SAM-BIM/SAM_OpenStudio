@@ -221,20 +221,25 @@ namespace SAM.Analytical.OpenStudio
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Embedded design day '{0}' has no usable relative-humidity profile; the EnergyPlus default humidity condition applies", name));
             }
 
+            // EnergyPlus rejects a design-day barometric pressure that differs by more than
+            // 10% from the elevation-based standard and silently substitutes the standard
+            // (SizingPeriod:DesignDay Barometric Pressure). Some SAM embedded design days
+            // carry an implausible pressure (a TRY-derived London day here reported ~31000 Pa
+            // at a 25 m site), and many carry NO pressure profile at all. Mirror the
+            // EnergyPlus rule: keep a plausible value, otherwise write the elevation-based
+            // standard EnergyPlus would use.
+            //
+            // The field MUST be written in every branch. An unset OpenStudio design-day
+            // pressure is the 31000 Pa IDD floor, so leaving it emits a physically absurd
+            // 31000 Pa into the IDF; EnergyPlus then substitutes the standard itself and logs
+            // "Entered DesignDay Barometric Pressure=31000 differs by more than 10% from
+            // Standard Barometric Pressure", which is exactly the confusing warning this
+            // conversion exists to avoid.
+            double standardPressure = StandardBarometricPressure(openStudioConversionContext.Target.getSite().elevation());
             double[] pressures = designDay[Weather.WeatherDataType.AtmosphericPressure];
             double pressure = Mean(pressures);
             if (!double.IsNaN(pressure) && pressure > 0)
             {
-                // EnergyPlus rejects a design-day barometric pressure that differs by more
-                // than 10% from the elevation-based standard and silently substitutes the
-                // standard (SizingPeriod:DesignDay Barometric Pressure). Some SAM embedded
-                // design days carry an implausible pressure (a TRY-derived London day here
-                // reported ~31000 Pa at a 25 m site); propagating it only produces a
-                // confusing EnergyPlus warning. Mirror the EnergyPlus rule: keep a plausible
-                // value, otherwise set the elevation-based standard EnergyPlus would use
-                // (the unset OpenStudio default is the 31000 Pa IDD floor, so the field must
-                // be written, not left) and name the substitution.
-                double standardPressure = StandardBarometricPressure(openStudioConversionContext.Target.getSite().elevation());
                 if (System.Math.Abs(pressure - standardPressure) <= 0.10 * standardPressure)
                 {
                     result.setBarometricPressure(pressure);
@@ -244,6 +249,13 @@ namespace SAM.Analytical.OpenStudio
                     result.setBarometricPressure(standardPressure);
                     openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "Embedded design day '{0}': the SAM barometric pressure ({1:0} Pa) differs by more than 10% from the elevation-based standard ({2:0} Pa) and is not converted — it is replaced with the elevation-based standard that EnergyPlus would otherwise substitute", name, pressure, standardPressure));
                 }
+            }
+            else
+            {
+                // No usable SAM pressure profile: write the elevation-based standard rather
+                // than leaving the field on its 31000 Pa IDD floor.
+                result.setBarometricPressure(standardPressure);
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(System.Globalization.CultureInfo.InvariantCulture, "Embedded design day '{0}' carries no usable barometric-pressure profile; the elevation-based standard ({1:0} Pa) is written instead of leaving the EnergyPlus 31000 Pa default", name, standardPressure));
             }
 
             double[] windSpeeds = designDay[Weather.WeatherDataType.WindSpeed];
