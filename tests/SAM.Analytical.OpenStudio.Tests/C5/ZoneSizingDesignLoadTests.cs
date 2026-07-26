@@ -203,6 +203,38 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void DuplicateRows_WithoutSourceIndices_StillSurviveOrderReversalIdentically()
+        {
+            // The harder case: a caller that supplies no source index leaves duplicates sharing the
+            // default, so key AND index are equal and only the payload can separate them. Without that,
+            // the unstable sort would let the input order decide which design load is emitted.
+            List<Space> spaces = Spaces();
+            string zoneName = ThermalZoneName(spaces.First());
+
+            OpenStudioZoneSizingResult low = Row(zoneName, "Heating", 1400.0);
+            OpenStudioZoneSizingResult high = Row(zoneName, "Heating", 2800.0);
+
+            double? forward = DesignLoad(ResultSet(low, high).ToSAM_SpaceDesignLoadResults(spaces), LoadType.Heating);
+            double? reversed = DesignLoad(ResultSet(high, low).ToSAM_SpaceDesignLoadResults(spaces), LoadType.Heating);
+
+            Assert.That(forward, Is.Not.Null);
+            Assert.That(reversed, Is.EqualTo(forward), "With no source index to separate them, the payload must still decide — not the input order");
+        }
+
+        [Test]
+        public void IndistinguishableRows_CompareEqualAndEitherIsTheSameAnswer()
+        {
+            List<Space> spaces = Spaces();
+            string zoneName = ThermalZoneName(spaces.First());
+
+            OpenStudioZoneSizingResult one = Row(zoneName, "Heating", 1400.0);
+            OpenStudioZoneSizingResult two = Row(zoneName, "Heating", 1400.0);
+
+            Assert.That(one.SortSignature, Is.EqualTo(two.SortSignature), "Identical rows are genuinely interchangeable");
+            Assert.That(DesignLoad(ResultSet(one, two).ToSAM_SpaceDesignLoadResults(spaces), LoadType.Heating), Is.EqualTo(1400.0).Within(1e-9));
+        }
+
+        [Test]
         public void DuplicateRows_OrderInTheResultSetIsTotal()
         {
             OpenStudioZoneSizingResult first = Row("ZONE_A", "Heating", 1.0, sourceIndex: 10);

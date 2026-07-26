@@ -177,17 +177,16 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
-        /// Defensive copy in a TOTAL, input-order-independent order: by
-        /// <see cref="OpenStudioZoneSizingResult.Key"/>, then by
-        /// <see cref="OpenStudioZoneSizingResult.SourceIndex"/>. Null entries are dropped.
+        /// Defensive copy in a TOTAL, input-order-independent order, by
+        /// <see cref="OpenStudioZoneSizingResult.SortSignature"/>. Null entries are dropped.
         /// </summary>
         /// <remarks>
-        /// The tie-breaker is load-bearing, not decoration. Two rows sharing a zone and load type have the
-        /// same key, so ordering on the key alone would leave their relative order to
-        /// <see cref="List{T}.Sort(System.Comparison{T})"/>, which is NOT stable — the row a consumer then
-        /// treats as "first" would depend on the order the database returned. Ordering also by the source
-        /// index (the SQL <c>ZoneSizesIndex</c>) makes the sequence reproducible for identical data
-        /// whatever order it arrived in.
+        /// The ordering is load-bearing, not decoration. Two rows sharing a zone and load type have the
+        /// same <see cref="OpenStudioZoneSizingResult.Key"/>, and a caller that supplies no source index
+        /// leaves them sharing that too; any comparison that reported them equal would leave their order
+        /// to <see cref="List{T}.Sort(System.Comparison{T})"/>, which is NOT stable, so the row a consumer
+        /// treats as "first" would flip with the input order. The signature therefore also spans the
+        /// payload: entries compare equal only when genuinely indistinguishable.
         /// </remarks>
         private static List<OpenStudioZoneSizingResult> Copy(IReadOnlyList<OpenStudioZoneSizingResult> source)
         {
@@ -203,12 +202,7 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
-            result.Sort((left, right) =>
-            {
-                int byKey = string.CompareOrdinal(left.Key, right.Key);
-                return byKey != 0 ? byKey : left.SourceIndex.CompareTo(right.SourceIndex);
-            });
-
+            result.Sort((left, right) => string.CompareOrdinal(left.SortSignature, right.SortSignature));
             return result;
         }
 

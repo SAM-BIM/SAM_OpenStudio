@@ -121,9 +121,38 @@ namespace SAM.Analytical.OpenStudio
 
         /// <summary>
         /// The ordinal grouping key <c>ZoneName|LoadType</c>. NOT unique on its own: EnergyPlus writes one
-        /// row per zone and load type, but a duplicate pair is possible, which is why ordering also uses
-        /// <see cref="SourceIndex"/> and duplicates are reported rather than silently resolved.
+        /// row per zone and load type, but a duplicate pair is possible, which is why ordering uses
+        /// <see cref="SortSignature"/> and duplicates are reported rather than silently resolved.
         /// </summary>
         public string Key => (ZoneName ?? string.Empty) + "|" + (LoadType ?? string.Empty);
+
+        /// <summary>
+        /// A TOTAL ordinal ordering key: <see cref="Key"/>, then <see cref="SourceIndex"/>, then every
+        /// payload field. Ordering on the key and index alone is not enough — a caller that does not
+        /// supply a source index leaves duplicates sharing the default, the comparison then reports
+        /// equality, and because <see cref="List{T}.Sort(System.Comparison{T})"/> is unstable the row a
+        /// consumer treats as "first" would flip with the input order. Including the payload means two
+        /// entries can only compare equal when they are genuinely indistinguishable, so which one is
+        /// chosen cannot matter.
+        /// </summary>
+        public string SortSignature => string.Join("|", new string[]
+        {
+            Key,
+            SourceIndex.ToString("D19", System.Globalization.CultureInfo.InvariantCulture),
+            Number(UserDesignLoad),
+            Number(CalculatedDesignLoad),
+            Number(UserDesignFlow),
+            Number(CalculatedDesignFlow),
+            DesignDayName ?? string.Empty,
+            PeakTime ?? string.Empty,
+            Number(PeakTemperature),
+            Number(PeakHumidityRatio)
+        });
+
+        /// <summary>Invariant, round-trippable text for a nullable number; empty for null.</summary>
+        private static string Number(double? value)
+        {
+            return value.HasValue ? value.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
+        }
     }
 }
