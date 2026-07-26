@@ -33,7 +33,7 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="userDesignFlow">Design air flow rate after sizing factors/user adjustments [m3/s].</param>
         /// <param name="designDayName">Name of the design day that produced the peak.</param>
         /// <param name="peakTime">EnergyPlus peak time stamp as reported (<c>M/D HH:MM:SS</c>).</param>
-        /// <param name="peakTemperature">Outdoor dry-bulb temperature at the peak [C].</param>
+        /// <param name="peakTemperature">SQL <c>ZoneSizes.PeakTemp</c> verbatim [C]; see the property for its unsettled scope.</param>
         /// <param name="peakHumidityRatio">Humidity ratio at the peak [kgWater/kgDryAir].</param>
         /// <param name="sourceIndex">
         /// SQL <c>ZoneSizes.ZoneSizesIndex</c> (the table's primary key), or any caller-assigned read
@@ -91,10 +91,21 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>EnergyPlus peak time stamp exactly as reported (<c>M/D HH:MM:SS</c>).</summary>
         public string PeakTime { get; }
 
-        /// <summary>Outdoor dry-bulb temperature at the peak [C].</summary>
+        /// <summary>
+        /// SQL <c>ZoneSizes.PeakTemp</c> [C], carried verbatim and deliberately NOT interpreted.
+        /// </summary>
+        /// <remarks>
+        /// Its scope is unsettled and must not be asserted by this type. The EnergyPlus engineering
+        /// reference describes the zone sizing peak temperature as a ZONE value
+        /// (<c>ZoneTempAtHeatPeak</c>/<c>ZoneTempAtCoolPeak</c>); however, on the HungaryHouse benchmark
+        /// run every row carried <c>-3.20000004768372</c>, bit-identical to the design day's OUTDOOR
+        /// maximum dry bulb, where a heated zone would have sat at its setpoint instead. Until the
+        /// design-day audit settles which it is, no consumer should map this onto an outdoor or a zone
+        /// temperature parameter — which is why <c>Convert.ToSAM_SpaceDesignLoadResults</c> does not.
+        /// </remarks>
         public double? PeakTemperature { get; }
 
-        /// <summary>Humidity ratio at the peak [kgWater/kgDryAir].</summary>
+        /// <summary>SQL <c>ZoneSizes.PeakHumRat</c> [kgWater/kgDryAir], carried verbatim; same scope caveat as <see cref="PeakTemperature"/>.</summary>
         public double? PeakHumidityRatio { get; }
 
         /// <summary>The SAM <see cref="Analytical.LoadType"/> this row's <see cref="LoadType"/> text maps to.</summary>

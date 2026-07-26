@@ -155,10 +155,13 @@ namespace SAM.Analytical.OpenStudio
                 spaceSimulationResult.SetValue(SpaceSimulationResultParameter.DesignDayName, zoneSizingResult.DesignDayName);
             }
 
-            if (zoneSizingResult.PeakTemperature.HasValue)
-            {
-                spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.DesignDayTemperature, zoneSizingResult.PeakTemperature.Value);
-            }
+            // ZoneSizes.PeakTemp is deliberately NOT written to DesignDayTemperature. Its scope is not
+            // settled: the EnergyPlus engineering reference describes the zone sizing peak temperature as
+            // a ZONE value (ZoneTempAtHeatPeak/ZoneTempAtCoolPeak), while on a real run here every row
+            // carried -3.20000004768372, bit-identical to the design day's OUTDOOR maximum dry bulb.
+            // Writing an unsettled value into a parameter that names it an outdoor design-day temperature
+            // would be exactly the silent relabelling this mapping exists to avoid, so the value stays on
+            // OpenStudioZoneSizingResult verbatim for the design-day audit to interpret.
 
             if (!string.IsNullOrWhiteSpace(zoneSizingResult.PeakTime))
             {

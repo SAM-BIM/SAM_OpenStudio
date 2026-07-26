@@ -105,7 +105,80 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>EnergyPlus fatal error count.</summary>
         public int FatalCount { get; }
 
-        /// <summary>Creates an immutable result set. Null dictionaries become empty; null series stay null.</summary>
+        /// <summary>
+        /// Creates an immutable result set with no zone sizing data. Null dictionaries become empty; null
+        /// series stay null.
+        /// </summary>
+        /// <remarks>
+        /// This is the ORIGINAL signature, kept exactly as it was and delegating to the overload that
+        /// takes zone sizing. Adding zone sizing as an optional parameter on the original constructor
+        /// instead would preserve source compatibility but BREAK BINARY compatibility: the 26-argument
+        /// constructor would no longer exist in metadata, so a Grasshopper or third-party assembly
+        /// compiled against it would throw <see cref="System.MissingMethodException"/> at run time. Two
+        /// explicit overloads keep both forms callable.
+        /// </remarks>
+        public OpenStudioSimulationResultSet(
+            IReadOnlyDictionary<string, double> annualHeatingEnergy,
+            IReadOnlyDictionary<string, double> annualCoolingEnergy,
+            IReadOnlyDictionary<string, double> peakHeatingLoad,
+            IReadOnlyDictionary<string, double> peakCoolingLoad,
+            IReadOnlyDictionary<string, int> peakHeatingHour,
+            IReadOnlyDictionary<string, int> peakCoolingHour,
+            double peakHeatingLoadTotal,
+            int peakHeatingHourTotal,
+            double peakCoolingLoadTotal,
+            int peakCoolingHourTotal,
+            IReadOnlyDictionary<string, double> unmetHeatingHours,
+            IReadOnlyDictionary<string, double> unmetCoolingHours,
+            IReadOnlyDictionary<string, double> peopleGains,
+            IReadOnlyDictionary<string, double> lightingGains,
+            IReadOnlyDictionary<string, double> equipmentGains,
+            IReadOnlyDictionary<string, double> windowSolarGains,
+            IReadOnlyDictionary<string, double> infiltrationGains,
+            IReadOnlyDictionary<string, double> ventilationHeatingEnergy,
+            IReadOnlyDictionary<string, double> ventilationCoolingEnergy,
+            IReadOnlyDictionary<string, double[]> temperatureSeries,
+            IReadOnlyDictionary<string, double[]> operativeTemperatureSeries,
+            IReadOnlyDictionary<string, double[]> relativeHumiditySeries,
+            double runtimeSeconds,
+            int warningCount,
+            int severeCount,
+            int fatalCount)
+            : this(
+                annualHeatingEnergy,
+                annualCoolingEnergy,
+                peakHeatingLoad,
+                peakCoolingLoad,
+                peakHeatingHour,
+                peakCoolingHour,
+                peakHeatingLoadTotal,
+                peakHeatingHourTotal,
+                peakCoolingLoadTotal,
+                peakCoolingHourTotal,
+                unmetHeatingHours,
+                unmetCoolingHours,
+                peopleGains,
+                lightingGains,
+                equipmentGains,
+                windowSolarGains,
+                infiltrationGains,
+                ventilationHeatingEnergy,
+                ventilationCoolingEnergy,
+                temperatureSeries,
+                operativeTemperatureSeries,
+                relativeHumiditySeries,
+                runtimeSeconds,
+                warningCount,
+                severeCount,
+                fatalCount,
+                null)
+        {
+        }
+
+        /// <summary>
+        /// Creates an immutable result set including zone sizing results. Null dictionaries become empty;
+        /// null series stay null; null zone sizing becomes an empty list.
+        /// </summary>
         public OpenStudioSimulationResultSet(
             IReadOnlyDictionary<string, double> annualHeatingEnergy,
             IReadOnlyDictionary<string, double> annualCoolingEnergy,
@@ -133,7 +206,7 @@ namespace SAM.Analytical.OpenStudio
             int warningCount,
             int severeCount,
             int fatalCount,
-            IReadOnlyList<OpenStudioZoneSizingResult> zoneSizing = null)
+            IReadOnlyList<OpenStudioZoneSizingResult> zoneSizing)
         {
             ZoneSizing = Copy(zoneSizing);
             AnnualHeatingEnergy = Copy(annualHeatingEnergy);

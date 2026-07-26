@@ -130,9 +130,80 @@ namespace SAM.Analytical.OpenStudio.Tests
             SpaceSimulationResult result = resultSet.ToSAM_SpaceDesignLoadResults(spaces).Single();
 
             Assert.That(result.GetValue<string>(SpaceSimulationResultParameter.DesignDayName), Is.EqualTo("LONDON_TRY_ANN_HTG_100%_CONDS_DB"), "The governing design day is recorded");
-            Assert.That(result.GetValue<double>(Analytical.SpaceSimulationResultParameter.DesignDayTemperature), Is.EqualTo(-3.2).Within(1e-9), "The outdoor temperature at the peak is recorded");
             Assert.That(result.GetValue<Core.OpenStudio.ShortDateTime>(SpaceSimulationResultParameter.PeakDate), Is.Not.Null, "The peak time stamp is parsed");
             Assert.That(result.GetValue<string>(SpaceSimulationResultParameter.ZoneName), Is.EqualTo(ThermalZoneName(space)), "The engine zone the row came from is recorded");
+        }
+
+        [Test]
+        public void PeakTemp_DoesNotPopulateDesignDayTemperature()
+        {
+            // ZoneSizes.PeakTemp has an unsettled scope: EnergyPlus documents the zone sizing peak
+            // temperature as a ZONE value, while on a real run every row equalled the design day's OUTDOOR
+            // maximum dry bulb. Mapping it onto a parameter that names it an outdoor design-day
+            // temperature would assert an interpretation this converter has no basis for, so it must not.
+            List<Space> spaces = Spaces();
+            Space space = spaces.First();
+            OpenStudioSimulationResultSet resultSet = ResultSet(Row(ThermalZoneName(space), "Heating", 1400.0, peakTemperature: -3.2));
+
+            SpaceSimulationResult result = resultSet.ToSAM_SpaceDesignLoadResults(spaces).Single();
+
+            Assert.That(result.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignDayTemperature, out double _), Is.False, "A populated PeakTemp must not become DesignDayTemperature");
+            Assert.That(resultSet.ZoneSizing.Single().PeakTemperature, Is.EqualTo(-3.2).Within(1e-9), "…but the value is still carried verbatim for the audit");
+        }
+
+        [Test]
+        public void OriginalResultSetConstructorSignatureStillExists()
+        {
+            // Binary compatibility: adding zone sizing as an OPTIONAL parameter on the original
+            // constructor would keep source calls compiling while removing the 26-argument constructor
+            // from metadata, so a Grasshopper or third-party assembly compiled against it would throw
+            // MissingMethodException. Reflection is required here — a 26-argument source call would also
+            // bind happily to an optional parameter and prove nothing.
+            System.Type[] original = new System.Type[]
+            {
+                typeof(IReadOnlyDictionary<string, double>), typeof(IReadOnlyDictionary<string, double>),
+                typeof(IReadOnlyDictionary<string, double>), typeof(IReadOnlyDictionary<string, double>),
+                typeof(IReadOnlyDictionary<string, int>), typeof(IReadOnlyDictionary<string, int>),
+                typeof(double), typeof(int), typeof(double), typeof(int),
+                typeof(IReadOnlyDictionary<string, double>), typeof(IReadOnlyDictionary<string, double>),
+                typeof(IReadOnlyDictionary<string, double>), typeof(IReadOnlyDictionary<string, double>),
+                typeof(IReadOnlyDictionary<string, double>), typeof(IReadOnlyDictionary<string, double>),
+                typeof(IReadOnlyDictionary<string, double>), typeof(IReadOnlyDictionary<string, double>),
+                typeof(IReadOnlyDictionary<string, double>),
+                typeof(IReadOnlyDictionary<string, double[]>), typeof(IReadOnlyDictionary<string, double[]>),
+                typeof(IReadOnlyDictionary<string, double[]>),
+                typeof(double), typeof(int), typeof(int), typeof(int)
+            };
+
+            System.Reflection.ConstructorInfo constructorInfo = typeof(OpenStudioSimulationResultSet).GetConstructor(original);
+
+            Assert.That(constructorInfo, Is.Not.Null, "The original 26-argument constructor must remain in metadata for already-compiled consumers");
+            Assert.That(constructorInfo.GetParameters().Length, Is.EqualTo(26));
+            Assert.That(constructorInfo.GetParameters().Any(x => x.IsOptional), Is.False, "The preserved overload takes no optional parameters");
+
+            // The zone-sizing overload is a separate, explicit signature — also not optional.
+            System.Type[] withZoneSizing = original.Concat(new System.Type[] { typeof(IReadOnlyList<OpenStudioZoneSizingResult>) }).ToArray();
+            System.Reflection.ConstructorInfo zoneSizingConstructor = typeof(OpenStudioSimulationResultSet).GetConstructor(withZoneSizing);
+            Assert.That(zoneSizingConstructor, Is.Not.Null, "The zone-sizing constructor exists as its own 27-argument signature");
+            Assert.That(zoneSizingConstructor.GetParameters().Any(x => x.IsOptional), Is.False, "Two explicit overloads, no optional parameter");
+
+            // The preserved overload really does delegate: it yields an empty, non-null ZoneSizing.
+            OpenStudioSimulationResultSet resultSet = (OpenStudioSimulationResultSet)constructorInfo.Invoke(new object[]
+            {
+                new Dictionary<string, double>(), new Dictionary<string, double>(),
+                new Dictionary<string, double>(), new Dictionary<string, double>(),
+                new Dictionary<string, int>(), new Dictionary<string, int>(),
+                0d, 0, 0d, 0,
+                new Dictionary<string, double>(), new Dictionary<string, double>(),
+                new Dictionary<string, double>(), new Dictionary<string, double>(),
+                new Dictionary<string, double>(), new Dictionary<string, double>(),
+                new Dictionary<string, double>(), new Dictionary<string, double>(),
+                new Dictionary<string, double>(),
+                null, null, null,
+                0d, 0, 0, 0
+            });
+
+            Assert.That(resultSet.ZoneSizing, Is.Not.Null.And.Empty, "The old signature yields an empty zone-sizing list, never null");
         }
 
         [Test]
