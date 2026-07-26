@@ -19,10 +19,14 @@ namespace SAM.Analytical.OpenStudio
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <see cref="OpenStudioZoneSizingResult.UserDesignLoad"/> populates the design load: it is the
-        /// value after sizing factors, i.e. the load EnergyPlus actually sizes components with, which is
-        /// what the TAS route's TBD sizing load is too. <c>CalcDesLoad</c> and the design flows stay on
-        /// the result set for audit rather than being emitted here.
+        /// <see cref="OpenStudioZoneSizingResult.CalculatedDesignLoad"/> populates the design load — the
+        /// unaltered thermal load EnergyPlus calculated from the design-day weather and schedules, as the
+        /// result contract in <c>docs/SAM_OPENSTUDIO_ANALYTICAL_COVERAGE.md</c> specifies.
+        /// <see cref="OpenStudioZoneSizingResult.UserDesignLoad"/> is deliberately NOT emitted: it is the
+        /// capacity after sizing factors, so emitting it would fold a user-configured margin into a
+        /// cross-engine comparison — on the HungaryHouse run a 1.25 heating factor made every UserDesLoad
+        /// exactly 25% above the calculated load. It stays on the result set, with the design flows, for
+        /// the sizing-capacity audit, and may later become a metric of its own.
         /// </para>
         /// <para>
         /// Identity: <c>ZoneSizes.ZoneName</c> is the EnergyPlus ThermalZone name, so spaces are matched
@@ -76,7 +80,7 @@ namespace SAM.Analytical.OpenStudio
                     diagnostics.Add(new Core.OpenStudio.OpenStudioDiagnostic(
                         Core.OpenStudio.OpenStudioDiagnosticCodes.ResultExtractionLimitation,
                         Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning,
-                        string.Format(System.Globalization.CultureInfo.InvariantCulture, "Duplicate zone sizing row for zone '{0}' load type '{1}': the first row (design load {2}) is used and the later one (design load {3}) is ignored", zoneSizingResult.ZoneName, zoneSizingResult.LoadType, Text(existing.UserDesignLoad), Text(zoneSizingResult.UserDesignLoad)),
+                        string.Format(System.Globalization.CultureInfo.InvariantCulture, "Duplicate zone sizing row for zone '{0}' load type '{1}': the first row (design load {2}) is used and the later one (design load {3}) is ignored", zoneSizingResult.ZoneName, zoneSizingResult.LoadType, Text(existing.CalculatedDesignLoad), Text(zoneSizingResult.CalculatedDesignLoad)),
                         openStudioObjectName: zoneSizingResult.ZoneName));
                     continue;
                 }
@@ -137,7 +141,7 @@ namespace SAM.Analytical.OpenStudio
 
             // No sized load for this zone/load type: leave it unavailable. A sized ZERO is a real
             // result and IS emitted (double? distinguishes the two).
-            if (!zoneSizingResult.UserDesignLoad.HasValue)
+            if (!zoneSizingResult.CalculatedDesignLoad.HasValue)
             {
                 return;
             }
@@ -147,7 +151,7 @@ namespace SAM.Analytical.OpenStudio
             // LoadType is written as text, exactly as the annual mapping does, so both result families
             // are selected by the same predicate downstream.
             spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.LoadType, loadType.ToString());
-            spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, zoneSizingResult.UserDesignLoad.Value);
+            spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, zoneSizingResult.CalculatedDesignLoad.Value);
             spaceSimulationResult.SetValue(SpaceSimulationResultParameter.ZoneName, zoneSizingResult.ZoneName);
 
             if (!string.IsNullOrWhiteSpace(zoneSizingResult.DesignDayName))

@@ -27,42 +27,6 @@ namespace SAM.Analytical.OpenStudio
             return result;
         }
 
-        /// <summary>
-        /// Whether a SQL table carries a named column. Used so a column added by a newer EnergyPlus
-        /// schema can be preferred without breaking against tables that predate it.
-        /// </summary>
-        private static bool HasColumn(SQLiteConnection sQLiteConnection, string tableName, string columnName)
-        {
-            if (sQLiteConnection == null || string.IsNullOrWhiteSpace(tableName) || string.IsNullOrWhiteSpace(columnName))
-            {
-                return false;
-            }
-
-            try
-            {
-                using (SQLiteCommand sQLiteCommand = sQLiteConnection.CreateCommand())
-                {
-                    sQLiteCommand.CommandText = string.Format("PRAGMA table_info({0})", tableName);
-                    using (SQLiteDataReader sQLiteDataReader = sQLiteCommand.ExecuteReader())
-                    {
-                        while (sQLiteDataReader.Read())
-                        {
-                            if (string.Equals(sQLiteDataReader["name"]?.ToString(), columnName, StringComparison.OrdinalIgnoreCase))
-                            {
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-
-            return false;
-        }
-
         public static List<SpaceSimulationResult> SpaceSimulationResults(this SQLiteConnection sQLiteConnection)
         {
             if(sQLiteConnection == null)
@@ -86,27 +50,19 @@ namespace SAM.Analytical.OpenStudio
             {
                 DataTable dataTable_EnvironmentPeriods = Core.SQLite.Query.DataTable(sQLiteConnection, "EnvironmentPeriods", "EnvironmentPeriodIndex", "EnvironmentName");
 
-                // UserDesLoad is requested only when the table actually has it: this reader also runs
-                // against older/synthetic ZoneSizes tables that predate the column, and naming a missing
-                // column in the SELECT would fail the whole query and lose every design load.
-                bool hasUserDesignLoad = HasColumn(sQLiteConnection, "ZoneSizes", "UserDesLoad");
-                dataTable = hasUserDesignLoad
-                    ? Core.SQLite.Query.DataTable(sQLiteConnection, "ZoneSizes", "ZoneName", "LoadType", "CalcDesLoad", "UserDesLoad", "DesDayName", "PeakHrMin", "PeakTemp", "PeakHumRat")
-                    : Core.SQLite.Query.DataTable(sQLiteConnection, "ZoneSizes", "ZoneName", "LoadType", "CalcDesLoad", "DesDayName", "PeakHrMin", "PeakTemp", "PeakHumRat");
+                dataTable = Core.SQLite.Query.DataTable(sQLiteConnection, "ZoneSizes", "ZoneName", "LoadType", "CalcDesLoad", "DesDayName", "PeakHrMin", "PeakTemp", "PeakHumRat");
                 if (dataTable != null)
                 {
                     int index_ZoneName = dataTable.Columns.IndexOf("ZoneName");
                     int index_LoadType = dataTable.Columns.IndexOf("LoadType");
                     if (index_ZoneName != -1 && index_LoadType != -1)
                     {
-                        // ONE design-load definition across every consumer of a run: UserDesLoad, the load
-                        // after sizing factors that EnergyPlus sizes components with, is what
-                        // Convert.ToSAM_SpaceDesignLoadResults emits for the benchmark. This path feeds
-                        // Modify.AddResults and the Grasshopper SQL component, so it must agree — otherwise
-                        // the same run reports two different design loads. CalcDesLoad remains the fallback
-                        // only where the newer column does not exist (schema compatibility, not policy).
-                        int index_UserDesLoad = dataTable.Columns.IndexOf("UserDesLoad");
-                        int index_DesignLoad = index_UserDesLoad != -1 ? index_UserDesLoad : dataTable.Columns.IndexOf("CalcDesLoad");
+                        // ONE design-load definition across every consumer of a run: CalcDesLoad, the
+                        // unaltered calculated zone load, matching both the documented result contract and
+                        // Convert.ToSAM_SpaceDesignLoadResults. UserDesLoad (post-sizing-factor capacity) is
+                        // deliberately not used here either, so this path — which feeds Modify.AddResults
+                        // and the Grasshopper SQL component — cannot disagree with the benchmark.
+                        int index_DesignLoad = dataTable.Columns.IndexOf("CalcDesLoad");
                         int index_PeakHrMin = dataTable.Columns.IndexOf("PeakHrMin");
                         int index_DesDayName = dataTable.Columns.IndexOf("DesDayName");
 

@@ -60,18 +60,21 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
-        public void UserDesLoad_PopulatesDesignLoad_NotCalcDesLoad()
+        public void CalcDesLoad_PopulatesDesignLoad_NotUserDesLoad()
         {
-            // EnergyPlus sizes components with UserDesLoad (after sizing factors); CalcDesLoad is the
-            // unaltered calculation kept for audit. The benchmark metric must be the former.
+            // CalcDesLoad is the unaltered thermal load from the design-day weather and schedules, which is
+            // what the documented result contract defines designLoad to be. UserDesLoad is that load AFTER
+            // sizing factors (the real HungaryHouse run applied 1.25, i.e. exactly the values below), so
+            // emitting it would fold a user-configured margin into a cross-engine physics comparison.
             List<Space> spaces = Spaces();
             Space space = spaces.First();
             OpenStudioSimulationResultSet resultSet = ResultSet(Row(ThermalZoneName(space), "Heating", userDesignLoad: 1409.83, calculatedDesignLoad: 1127.86));
 
             List<SpaceSimulationResult> results = resultSet.ToSAM_SpaceDesignLoadResults(spaces);
 
-            Assert.That(DesignLoad(results, LoadType.Heating), Is.EqualTo(1409.83).Within(1e-9), "UserDesLoad is the sizing load actually used");
-            Assert.That(DesignLoad(results, LoadType.Heating), Is.Not.EqualTo(1127.86).Within(1e-9), "CalcDesLoad must not be emitted as the design load");
+            Assert.That(DesignLoad(results, LoadType.Heating), Is.EqualTo(1127.86).Within(1e-9), "CalcDesLoad is the calculated load the metric reports");
+            Assert.That(DesignLoad(results, LoadType.Heating), Is.Not.EqualTo(1409.83).Within(1e-9), "The post-sizing-factor capacity must not be emitted as the design load");
+            Assert.That(resultSet.ZoneSizing.Single().UserDesignLoad, Is.EqualTo(1409.83).Within(1e-9), "…but it stays readable for the sizing-capacity audit");
         }
 
         [Test]
@@ -104,11 +107,14 @@ namespace SAM.Analytical.OpenStudio.Tests
         {
             List<Space> spaces = Spaces();
             Space space = spaces.First();
-            OpenStudioSimulationResultSet resultSet = ResultSet(Row(ThermalZoneName(space), "Heating", userDesignLoad: null, calculatedDesignLoad: 500.0));
+            // No calculated load, even though a post-factor capacity is present: the metric must stay
+            // unavailable rather than fall back to the other column or to a zero.
+            OpenStudioSimulationResultSet resultSet = ResultSet(new OpenStudioZoneSizingResult(
+                ThermalZoneName(space), "Heating", null, 500.0, 0.04, 0.05, "WINTER_DD", "3/2 08:00:00", -3.2, 0.00243652));
 
             List<SpaceSimulationResult> results = resultSet.ToSAM_SpaceDesignLoadResults(spaces);
 
-            Assert.That(results, Is.Empty, "A row without UserDesLoad yields no design-load result at all, so the metric stays unavailable rather than becoming 0");
+            Assert.That(results, Is.Empty, "A row without CalcDesLoad yields no design-load result at all, so the metric stays unavailable rather than becoming 0");
         }
 
         [Test]
@@ -372,7 +378,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
-        public void EstablishedSqlConsumerPath_PrefersUserDesLoad()
+        public void EstablishedSqlConsumerPath_UsesCalcDesLoad_EvenWhenUserDesLoadIsPresent()
         {
             // ONE design-load definition across consumers: Create.SpaceSimulationResults feeds
             // Modify.AddResults and the Grasshopper SQL component, so it must emit the same value the
@@ -383,21 +389,21 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             SpaceSimulationResult result = results.Single(x => x.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double _));
             result.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double designLoad);
-            Assert.That(designLoad, Is.EqualTo(1409.83).Within(1e-6), "UserDesLoad is preferred, matching Convert.ToSAM_SpaceDesignLoadResults");
+            Assert.That(designLoad, Is.EqualTo(1127.86).Within(1e-6), "CalcDesLoad, matching Convert.ToSAM_SpaceDesignLoadResults and the documented contract");
         }
 
         [Test]
-        public void EstablishedSqlConsumerPath_FallsBackWhenUserDesLoadColumnIsAbsent()
+        public void EstablishedSqlConsumerPath_WorksOnTablesWithoutTheUserDesLoadColumn()
         {
-            // Older/synthetic ZoneSizes tables predate the column; naming a missing column in the SELECT
-            // would fail the query and lose every design load, so the reader falls back rather than break.
+            // Older/synthetic ZoneSizes tables have no UserDesLoad column at all; the reader must keep
+            // working against them, which it does because it only ever reads CalcDesLoad.
             string path = WriteSql(withUserDesignLoad: false, calculatedDesignLoad: 1127.86, userDesignLoad: 0);
 
             List<SpaceSimulationResult> results = Create.SpaceSimulationResults(path);
 
             SpaceSimulationResult result = results.Single(x => x.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double _));
             result.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double designLoad);
-            Assert.That(designLoad, Is.EqualTo(1127.86).Within(1e-6), "CalcDesLoad remains the compatibility fallback");
+            Assert.That(designLoad, Is.EqualTo(1127.86).Within(1e-6), "CalcDesLoad is read whether or not the newer column exists");
         }
 
         [Test]

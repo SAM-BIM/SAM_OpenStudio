@@ -15,11 +15,13 @@ namespace SAM.Analytical.OpenStudio
     /// from the weather RunPeriod and must never be relabelled as a design load.
     /// </para>
     /// <para>
-    /// Every column is preserved for auditability even though only <see cref="UserDesignLoad"/>
-    /// populates the v1 benchmark <c>designLoad</c> metric: <see cref="CalculatedDesignLoad"/> is the
-    /// unaltered calculated zone load, while <see cref="UserDesignLoad"/> is the value after sizing
-    /// factors and other user adjustments — the load actually used to size components, and therefore
-    /// the one comparable with the TAS route's TBD <c>maxHeatingLoad</c>/<c>maxCoolingLoad</c>.
+    /// Every column is preserved for auditability, but only <see cref="CalculatedDesignLoad"/> populates
+    /// the v1 benchmark <c>designLoad</c> metric — the unaltered thermal load calculated from the
+    /// design-day weather and schedules. <see cref="UserDesignLoad"/> is the capacity AFTER sizing factors
+    /// and other user adjustments; folding it into a cross-engine comparison would mix a user-configured
+    /// margin into an engine-physics question (a 1.25 heating factor put every UserDesLoad exactly 25%
+    /// above the calculated load on the HungaryHouse run), so it is kept for the sizing-capacity audit and
+    /// may later be exposed as its own metric.
     /// </para>
     /// </remarks>
     public sealed class OpenStudioZoneSizingResult
@@ -73,10 +75,18 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>Sizing load type as EnergyPlus reported it (<c>Heating</c> or <c>Cooling</c>).</summary>
         public string LoadType { get; }
 
-        /// <summary>Unaltered calculated zone design load [W]; kept for audit, not emitted as the benchmark metric.</summary>
+        /// <summary>
+        /// Unaltered calculated zone design load [W] (SQL <c>CalcDesLoad</c>): the thermal load from the
+        /// design-day weather and schedules, before any sizing factor. This is the v1 benchmark
+        /// <c>designLoad</c>.
+        /// </summary>
         public double? CalculatedDesignLoad { get; }
 
-        /// <summary>Design load after sizing factors/user adjustments [W]: the value used to size components.</summary>
+        /// <summary>
+        /// Capacity after sizing factors and user adjustments [W] (SQL <c>UserDesLoad</c>): what components
+        /// are sized with. Audit-only — deliberately not the benchmark metric, so a configured sizing margin
+        /// cannot enter a cross-engine comparison.
+        /// </summary>
         public double? UserDesignLoad { get; }
 
         /// <summary>Unaltered calculated design air flow rate [m3/s].</summary>

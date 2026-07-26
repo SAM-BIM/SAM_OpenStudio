@@ -52,7 +52,7 @@ namespace SAM.Analytical.OpenStudio.Benchmark.Tests
         }
 
         [Test]
-        public void SizedZone_ReportsDesignLoadFromUserDesLoad()
+        public void SizedZone_ReportsDesignLoadFromCalcDesLoad()
         {
             AnalyticalModel model = BenchmarkFixture.SingleSpaceModel();
             Analytical.Space space = model.AdjacencyCluster.GetSpaces().First();
@@ -65,7 +65,7 @@ namespace SAM.Analytical.OpenStudio.Benchmark.Tests
             BenchmarkSpaceResult result = Space(model, resultSet);
 
             Assert.That(result.Heating.DesignLoad.Available, Is.True, "The design load is no longer unavailable");
-            Assert.That(result.Heating.DesignLoad.Value, Is.EqualTo(1409.83).Within(1e-9), "UserDesLoad is emitted, not CalcDesLoad");
+            Assert.That(result.Heating.DesignLoad.Value, Is.EqualTo(1127.86).Within(1e-9), "CalcDesLoad is emitted — the calculated load, not the post-sizing-factor capacity");
             Assert.That(result.Heating.DesignLoad.Unit, Is.EqualTo(MetricUnit.Watt), "ZoneSizes loads are already W");
         }
 
