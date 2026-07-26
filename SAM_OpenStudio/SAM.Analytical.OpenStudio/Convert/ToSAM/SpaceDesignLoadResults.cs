@@ -33,8 +33,9 @@ namespace SAM.Analytical.OpenStudio
         /// on <c>Core.OpenStudio.Query.OpenStudioName("ThermalZone", …)</c> — NOT the Ideal Loads key the
         /// annual dictionaries use. Heating and cooling are matched independently: a zone sized for
         /// heating only yields a heating design load and nothing for cooling. A row with no
-        /// <c>UserDesLoad</c> yields no result, so a missing design load stays unavailable and is never
-        /// reported as a zero. A genuine sized zero IS emitted as an available zero.
+        /// <c>CalcDesLoad</c> yields no result, so a missing design load stays unavailable and is never
+        /// reported as a zero — nor does it fall back to <c>UserDesLoad</c>. A genuine sized zero IS
+        /// emitted as an available zero.
         /// </para>
         /// </remarks>
         /// <param name="openStudioSimulationResultSet">Result set carrying the zone sizing rows.</param>
