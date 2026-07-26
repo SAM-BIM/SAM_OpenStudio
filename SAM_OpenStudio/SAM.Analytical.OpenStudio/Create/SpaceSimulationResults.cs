@@ -57,7 +57,12 @@ namespace SAM.Analytical.OpenStudio
                     int index_LoadType = dataTable.Columns.IndexOf("LoadType");
                     if (index_ZoneName != -1 && index_LoadType != -1)
                     {
-                        int index_CalcDesLoad = dataTable.Columns.IndexOf("CalcDesLoad");
+                        // ONE design-load definition across every consumer of a run: CalcDesLoad, the
+                        // unaltered calculated zone load, matching both the documented result contract and
+                        // Convert.ToSAM_SpaceDesignLoadResults. UserDesLoad (post-sizing-factor capacity) is
+                        // deliberately not used here either, so this path — which feeds Modify.AddResults
+                        // and the Grasshopper SQL component — cannot disagree with the benchmark.
+                        int index_DesignLoad = dataTable.Columns.IndexOf("CalcDesLoad");
                         int index_PeakHrMin = dataTable.Columns.IndexOf("PeakHrMin");
                         int index_DesDayName = dataTable.Columns.IndexOf("DesDayName");
 
@@ -74,9 +79,11 @@ namespace SAM.Analytical.OpenStudio
                                     SpaceSimulationResult spaceSimulationResult_LoadType = new SpaceSimulationResult(Guid.NewGuid(), spaceSimulationResult);
                                     spaceSimulationResult_LoadType.SetValue(Analytical.SpaceSimulationResultParameter.LoadType, dataRow[index_LoadType]);
 
-                                    if (index_CalcDesLoad != -1)
+                                    // A null design load stays absent rather than being written as a value:
+                                    // an unsized zone/load type must remain unavailable, never a zero.
+                                    if (index_DesignLoad != -1 && dataRow[index_DesignLoad] != DBNull.Value)
                                     {
-                                        spaceSimulationResult_LoadType.SetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, dataRow[index_CalcDesLoad]);
+                                        spaceSimulationResult_LoadType.SetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, dataRow[index_DesignLoad]);
                                     }
 
                                     if (index_DesDayName != -1)

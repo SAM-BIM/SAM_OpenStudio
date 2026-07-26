@@ -982,7 +982,8 @@ namespace SAM.Analytical.OpenStudio
                     runtimeSeconds,
                     warningCount,
                     severeCount,
-                    fatalCount);
+                    fatalCount,
+                    ReadZoneSizes(sqlPath));
             }
             catch (System.Exception)
             {
@@ -1136,6 +1137,97 @@ namespace SAM.Analytical.OpenStudio
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Reads the SQL <c>ZoneSizes</c> table: the zone sizing outcome per zone and load type from the
+        /// DESIGN-DAY periods. Returns an empty list when the table is absent (a run with no sizing) so
+        /// callers never have to distinguish null from "nothing sized"; a missing column or unreadable
+        /// file also yields empty rather than throwing, matching the other readers here.
+        /// </summary>
+        /// <remarks>
+        /// Both load values are read. <c>UserDesLoad</c> is the load after sizing factors — the value
+        /// EnergyPlus actually sizes components with, and the one comparable with the TAS route's TBD
+        /// sizing load — while <c>CalcDesLoad</c> is the unaltered calculation, kept for audit. No value
+        /// here is ever a substitute for the annual simulated peak.
+        /// </remarks>
+        private static List<OpenStudioZoneSizingResult> ReadZoneSizes(string sqlPath)
+        {
+            List<OpenStudioZoneSizingResult> result = new List<OpenStudioZoneSizingResult>();
+            if (string.IsNullOrWhiteSpace(sqlPath) || !File.Exists(sqlPath))
+            {
+                return result;
+            }
+
+            try
+            {
+                using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection(new System.Data.SQLite.SQLiteConnectionStringBuilder { DataSource = sqlPath, ReadOnly = true, FailIfMissing = true }.ConnectionString))
+                {
+                    connection.Open();
+
+                    using (System.Data.SQLite.SQLiteCommand exists = connection.CreateCommand())
+                    {
+                        exists.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'ZoneSizes'";
+                        if (System.Convert.ToInt32(exists.ExecuteScalar()) == 0)
+                        {
+                            return result;
+                        }
+                    }
+
+                    using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                    {
+                        // ZoneSizesIndex (the table's primary key) is selected and ordered on so the read
+                        // order is defined by the database rather than left to query-plan chance, and so a
+                        // duplicate (ZoneName, LoadType) pair has a reproducible "first" row.
+                        command.CommandText = "SELECT ZoneName, LoadType, CalcDesLoad, UserDesLoad, CalcDesFlow, UserDesFlow, DesDayName, PeakHrMin, PeakTemp, PeakHumRat, ZoneSizesIndex FROM ZoneSizes ORDER BY ZoneName, LoadType, ZoneSizesIndex";
+                        using (System.Data.SQLite.SQLiteDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                result.Add(new OpenStudioZoneSizingResult(
+                                    ReadString(reader, 0),
+                                    ReadString(reader, 1),
+                                    ReadDouble(reader, 2),
+                                    ReadDouble(reader, 3),
+                                    ReadDouble(reader, 4),
+                                    ReadDouble(reader, 5),
+                                    ReadString(reader, 6),
+                                    ReadString(reader, 7),
+                                    ReadDouble(reader, 8),
+                                    ReadDouble(reader, 9),
+                                    ReadInt64(reader, 10)));
+                            }
+                        }
+                    }
+                }
+            }
+            catch (System.Exception)
+            {
+                return result;
+            }
+
+            return result;
+        }
+
+        private static string ReadString(System.Data.SQLite.SQLiteDataReader reader, int index)
+        {
+            return reader.IsDBNull(index) ? null : reader.GetValue(index)?.ToString();
+        }
+
+        private static long ReadInt64(System.Data.SQLite.SQLiteDataReader reader, int index)
+        {
+            return reader.IsDBNull(index) ? 0L : System.Convert.ToInt64(reader.GetValue(index), System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static double? ReadDouble(System.Data.SQLite.SQLiteDataReader reader, int index)
+        {
+            if (reader.IsDBNull(index))
+            {
+                return null;
+            }
+
+            double value = System.Convert.ToDouble(reader.GetValue(index), System.Globalization.CultureInfo.InvariantCulture);
+            return double.IsNaN(value) || double.IsInfinity(value) ? (double?)null : value;
         }
 
         /// <summary>Sums any report variable per key over the weather-run environment with an explicit scale factor (no unit conversion).</summary>

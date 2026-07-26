@@ -132,13 +132,25 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                     context.Notes.Add("The OpenStudio/EnergyPlus run did not complete successfully; measurements are unavailable.");
                 }
 
+                // Per-space design loads come from the route's own zone sizing results (SQL ZoneSizes),
+                // mapped by the SAME core converter every OpenStudio/Grasshopper consumer uses — the
+                // producer does not query the engine artefacts itself. Sizing results are separate from
+                // the annual results, so peakLoad/peakHour keep coming from the weather run only.
+                List<Core.OpenStudio.OpenStudioDiagnostic> designLoadDiagnostics = null;
+                if (conversionResult?.Results != null)
+                {
+                    context.SpaceDesignLoadResults = conversionResult.Results.ToSAM_SpaceDesignLoadResults(
+                        model?.AdjacencyCluster?.GetSpaces(),
+                        out designLoadDiagnostics);
+                }
+
                 // Record what the conversion itself reported, on EVERY run rather than only failures.
                 // The route documents its own approximations (hourly humidity collapsed to a constant
                 // dew point, hourly solar replaced by ASHRAEClearSky, a substituted barometric pressure,
                 // the weather/design-day/ground-temperature basis); a successful document that omitted
                 // them presented the comparison as cleaner than it was. This also normalizes the
                 // producer-generated notes added above, so both arrays are deterministic.
-                Modify.ApplyConversionDiagnostics(context, conversionResult?.Diagnostics);
+                Modify.ApplyConversionDiagnostics(context, Concat(conversionResult?.Diagnostics, designLoadDiagnostics));
 
                 BenchmarkDocument document = model.ToBenchmark(context);
                 return Emit(document, outputPath, success, standardOutput);
@@ -228,6 +240,31 @@ namespace SAM.Analytical.OpenStudio.Benchmark
 
                 default:
                     return DesignDaySource.None;
+            }
+        }
+
+        /// <summary>
+        /// Concatenates two diagnostic sequences, tolerating nulls, so conversion diagnostics and
+        /// result-mapping diagnostics are normalized together in one pass (deduplicated and ordered).
+        /// </summary>
+        private static IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> Concat(
+            IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> first,
+            IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> second)
+        {
+            if (first != null)
+            {
+                foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in first)
+                {
+                    yield return diagnostic;
+                }
+            }
+
+            if (second != null)
+            {
+                foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in second)
+                {
+                    yield return diagnostic;
+                }
             }
         }
 

@@ -17,6 +17,16 @@ namespace SAM.Analytical.OpenStudio
     /// </summary>
     public sealed class OpenStudioSimulationResultSet
     {
+        /// <summary>
+        /// Zone sizing outcomes read from the SQL <c>ZoneSizes</c> table — one entry per zone and load
+        /// type, produced by the DESIGN-DAY sizing periods. Empty when the run performed no sizing (or
+        /// reported none), never null. Keyed by the EnergyPlus ThermalZone name, unlike the annual
+        /// dictionaries above which key on the Ideal Loads system name: the sizing table is written by
+        /// the zone sizing calculation, not by a system output variable. Ordered deterministically by
+        /// <see cref="OpenStudioZoneSizingResult.Key"/>.
+        /// </summary>
+        public IReadOnlyList<OpenStudioZoneSizingResult> ZoneSizing { get; }
+
         /// <summary>Annual heating energy per zone key [kWh].</summary>
         public IReadOnlyDictionary<string, double> AnnualHeatingEnergy { get; }
 
@@ -95,7 +105,18 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>EnergyPlus fatal error count.</summary>
         public int FatalCount { get; }
 
-        /// <summary>Creates an immutable result set. Null dictionaries become empty; null series stay null.</summary>
+        /// <summary>
+        /// Creates an immutable result set with no zone sizing data. Null dictionaries become empty; null
+        /// series stay null.
+        /// </summary>
+        /// <remarks>
+        /// This is the ORIGINAL signature, kept exactly as it was and delegating to the overload that
+        /// takes zone sizing. Adding zone sizing as an optional parameter on the original constructor
+        /// instead would preserve source compatibility but BREAK BINARY compatibility: the 26-argument
+        /// constructor would no longer exist in metadata, so a Grasshopper or third-party assembly
+        /// compiled against it would throw <see cref="System.MissingMethodException"/> at run time. Two
+        /// explicit overloads keep both forms callable.
+        /// </remarks>
         public OpenStudioSimulationResultSet(
             IReadOnlyDictionary<string, double> annualHeatingEnergy,
             IReadOnlyDictionary<string, double> annualCoolingEnergy,
@@ -123,7 +144,71 @@ namespace SAM.Analytical.OpenStudio
             int warningCount,
             int severeCount,
             int fatalCount)
+            : this(
+                annualHeatingEnergy,
+                annualCoolingEnergy,
+                peakHeatingLoad,
+                peakCoolingLoad,
+                peakHeatingHour,
+                peakCoolingHour,
+                peakHeatingLoadTotal,
+                peakHeatingHourTotal,
+                peakCoolingLoadTotal,
+                peakCoolingHourTotal,
+                unmetHeatingHours,
+                unmetCoolingHours,
+                peopleGains,
+                lightingGains,
+                equipmentGains,
+                windowSolarGains,
+                infiltrationGains,
+                ventilationHeatingEnergy,
+                ventilationCoolingEnergy,
+                temperatureSeries,
+                operativeTemperatureSeries,
+                relativeHumiditySeries,
+                runtimeSeconds,
+                warningCount,
+                severeCount,
+                fatalCount,
+                null)
         {
+        }
+
+        /// <summary>
+        /// Creates an immutable result set including zone sizing results. Null dictionaries become empty;
+        /// null series stay null; null zone sizing becomes an empty list.
+        /// </summary>
+        public OpenStudioSimulationResultSet(
+            IReadOnlyDictionary<string, double> annualHeatingEnergy,
+            IReadOnlyDictionary<string, double> annualCoolingEnergy,
+            IReadOnlyDictionary<string, double> peakHeatingLoad,
+            IReadOnlyDictionary<string, double> peakCoolingLoad,
+            IReadOnlyDictionary<string, int> peakHeatingHour,
+            IReadOnlyDictionary<string, int> peakCoolingHour,
+            double peakHeatingLoadTotal,
+            int peakHeatingHourTotal,
+            double peakCoolingLoadTotal,
+            int peakCoolingHourTotal,
+            IReadOnlyDictionary<string, double> unmetHeatingHours,
+            IReadOnlyDictionary<string, double> unmetCoolingHours,
+            IReadOnlyDictionary<string, double> peopleGains,
+            IReadOnlyDictionary<string, double> lightingGains,
+            IReadOnlyDictionary<string, double> equipmentGains,
+            IReadOnlyDictionary<string, double> windowSolarGains,
+            IReadOnlyDictionary<string, double> infiltrationGains,
+            IReadOnlyDictionary<string, double> ventilationHeatingEnergy,
+            IReadOnlyDictionary<string, double> ventilationCoolingEnergy,
+            IReadOnlyDictionary<string, double[]> temperatureSeries,
+            IReadOnlyDictionary<string, double[]> operativeTemperatureSeries,
+            IReadOnlyDictionary<string, double[]> relativeHumiditySeries,
+            double runtimeSeconds,
+            int warningCount,
+            int severeCount,
+            int fatalCount,
+            IReadOnlyList<OpenStudioZoneSizingResult> zoneSizing)
+        {
+            ZoneSizing = Copy(zoneSizing);
             AnnualHeatingEnergy = Copy(annualHeatingEnergy);
             AnnualCoolingEnergy = Copy(annualCoolingEnergy);
             PeakHeatingLoad = Copy(peakHeatingLoad);
@@ -162,6 +247,36 @@ namespace SAM.Analytical.OpenStudio
         public double TotalAnnualCooling
         {
             get { return Sum(AnnualCoolingEnergy); }
+        }
+
+        /// <summary>
+        /// Defensive copy in a TOTAL, input-order-independent order, by
+        /// <see cref="OpenStudioZoneSizingResult.SortSignature"/>. Null entries are dropped.
+        /// </summary>
+        /// <remarks>
+        /// The ordering is load-bearing, not decoration. Two rows sharing a zone and load type have the
+        /// same <see cref="OpenStudioZoneSizingResult.Key"/>, and a caller that supplies no source index
+        /// leaves them sharing that too; any comparison that reported them equal would leave their order
+        /// to <see cref="List{T}.Sort(System.Comparison{T})"/>, which is NOT stable, so the row a consumer
+        /// treats as "first" would flip with the input order. The signature therefore also spans the
+        /// payload: entries compare equal only when genuinely indistinguishable.
+        /// </remarks>
+        private static List<OpenStudioZoneSizingResult> Copy(IReadOnlyList<OpenStudioZoneSizingResult> source)
+        {
+            List<OpenStudioZoneSizingResult> result = new List<OpenStudioZoneSizingResult>();
+            if (source != null)
+            {
+                foreach (OpenStudioZoneSizingResult zoneSizingResult in source)
+                {
+                    if (zoneSizingResult != null)
+                    {
+                        result.Add(zoneSizingResult);
+                    }
+                }
+            }
+
+            result.Sort((left, right) => string.CompareOrdinal(left.SortSignature, right.SortSignature));
+            return result;
         }
 
         private static Dictionary<string, double> Copy(IReadOnlyDictionary<string, double> source)
