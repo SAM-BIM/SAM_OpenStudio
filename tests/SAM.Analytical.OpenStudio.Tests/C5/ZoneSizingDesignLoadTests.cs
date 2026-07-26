@@ -19,9 +19,9 @@ namespace SAM.Analytical.OpenStudio.Tests
     [TestFixture]
     public class ZoneSizingDesignLoadTests
     {
-        private static OpenStudioZoneSizingResult Row(string zoneName, string loadType, double? userDesignLoad, double? calculatedDesignLoad = null, string designDayName = "WINTER_DD", string peakTime = "3/2 08:00:00", double? peakTemperature = -3.2)
+        private static OpenStudioZoneSizingResult Row(string zoneName, string loadType, double? userDesignLoad, double? calculatedDesignLoad = null, string designDayName = "WINTER_DD", string peakTime = "3/2 08:00:00", double? peakTemperature = -3.2, long sourceIndex = 0)
         {
-            return new OpenStudioZoneSizingResult(zoneName, loadType, calculatedDesignLoad ?? userDesignLoad, userDesignLoad, 0.04, 0.05, designDayName, peakTime, peakTemperature, 0.00243652);
+            return new OpenStudioZoneSizingResult(zoneName, loadType, calculatedDesignLoad ?? userDesignLoad, userDesignLoad, 0.04, 0.05, designDayName, peakTime, peakTemperature, 0.00243652, sourceIndex);
         }
 
         private static OpenStudioSimulationResultSet ResultSet(params OpenStudioZoneSizingResult[] rows)
@@ -172,15 +172,47 @@ namespace SAM.Analytical.OpenStudio.Tests
             // Deterministic: the result set orders rows ordinally by ZoneName|LoadType, so "first" is
             // stable whatever order the SQL reader returned them in.
             OpenStudioSimulationResultSet resultSet = ResultSet(
-                Row(zoneName, "Heating", 1400.0),
-                Row(zoneName, "Heating", 2800.0));
+                Row(zoneName, "Heating", 1400.0, sourceIndex: 1),
+                Row(zoneName, "Heating", 2800.0, sourceIndex: 2));
 
             List<SpaceSimulationResult> results = resultSet.ToSAM_SpaceDesignLoadResults(spaces, out List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics);
 
             Assert.That(results.Count, Is.EqualTo(1), "One design load per zone and load type");
-            Assert.That(DesignLoad(results, LoadType.Heating), Is.EqualTo(1400.0).Within(1e-9), "The first row wins");
+            Assert.That(DesignLoad(results, LoadType.Heating), Is.EqualTo(1400.0).Within(1e-9), "The lowest source index wins");
             Assert.That(diagnostics.Count, Is.EqualTo(1), "The collision is reported rather than silently resolved");
             Assert.That(diagnostics[0].Message, Does.Contain("Duplicate zone sizing row"));
+        }
+
+        [Test]
+        public void DuplicateRows_SurviveInputOrderReversalIdentically()
+        {
+            // The key alone cannot separate two rows sharing a zone and load type, and List.Sort is not a
+            // stable sort, so without the source-index tie-breaker the surviving row would depend on the
+            // order the database happened to return.
+            List<Space> spaces = Spaces();
+            string zoneName = ThermalZoneName(spaces.First());
+
+            OpenStudioZoneSizingResult first = Row(zoneName, "Heating", 1400.0, sourceIndex: 1);
+            OpenStudioZoneSizingResult second = Row(zoneName, "Heating", 2800.0, sourceIndex: 2);
+
+            double? forward = DesignLoad(ResultSet(first, second).ToSAM_SpaceDesignLoadResults(spaces), LoadType.Heating);
+            double? reversed = DesignLoad(ResultSet(second, first).ToSAM_SpaceDesignLoadResults(spaces), LoadType.Heating);
+
+            Assert.That(reversed, Is.EqualTo(forward), "Reversing the row order must not change which design load is emitted");
+            Assert.That(forward, Is.EqualTo(1400.0).Within(1e-9));
+        }
+
+        [Test]
+        public void DuplicateRows_OrderInTheResultSetIsTotal()
+        {
+            OpenStudioZoneSizingResult first = Row("ZONE_A", "Heating", 1.0, sourceIndex: 10);
+            OpenStudioZoneSizingResult second = Row("ZONE_A", "Heating", 2.0, sourceIndex: 20);
+
+            List<long> forward = ResultSet(first, second).ZoneSizing.Select(x => x.SourceIndex).ToList();
+            List<long> reversed = ResultSet(second, first).ZoneSizing.Select(x => x.SourceIndex).ToList();
+
+            Assert.That(forward, Is.EqualTo(new List<long> { 10, 20 }), "Equal keys are ordered by source index");
+            Assert.That(reversed, Is.EqualTo(forward), "…independently of construction order");
         }
 
         [Test]
@@ -191,6 +223,78 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             Assert.That(first.ZoneSizing.Select(x => x.Key).ToList(), Is.EqualTo(second.ZoneSizing.Select(x => x.Key).ToList()), "Construction order must not leak into the result set");
             Assert.That(first.ZoneSizing.Select(x => x.Key).ToList(), Is.EqualTo(new List<string> { "ZONE_A|Cooling", "ZONE_B|Heating" }));
+        }
+
+        /// <summary>
+        /// Minimal on-disk EnergyPlus-shaped SQL with a ZoneSizes table, used to exercise the established
+        /// <see cref="Create.SpaceSimulationResults(string)"/> consumer path (Modify.AddResults and the
+        /// Grasshopper SQL component) offline. No OpenStudio or EnergyPlus involved.
+        /// </summary>
+        private static string WriteSql(bool withUserDesignLoad, double calculatedDesignLoad, double userDesignLoad)
+        {
+            string path = System.IO.Path.Combine(TestContext.CurrentContext.WorkDirectory, "zonesizes_" + System.Guid.NewGuid().ToString("N").Substring(0, 8) + ".sql");
+            using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection(new System.Data.SQLite.SQLiteConnectionStringBuilder { DataSource = path }.ConnectionString))
+            {
+                connection.Open();
+                using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                {
+                    void Exec(string sql)
+                    {
+                        command.CommandText = sql;
+                        command.ExecuteNonQuery();
+                    }
+
+                    Exec("CREATE TABLE Zones (ZoneIndex INTEGER PRIMARY KEY, ZoneName TEXT, FloorArea REAL, Volume REAL)");
+                    Exec("CREATE TABLE Surfaces (SurfaceIndex INTEGER PRIMARY KEY, SurfaceName TEXT, ZoneIndex INTEGER)");
+                    Exec("CREATE TABLE EnvironmentPeriods (EnvironmentPeriodIndex INTEGER PRIMARY KEY, EnvironmentName TEXT, EnvironmentType INTEGER)");
+                    Exec("CREATE TABLE Time (TimeIndex INTEGER PRIMARY KEY, Year INTEGER, Month INTEGER, Day INTEGER, Hour INTEGER, Minute INTEGER, Dst INTEGER, EnvironmentPeriodIndex INTEGER)");
+                    Exec("CREATE TABLE ReportDataDictionary (ReportDataDictionaryIndex INTEGER PRIMARY KEY, KeyValue TEXT, Name TEXT, Units TEXT)");
+                    Exec("CREATE TABLE ReportData (ReportDataIndex INTEGER PRIMARY KEY, ReportDataDictionaryIndex INTEGER, TimeIndex INTEGER, Value REAL)");
+                    Exec("CREATE TABLE NominalLighting (ZoneIndex INTEGER, DesignLevel REAL)");
+                    Exec("CREATE TABLE NominalInfiltration (ZoneIndex INTEGER, DesignLevel REAL)");
+                    Exec("CREATE TABLE NominalElectricEquipment (ZoneIndex INTEGER, DesignLevel REAL)");
+                    Exec(withUserDesignLoad
+                        ? "CREATE TABLE ZoneSizes (ZoneName TEXT, LoadType TEXT, CalcDesLoad REAL, UserDesLoad REAL, DesDayName TEXT, PeakHrMin TEXT, PeakTemp REAL, PeakHumRat REAL)"
+                        : "CREATE TABLE ZoneSizes (ZoneName TEXT, LoadType TEXT, CalcDesLoad REAL, DesDayName TEXT, PeakHrMin TEXT, PeakTemp REAL, PeakHumRat REAL)");
+
+                    Exec("INSERT INTO Zones VALUES (1, 'ZONE_ONE', 10.0, 30.0)");
+                    Exec("INSERT INTO EnvironmentPeriods VALUES (1, 'WINTER_DD', 1)");
+                    Exec(withUserDesignLoad
+                        ? string.Format(System.Globalization.CultureInfo.InvariantCulture, "INSERT INTO ZoneSizes VALUES ('ZONE_ONE', 'Heating', {0}, {1}, 'WINTER_DD', ' 1/21 10:00', -10.0, 0.001)", calculatedDesignLoad, userDesignLoad)
+                        : string.Format(System.Globalization.CultureInfo.InvariantCulture, "INSERT INTO ZoneSizes VALUES ('ZONE_ONE', 'Heating', {0}, 'WINTER_DD', ' 1/21 10:00', -10.0, 0.001)", calculatedDesignLoad));
+                }
+            }
+
+            return path;
+        }
+
+        [Test]
+        public void EstablishedSqlConsumerPath_PrefersUserDesLoad()
+        {
+            // ONE design-load definition across consumers: Create.SpaceSimulationResults feeds
+            // Modify.AddResults and the Grasshopper SQL component, so it must emit the same value the
+            // benchmark path does. Otherwise a sizing factor makes the same run report two design loads.
+            string path = WriteSql(withUserDesignLoad: true, calculatedDesignLoad: 1127.86, userDesignLoad: 1409.83);
+
+            List<SpaceSimulationResult> results = Create.SpaceSimulationResults(path);
+
+            SpaceSimulationResult result = results.Single(x => x.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double _));
+            result.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double designLoad);
+            Assert.That(designLoad, Is.EqualTo(1409.83).Within(1e-6), "UserDesLoad is preferred, matching Convert.ToSAM_SpaceDesignLoadResults");
+        }
+
+        [Test]
+        public void EstablishedSqlConsumerPath_FallsBackWhenUserDesLoadColumnIsAbsent()
+        {
+            // Older/synthetic ZoneSizes tables predate the column; naming a missing column in the SELECT
+            // would fail the query and lose every design load, so the reader falls back rather than break.
+            string path = WriteSql(withUserDesignLoad: false, calculatedDesignLoad: 1127.86, userDesignLoad: 0);
+
+            List<SpaceSimulationResult> results = Create.SpaceSimulationResults(path);
+
+            SpaceSimulationResult result = results.Single(x => x.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double _));
+            result.TryGetValue(Analytical.SpaceSimulationResultParameter.DesignLoad, out double designLoad);
+            Assert.That(designLoad, Is.EqualTo(1127.86).Within(1e-6), "CalcDesLoad remains the compatibility fallback");
         }
 
         [Test]

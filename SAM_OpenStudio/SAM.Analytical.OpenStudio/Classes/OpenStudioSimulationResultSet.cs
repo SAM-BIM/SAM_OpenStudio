@@ -177,9 +177,18 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
-        /// Defensive copy, ordered by <see cref="OpenStudioZoneSizingResult.Key"/> so the result set is
-        /// deterministic whatever order the SQL reader produced. Null entries are dropped.
+        /// Defensive copy in a TOTAL, input-order-independent order: by
+        /// <see cref="OpenStudioZoneSizingResult.Key"/>, then by
+        /// <see cref="OpenStudioZoneSizingResult.SourceIndex"/>. Null entries are dropped.
         /// </summary>
+        /// <remarks>
+        /// The tie-breaker is load-bearing, not decoration. Two rows sharing a zone and load type have the
+        /// same key, so ordering on the key alone would leave their relative order to
+        /// <see cref="List{T}.Sort(System.Comparison{T})"/>, which is NOT stable — the row a consumer then
+        /// treats as "first" would depend on the order the database returned. Ordering also by the source
+        /// index (the SQL <c>ZoneSizesIndex</c>) makes the sequence reproducible for identical data
+        /// whatever order it arrived in.
+        /// </remarks>
         private static List<OpenStudioZoneSizingResult> Copy(IReadOnlyList<OpenStudioZoneSizingResult> source)
         {
             List<OpenStudioZoneSizingResult> result = new List<OpenStudioZoneSizingResult>();
@@ -194,7 +203,12 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
-            result.Sort((left, right) => string.CompareOrdinal(left.Key, right.Key));
+            result.Sort((left, right) =>
+            {
+                int byKey = string.CompareOrdinal(left.Key, right.Key);
+                return byKey != 0 ? byKey : left.SourceIndex.CompareTo(right.SourceIndex);
+            });
+
             return result;
         }
 

@@ -1176,7 +1176,10 @@ namespace SAM.Analytical.OpenStudio
 
                     using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
                     {
-                        command.CommandText = "SELECT ZoneName, LoadType, CalcDesLoad, UserDesLoad, CalcDesFlow, UserDesFlow, DesDayName, PeakHrMin, PeakTemp, PeakHumRat FROM ZoneSizes";
+                        // ZoneSizesIndex (the table's primary key) is selected and ordered on so the read
+                        // order is defined by the database rather than left to query-plan chance, and so a
+                        // duplicate (ZoneName, LoadType) pair has a reproducible "first" row.
+                        command.CommandText = "SELECT ZoneName, LoadType, CalcDesLoad, UserDesLoad, CalcDesFlow, UserDesFlow, DesDayName, PeakHrMin, PeakTemp, PeakHumRat, ZoneSizesIndex FROM ZoneSizes ORDER BY ZoneName, LoadType, ZoneSizesIndex";
                         using (System.Data.SQLite.SQLiteDataReader reader = command.ExecuteReader())
                         {
                             while (reader.Read())
@@ -1191,7 +1194,8 @@ namespace SAM.Analytical.OpenStudio
                                     ReadString(reader, 6),
                                     ReadString(reader, 7),
                                     ReadDouble(reader, 8),
-                                    ReadDouble(reader, 9)));
+                                    ReadDouble(reader, 9),
+                                    ReadInt64(reader, 10)));
                             }
                         }
                     }
@@ -1208,6 +1212,11 @@ namespace SAM.Analytical.OpenStudio
         private static string ReadString(System.Data.SQLite.SQLiteDataReader reader, int index)
         {
             return reader.IsDBNull(index) ? null : reader.GetValue(index)?.ToString();
+        }
+
+        private static long ReadInt64(System.Data.SQLite.SQLiteDataReader reader, int index)
+        {
+            return reader.IsDBNull(index) ? 0L : System.Convert.ToInt64(reader.GetValue(index), System.Globalization.CultureInfo.InvariantCulture);
         }
 
         private static double? ReadDouble(System.Data.SQLite.SQLiteDataReader reader, int index)

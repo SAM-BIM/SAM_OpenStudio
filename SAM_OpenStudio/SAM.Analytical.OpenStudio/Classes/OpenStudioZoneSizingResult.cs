@@ -35,6 +35,12 @@ namespace SAM.Analytical.OpenStudio
         /// <param name="peakTime">EnergyPlus peak time stamp as reported (<c>M/D HH:MM:SS</c>).</param>
         /// <param name="peakTemperature">Outdoor dry-bulb temperature at the peak [C].</param>
         /// <param name="peakHumidityRatio">Humidity ratio at the peak [kgWater/kgDryAir].</param>
+        /// <param name="sourceIndex">
+        /// SQL <c>ZoneSizes.ZoneSizesIndex</c> (the table's primary key), or any caller-assigned read
+        /// order. It exists solely to make ordering TOTAL: <see cref="Key"/> alone cannot separate two
+        /// rows that share a zone and load type, so without this the surviving row of a duplicate pair
+        /// would depend on the order the database happened to return.
+        /// </param>
         public OpenStudioZoneSizingResult(
             string zoneName,
             string loadType,
@@ -45,8 +51,10 @@ namespace SAM.Analytical.OpenStudio
             string designDayName,
             string peakTime,
             double? peakTemperature,
-            double? peakHumidityRatio)
+            double? peakHumidityRatio,
+            long sourceIndex = 0)
         {
+            SourceIndex = sourceIndex;
             ZoneName = zoneName;
             LoadType = loadType;
             CalculatedDesignLoad = calculatedDesignLoad;
@@ -105,7 +113,17 @@ namespace SAM.Analytical.OpenStudio
             }
         }
 
-        /// <summary>A stable ordinal sort/dedup key: <c>ZoneName|LoadType</c>.</summary>
+        /// <summary>
+        /// The row's source order (SQL <c>ZoneSizesIndex</c> where available). Used only as the ordering
+        /// tie-breaker for rows sharing a <see cref="Key"/>; it is not part of the result's identity.
+        /// </summary>
+        public long SourceIndex { get; }
+
+        /// <summary>
+        /// The ordinal grouping key <c>ZoneName|LoadType</c>. NOT unique on its own: EnergyPlus writes one
+        /// row per zone and load type, but a duplicate pair is possible, which is why ordering also uses
+        /// <see cref="SourceIndex"/> and duplicates are reported rather than silently resolved.
+        /// </summary>
         public string Key => (ZoneName ?? string.Empty) + "|" + (LoadType ?? string.Empty);
     }
 }
