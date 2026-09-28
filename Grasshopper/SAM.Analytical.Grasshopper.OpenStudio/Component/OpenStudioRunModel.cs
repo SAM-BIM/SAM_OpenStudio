@@ -26,7 +26,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// Provides an Icon for the component.
         /// </summary>
-        protected override System.Drawing.Bitmap Icon => Properties.Resources.SAM_OpenStudio;
+        protected override System.Drawing.Bitmap Icon => Properties.Resources.SAM_GH_ModelRun;
 
         /// <summary>
         /// Runs an existing OpenStudio model (OSM or OSW) through the OpenStudio CLI and returns
