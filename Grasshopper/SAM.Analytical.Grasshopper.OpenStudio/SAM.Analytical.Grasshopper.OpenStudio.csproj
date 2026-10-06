@@ -97,4 +97,35 @@
   <Target Name="PostBuild" BeforeTargets="PostBuildEvent">
     <Exec Command="copy &quot;$(TargetPath)&quot; &quot;$(TargetDir)\$(ProjectName).gha&quot;&#xD;&#xA;&#xD;&#xA;set SAM_DIR=$(APPDATA)\SAM\&#xD;&#xA;if not exist &quot;%25SAM_DIR%25&quot; mkdir &quot;%25SAM_DIR%25&quot;&#xD;&#xA;&#xD;&#xA;copy &quot;$(TargetDir)*.dll&quot; &quot;%25SAM_DIR%25&quot;&#xD;&#xA;copy &quot;%25SAM_DIR%25\$(ProjectName).dll&quot; &quot;%25SAM_DIR%25\$(ProjectName).gha&quot;&#xD;&#xA;&#xD;&#xA;::erase &quot;%25SAM_DIR%25$(ProjectName).dll&quot;&#xD;&#xA;::erase &quot;$(TargetPath)" />
   </Target>
+  <!--
+    SAM-OS-RUN-001 / results extraction.
+
+    The PostBuild step above deploys the plugin with a flat "copy $(TargetDir)*.dll", which
+    reaches the managed System.Data.SQLite.dll but cannot reach the native interop, because
+    that asset lives in a runtimes\win-x64\native subdirectory that the flat copy never walks.
+    Rhino loads this .gha from %APPDATA%\SAM, so a missing interop there surfaces as
+    DllNotFoundException('SQLite.Interop.dll') and every Ideal Loads extraction fails.
+
+    Resolved from the package assets rather than from $(TargetDir) so this does not depend on
+    SAM.Analytical.OpenStudio's copy target having run first, and so no path or package
+    version is hardcoded. See that project for why no RuntimeIdentifier and no
+    CopyLocalLockFileAssemblies are used.
+  -->
+  <Target Name="SAMDeploySQLiteAssets" AfterTargets="PostBuild" DependsOnTargets="ResolvePackageAssets">
+    <PropertyGroup>
+      <_SAMDeployDir>$(APPDATA)\SAM\</_SAMDeployDir>
+      <_SAMNativeSubDir>runtimes\win-x64\native\</_SAMNativeSubDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_SAMSQLiteManaged Include="@(RuntimeCopyLocalItems)" Condition="'%(RuntimeCopyLocalItems.NuGetPackageId)' == 'Stub.System.Data.SQLite.Core.NetStandard'" />
+      <_SAMSQLiteNative Include="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'Stub.System.Data.SQLite.Core.NetStandard' AND '%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'win-x64'" />
+    </ItemGroup>
+    <Error Condition="'@(_SAMSQLiteManaged)' == ''" Text="System.Data.SQLite managed assembly was not resolved from Stub.System.Data.SQLite.Core.NetStandard; the deployed .gha could not read EnergyPlus results." />
+    <Error Condition="'@(_SAMSQLiteNative)' == ''" Text="win-x64 SQLite.Interop.dll was not resolved from Stub.System.Data.SQLite.Core.NetStandard; the deployed .gha could not read EnergyPlus results." />
+    <MakeDir Directories="$(TargetDir)$(_SAMNativeSubDir);$(_SAMDeployDir)$(_SAMNativeSubDir)" />
+    <Copy SourceFiles="@(_SAMSQLiteManaged)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_SAMSQLiteManaged)" DestinationFolder="$(_SAMDeployDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_SAMSQLiteNative)" DestinationFolder="$(TargetDir)$(_SAMNativeSubDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_SAMSQLiteNative)" DestinationFolder="$(_SAMDeployDir)$(_SAMNativeSubDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

@@ -1,4 +1,7 @@
-﻿using System.Collections.Generic;
+﻿// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
+
+using System.Collections.Generic;
 using System.Data;
 
 namespace SAM.Analytical.OpenStudio
@@ -57,7 +60,12 @@ namespace SAM.Analytical.OpenStudio
                 }
 
                 SurfaceSimulationResult surfaceSimulationResult = new SurfaceSimulationResult(surfaceName, source, surfaceIndex.ToString());
-                
+
+                // The engine-surface identity is kept as a parameter as well: Modify.AddResults
+                // replaces Reference with the matched SAM Panel Guid so results map back to the
+                // model, and the SQL SurfaceIndex must survive that.
+                surfaceSimulationResult.SetValue(SurfaceSimulationResultParameter.SurfaceIndex, surfaceIndex);
+
                 if(index_Area != -1 && Core.Query.TryConvert(values[index_Area], out double area))
                 {
                     surfaceSimulationResult.SetValue(Analytical.SurfaceSimulationResultParameter.Area, area);

@@ -1,11 +1,15 @@
-﻿using Grasshopper.Kernel;
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
+
+using Grasshopper.Kernel;
 using SAM.Core.Grasshopper;
 using System;
 using System.Collections.Generic;
+using System.Windows.Forms;
 
 namespace SAM.Analytical.Grasshopper.OpenStudio
 {
-    public class OpenStudioCreateDesignDaysBySQL : GH_SAMComponent
+    public class OpenStudioCreateDesignDaysBySQL : GH_SAMVariableOutputParameterComponent
     {
         /// <summary>
         /// Gets the unique ID for this component. Do not change this ID after release.
@@ -15,7 +19,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// The latest version of this component
         /// </summary>
-        public override string LatestComponentVersion => "1.0.0";
+        public override string LatestComponentVersion => "1.0.3";
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -32,20 +36,43 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         {
         }
 
+        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
+        {
+            base.AppendAdditionalMenuItems(menu);
+
+            Menu_AppendSeparator(menu);
+            Menu_AppendItem(menu, "Go to Directory", Menu_GoToDirectory, Properties.Resources.SAM_Small, true, false);
+        }
+
+        void Menu_GoToDirectory(object sender, EventArgs e)
+        {
+            MenuHelper.GoToFileDirectory(MenuHelper.GetVolatileString(this, "_sQLPath"));
+        }
+
         /// <summary>
         /// Registers all the input parameters for this component.
         /// </summary>
-        protected override void RegisterInputParams(GH_InputParamManager inputParamManager)
+        protected override GH_SAMParam[] Inputs
         {
-            inputParamManager.AddTextParameter("_sQLPath", "_sQLPath", "SQL File Path", GH_ParamAccess.item);
+            get
+            {
+                List<GH_SAMParam> result = new List<GH_SAMParam>();
+                result.Add(new GH_SAMParam(new global::Grasshopper.Kernel.Parameters.Param_String() { Name = "_sQLPath", NickName = "_sQLPath", Description = "SQL File Path", Access = GH_ParamAccess.item }, ParamVisibility.Binding));
+                return result.ToArray();
+            }
         }
 
         /// <summary>
         /// Registers all the output parameters for this component.
         /// </summary>
-        protected override void RegisterOutputParams(GH_OutputParamManager outputParamManager)
+        protected override GH_SAMParam[] Outputs
         {
-            outputParamManager.AddParameter(new GooAnalyticalObjectParam(), "designDays", "designDays", "SAM Analytical DesignDays", GH_ParamAccess.list);
+            get
+            {
+                List<GH_SAMParam> result = new List<GH_SAMParam>();
+                result.Add(new GH_SAMParam(new GooAnalyticalObjectParam() { Name = "designDays", NickName = "designDays", Description = "SAM Analytical DesignDays", Access = GH_ParamAccess.list }, ParamVisibility.Binding));
+                return result.ToArray();
+            }
         }
 
         /// <summary>
@@ -55,15 +82,38 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         protected override void SolveInstance(IGH_DataAccess dataAccess)
         {
             string path = null;
-            if (!dataAccess.GetData(0, ref path) || path == null)
+            int index = Params.IndexOfInputParam("_sQLPath");
+            if (index == -1 || !dataAccess.GetData(index, ref path) || path == null)
             {
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Invalid data");
                 return;
             }
 
-            List<DesignDay> result = Analytical.OpenStudio.Create.DesignDays(path);
+            List<DesignDay> result = null;
+            List<string> diagnostics = null;
+            try
+            {
+                result = Analytical.OpenStudio.Create.DesignDays(path, out diagnostics);
+            }
+            catch (Exception exception)
+            {
+                // Malformed SQL content is a structured diagnostic, never a solution exception.
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, string.Format("Design days could not be read: {0}", exception.Message));
+            }
 
-            dataAccess.SetDataList(0, result);
+            if (diagnostics != null)
+            {
+                foreach (string diagnostic in diagnostics)
+                {
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, diagnostic);
+                }
+            }
+
+            index = Params.IndexOfOutputParam("designDays");
+            if (index != -1)
+            {
+                dataAccess.SetDataList(index, result);
+            }
         }
     }
 }

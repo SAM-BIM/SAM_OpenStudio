@@ -1,0 +1,912 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
+
+using NUnit.Framework;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace SAM.Analytical.OpenStudio.Tests
+{
+    /// <summary>
+    /// R4: shading, unsupported objects and approximations. Every category the reverse coverage
+    /// manifest declares as Unsupported or Approximated must be able to emit its diagnostic —
+    /// otherwise "nothing is silently dropped" is a claim rather than a property.
+    /// </summary>
+    [TestFixture]
+    public class ImportDiagnosticsTests
+    {
+        /// <summary>
+        /// A minimal model with one space and one outdoor wall, built through the OpenStudio API
+        /// so each test can attach exactly the object under test.
+        /// </summary>
+        private static global::OpenStudio.Model BuildModel(out global::OpenStudio.Space space, out global::OpenStudio.Surface wall)
+        {
+            global::OpenStudio.Model model = new global::OpenStudio.Model();
+
+            space = new global::OpenStudio.Space(model);
+            space.setName("Room");
+
+            global::OpenStudio.ThermalZone thermalZone = new global::OpenStudio.ThermalZone(model);
+            thermalZone.setName("Zone");
+            space.setThermalZone(thermalZone);
+
+            wall = AddSurface(model, space, "Wall", "Outdoors", new[] { new[] { 0.0, 0.0, 0.0 }, new[] { 4.0, 0.0, 0.0 }, new[] { 4.0, 0.0, 2.7 }, new[] { 0.0, 0.0, 2.7 } });
+            return model;
+        }
+
+        private static global::OpenStudio.Surface AddSurface(global::OpenStudio.Model model, global::OpenStudio.Space space, string surfaceType, string boundaryCondition, double[][] vertices)
+        {
+            global::OpenStudio.Surface surface = new global::OpenStudio.Surface(ToVector(vertices), model);
+            surface.setSpace(space);
+            surface.setSurfaceType(surfaceType);
+            surface.setOutsideBoundaryCondition(boundaryCondition);
+            return surface;
+        }
+
+        private static global::OpenStudio.Point3dVector ToVector(double[][] vertices)
+        {
+            global::OpenStudio.Point3dVector result = new global::OpenStudio.Point3dVector();
+            foreach (double[] vertex in vertices)
+            {
+                result.Add(new global::OpenStudio.Point3d(vertex[0], vertex[1], vertex[2]));
+            }
+
+            return result;
+        }
+
+        private static List<Core.OpenStudio.OpenStudioDiagnostic> Import(global::OpenStudio.Model model, out OpenStudioImportResult result)
+        {
+            result = model.ToSAM();
+            foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
+            {
+                TestContext.Out.WriteLine(diagnostic.ToString());
+            }
+
+            return new List<Core.OpenStudio.OpenStudioDiagnostic>(result.Diagnostics);
+        }
+
+        private static void AssertHasCode(IEnumerable<Core.OpenStudio.OpenStudioDiagnostic> diagnostics, string code)
+        {
+            Assert.That(diagnostics.Any(x => x.Code == code), Is.True, $"Expected a {code} diagnostic");
+        }
+
+        [Test]
+        public void SiteShading_ImportsAsShadePanelsCarryingTheirGroup()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.ShadingSurfaceGroup shadingSurfaceGroup = new global::OpenStudio.ShadingSurfaceGroup(model);
+                shadingSurfaceGroup.setName("Site Shades");
+                shadingSurfaceGroup.setShadingSurfaceType("Site");
+
+                global::OpenStudio.ShadingSurface shadingSurface = new global::OpenStudio.ShadingSurface(ToVector(new[] { new[] { 0.0, -1.0, 3.0 }, new[] { 4.0, -1.0, 3.0 }, new[] { 4.0, -2.0, 3.0 }, new[] { 0.0, -2.0, 3.0 } }), model);
+                shadingSurface.setName("Canopy");
+                shadingSurface.setShadingSurfaceGroup(shadingSurfaceGroup);
+
+                OpenStudioImportResult result;
+                Import(model, out result);
+
+                List<Panel> shades = result.AnalyticalModel.AdjacencyCluster.GetPanels().FindAll(x => x.PanelType == PanelType.Shade);
+                Assert.That(shades.Count, Is.EqualTo(1));
+
+                string groupType;
+                Assert.That(shades[0].TryGetValue(OpenStudioSourceParameter.ShadingGroupType, out groupType), Is.True);
+                Assert.That(groupType, Is.EqualTo("Site"));
+
+                string groupName;
+                Assert.That(shades[0].TryGetValue(OpenStudioSourceParameter.ShadingGroupName, out groupName), Is.True);
+                Assert.That(groupName, Is.EqualTo("Site Shades"));
+
+                Assert.That(shades[0].GetFace3D().GetArea(), Is.EqualTo(4.0).Within(0.01), "The shade must keep its real geometry");
+            }
+        }
+
+        [Test]
+        public void SpaceShading_IsTransformedByTheOwningSpace()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                // A space that is NOT at the origin: the shade's coordinates are relative to its
+                // group, which is relative to the space, so both transformations must compose.
+                space.setXOrigin(100);
+
+                global::OpenStudio.ShadingSurfaceGroup shadingSurfaceGroup = new global::OpenStudio.ShadingSurfaceGroup(model);
+                shadingSurfaceGroup.setName("Space Shades");
+                shadingSurfaceGroup.setSpace(space);
+
+                global::OpenStudio.ShadingSurface shadingSurface = new global::OpenStudio.ShadingSurface(ToVector(new[] { new[] { 0.0, -1.0, 3.0 }, new[] { 1.0, -1.0, 3.0 }, new[] { 1.0, -2.0, 3.0 }, new[] { 0.0, -2.0, 3.0 } }), model);
+                shadingSurface.setShadingSurfaceGroup(shadingSurfaceGroup);
+
+                OpenStudioImportResult result;
+                Import(model, out result);
+
+                List<Panel> shades = result.AnalyticalModel.AdjacencyCluster.GetPanels().FindAll(x => x.PanelType == PanelType.Shade);
+                Assert.That(shades.Count, Is.EqualTo(1));
+
+                Geometry.Spatial.Point3D point3D = shades[0].GetFace3D().GetInternalPoint3D(Core.Tolerance.Distance);
+                Assert.That(point3D.X, Is.GreaterThan(99), "The space's x-origin of 100 m must have been applied to the shade");
+            }
+        }
+
+        [Test]
+        public void SpaceGeometry_IsTransformedByTheSpaceOrigin()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                space.setXOrigin(50);
+                space.setZOrigin(10);
+
+                OpenStudioImportResult result;
+                Import(model, out result);
+
+                Panel panel = result.AnalyticalModel.AdjacencyCluster.GetPanels()[0];
+                Geometry.Spatial.Point3D point3D = panel.GetFace3D().GetInternalPoint3D(Core.Tolerance.Distance);
+
+                Assert.That(point3D.X, Is.GreaterThan(49), "Surface vertices are space-relative and must be transformed on import");
+                Assert.That(point3D.Z, Is.GreaterThan(9));
+            }
+        }
+
+        [Test]
+        public void UnsupportedBoundaryCondition_IsReported()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.SurfacePropertyOtherSideCoefficients otherSideCoefficients = new global::OpenStudio.SurfacePropertyOtherSideCoefficients(model);
+                wall.setSurfacePropertyOtherSideCoefficients(otherSideCoefficients);
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                AssertHasCode(diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.BoundaryConditionUnsupported);
+
+                Panel panel = result.AnalyticalModel.AdjacencyCluster.GetPanels()[0];
+                bool adiabatic;
+                Assert.That(panel.TryGetValue(PanelParameter.Adiabatic, out adiabatic) && adiabatic, Is.True, "The documented fallback for an unrepresentable boundary is adiabatic");
+            }
+        }
+
+        [Test]
+        public void UnpairedInterzoneSurface_IsReportedAndMarkedAdiabatic()
+        {
+            // OpenStudio refuses to set a "Surface" boundary in memory without an adjacent
+            // surface, so this state only reaches the importer through a file - which is exactly
+            // how a third-party OSM produces it. The model is therefore saved, edited as text and
+            // re-imported.
+            string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SAM_OpenStudio_Adj_" + System.Guid.NewGuid().ToString("N").Substring(0, 8));
+            System.IO.Directory.CreateDirectory(directory);
+
+            try
+            {
+                string path = System.IO.Path.Combine(directory, "dangling.osm");
+
+                using (OpenStudioConversionResult conversionResult = AnalyticalModelFixtures.TwoAdjacentBoxes().ToOpenStudio())
+                {
+                    Assert.That(conversionResult.Model.save(global::OpenStudio.OpenStudioUtilitiesCore.toPath(path), true), Is.True);
+                }
+
+                // Break EVERY interzone adjacency reference: blank each "Outside Boundary
+                // Condition Object" field that follows a "Surface," boundary line. Editing all of
+                // them (not just the first) makes the outcome independent of the order OpenStudio
+                // happens to serialise the surfaces in.
+                string[] lines = System.IO.File.ReadAllLines(path);
+                int edited = 0;
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    if (lines[i].Contains("!- Outside Boundary Condition Object")
+                        && lines[i - 1].Trim().StartsWith("Surface,", System.StringComparison.Ordinal)
+                        && lines[i - 1].Contains("!- Outside Boundary Condition"))
+                    {
+                        lines[i] = "  ,                                       !- Outside Boundary Condition Object";
+                        edited++;
+                    }
+                }
+
+                Assert.That(edited, Is.GreaterThan(0), "The test fixture must contain at least one resolvable interzone adjacency to break");
+                System.IO.File.WriteAllLines(path, lines);
+
+                // Disable the geometric fallback so the outcome is unambiguous: with no handle and
+                // no geometric matching, an interzone surface can only be demoted to adiabatic.
+                OpenStudioImportResult result = Convert.ToSAM(path, new Core.OpenStudio.OpenStudioImportOptions { AllowGeometricAdjacencyFallback = false });
+                foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
+                {
+                    TestContext.Out.WriteLine(diagnostic.ToString());
+                }
+
+                Assert.That(result.Successful, Is.True, "A dangling adjacency degrades the topology, not the import");
+
+                // The shared wall's surfaces, now handle-less "Surface" boundaries with the
+                // geometric fallback off, must be reported as unpaired and marked adiabatic.
+                Assert.That(
+                    result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyPairingFailed),
+                    Is.True,
+                    "An interzone surface whose partner handle does not resolve must be reported");
+            }
+            finally
+            {
+                try
+                {
+                    System.IO.Directory.Delete(directory, true);
+                }
+                catch (System.Exception)
+                {
+                    // a locked temp directory must not fail an otherwise passing test
+                }
+            }
+        }
+
+        /// <summary>
+        /// Produces an OSM in a fresh temp directory whose interzone adjacency handles have all
+        /// been blanked — the handle-less "Surface" boundary state a third-party OSM reaches the
+        /// importer in. The caller owns the returned directory and must delete it.
+        /// </summary>
+        private static string CreateDanglingInterzoneOsm(out string directory)
+        {
+            directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SAM_OpenStudio_Adj_" + System.Guid.NewGuid().ToString("N").Substring(0, 8));
+            System.IO.Directory.CreateDirectory(directory);
+            string path = System.IO.Path.Combine(directory, "dangling.osm");
+
+            using (OpenStudioConversionResult conversionResult = AnalyticalModelFixtures.TwoAdjacentBoxes().ToOpenStudio())
+            {
+                Assert.That(conversionResult.Model.save(global::OpenStudio.OpenStudioUtilitiesCore.toPath(path), true), Is.True);
+            }
+
+            string[] lines = System.IO.File.ReadAllLines(path);
+            int edited = 0;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                if (lines[i].Contains("!- Outside Boundary Condition Object")
+                    && lines[i - 1].Trim().StartsWith("Surface,", System.StringComparison.Ordinal)
+                    && lines[i - 1].Contains("!- Outside Boundary Condition"))
+                {
+                    lines[i] = "  ,                                       !- Outside Boundary Condition Object";
+                    edited++;
+                }
+            }
+
+            Assert.That(edited, Is.GreaterThan(0), "The fixture must contain at least one resolvable interzone adjacency to break");
+            System.IO.File.WriteAllLines(path, lines);
+            return path;
+        }
+
+        private static void TryDeleteDirectory(string directory)
+        {
+            try
+            {
+                System.IO.Directory.Delete(directory, true);
+            }
+            catch (System.Exception)
+            {
+                // a locked temp directory must not fail an otherwise passing test
+            }
+        }
+
+        [Test]
+        public void GeometricAdjacencyFallback_PairsDanglingInterzoneSurfaces_IntoOneSharedPanel()
+        {
+            string directory;
+            string path = CreateDanglingInterzoneOsm(out directory);
+            try
+            {
+                // Fallback ON (the default): the two shared-wall surfaces are coincident opposites,
+                // so they must collapse into ONE SAM panel — 11, not 12 — and the pairing reported.
+                // Updating only the name ledger (the original bug) left the superseded panel in the
+                // captured space→panel lists, so the cluster kept two coincident panels.
+                OpenStudioImportResult result = Convert.ToSAM(path, new Core.OpenStudio.OpenStudioImportOptions { AllowGeometricAdjacencyFallback = true });
+                foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
+                {
+                    TestContext.Out.WriteLine(diagnostic.ToString());
+                }
+
+                Assert.That(result.Successful, Is.True);
+                Assert.That(result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyGeometricFallback), Is.True, "The geometric pairing must be reported");
+
+                AdjacencyCluster adjacencyCluster = result.AnalyticalModel.AdjacencyCluster;
+                Assert.That(adjacencyCluster.GetPanels().Count, Is.EqualTo(11), "The geometrically paired surfaces must collapse to one shared panel, not remain two coincident panels");
+                Assert.That(adjacencyCluster.GetPanels().Count(x => adjacencyCluster.GetSpaces(x)?.Count == 2), Is.EqualTo(1), "Exactly one panel is related to both spaces");
+            }
+            finally
+            {
+                TryDeleteDirectory(directory);
+            }
+        }
+
+        [Test]
+        public void RepeatedDanglingInterzoneImport_DoesNotDereferenceRetainedNativeSurfaces()
+        {
+            // The interzone fallback once retained native SWIG Surface wrappers and dereferenced
+            // them after the model walk; under GC pressure that aborts the process with an
+            // unmanaged AccessViolationException. Importing repeatedly, collecting between runs,
+            // exercises that path hard — it must stay a clean managed import.
+            string directory;
+            string path = CreateDanglingInterzoneOsm(out directory);
+            try
+            {
+                for (int iteration = 0; iteration < 40; iteration++)
+                {
+                    OpenStudioImportResult result = Convert.ToSAM(path, new Core.OpenStudio.OpenStudioImportOptions { AllowGeometricAdjacencyFallback = true });
+                    Assert.That(result.Successful, Is.True, "Import iteration " + iteration + " must not crash or fail");
+                    Assert.That(result.AnalyticalModel.AdjacencyCluster.GetPanels().Count, Is.EqualTo(11), "Every import must produce the stable shared-panel topology");
+
+                    System.GC.Collect();
+                    System.GC.WaitForPendingFinalizers();
+                    System.GC.Collect();
+                }
+            }
+            finally
+            {
+                TryDeleteDirectory(directory);
+            }
+        }
+
+        [Test]
+        public void OperableWindow_IsImportedAsAWindowAndReportedAsAnApproximation()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.SubSurface subSurface = new global::OpenStudio.SubSurface(ToVector(new[] { new[] { 1.0, 0.0, 0.9 }, new[] { 3.0, 0.0, 0.9 }, new[] { 3.0, 0.0, 2.1 }, new[] { 1.0, 0.0, 2.1 } }), model);
+                subSurface.setSurface(wall);
+                subSurface.setSubSurfaceType("OperableWindow");
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                AssertHasCode(diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied);
+
+                Panel panel = result.AnalyticalModel.AdjacencyCluster.GetPanels()[0];
+                Assert.That(panel.Apertures.Count, Is.EqualTo(1));
+                Assert.That(panel.Apertures[0].ApertureType, Is.EqualTo(ApertureType.Window));
+            }
+        }
+
+        [Test]
+        public void GlassDoor_ImportsAsADoor()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.SubSurface subSurface = new global::OpenStudio.SubSurface(ToVector(new[] { new[] { 1.0, 0.0, 0.0 }, new[] { 2.0, 0.0, 0.0 }, new[] { 2.0, 0.0, 2.1 }, new[] { 1.0, 0.0, 2.1 } }), model);
+                subSurface.setSurface(wall);
+                subSurface.setSubSurfaceType("GlassDoor");
+
+                OpenStudioImportResult result;
+                Import(model, out result);
+
+                Panel panel = result.AnalyticalModel.AdjacencyCluster.GetPanels()[0];
+                Assert.That(panel.Apertures[0].ApertureType, Is.EqualTo(ApertureType.Door));
+            }
+        }
+
+        [Test]
+        public void SubSurfaceMultiplier_IsReported()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.SubSurface subSurface = new global::OpenStudio.SubSurface(ToVector(new[] { new[] { 1.0, 0.0, 0.9 }, new[] { 2.0, 0.0, 0.9 }, new[] { 2.0, 0.0, 2.1 }, new[] { 1.0, 0.0, 2.1 } }), model);
+                subSurface.setSurface(wall);
+                subSurface.setSubSurfaceType("FixedWindow");
+                subSurface.setMultiplier(3);
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                Assert.That(diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied && x.Message.Contains("multiplier")), Is.True);
+            }
+        }
+
+        [Test]
+        public void SimpleGlazing_IsImportedAsAnApproximation()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.SimpleGlazing simpleGlazing = new global::OpenStudio.SimpleGlazing(model, 1.8, 0.4);
+                simpleGlazing.setName("Simple Glazing");
+
+                global::OpenStudio.FenestrationMaterialVector materials = new global::OpenStudio.FenestrationMaterialVector();
+                materials.Add(simpleGlazing);
+                global::OpenStudio.Construction construction = new global::OpenStudio.Construction(materials);
+                construction.setName("Simple Window Construction");
+
+                global::OpenStudio.SubSurface subSurface = new global::OpenStudio.SubSurface(ToVector(new[] { new[] { 1.0, 0.0, 0.9 }, new[] { 3.0, 0.0, 0.9 }, new[] { 3.0, 0.0, 2.1 }, new[] { 1.0, 0.0, 2.1 } }), model);
+                subSurface.setSurface(wall);
+                subSurface.setSubSurfaceType("FixedWindow");
+                subSurface.setConstruction(construction);
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                Assert.That(diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied && x.Message.Contains("SimpleGlazing")), Is.True);
+
+                Core.TransparentMaterial transparentMaterial = result.AnalyticalModel.MaterialLibrary.GetMaterials().OfType<Core.TransparentMaterial>().FirstOrDefault();
+                Assert.That(transparentMaterial, Is.Not.Null, "SimpleGlazing must still produce a usable SAM glazing material");
+            }
+        }
+
+        [Test]
+        public void MasslessMaterial_IsImportedPreservingItsResistance()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                const double thermalResistance = 2.5;
+
+                global::OpenStudio.MasslessOpaqueMaterial masslessOpaqueMaterial = new global::OpenStudio.MasslessOpaqueMaterial(model, "MediumSmooth", thermalResistance);
+                masslessOpaqueMaterial.setName("Insulation Board");
+
+                global::OpenStudio.OpaqueMaterialVector materials = new global::OpenStudio.OpaqueMaterialVector();
+                materials.Add(masslessOpaqueMaterial);
+                global::OpenStudio.Construction construction = new global::OpenStudio.Construction(materials);
+                construction.setName("Massless Construction");
+                wall.setConstruction(construction);
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                AssertHasCode(diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied);
+
+                Core.OpaqueMaterial opaqueMaterial = result.AnalyticalModel.MaterialLibrary.GetMaterials().OfType<Core.OpaqueMaterial>().FirstOrDefault(x => x.Name == "Insulation Board");
+                Assert.That(opaqueMaterial, Is.Not.Null);
+
+                Construction importedConstruction = result.AnalyticalModel.AdjacencyCluster.GetConstructions().Find(x => x.Name == "Massless Construction");
+                Assert.That(importedConstruction, Is.Not.Null);
+
+                ConstructionLayer constructionLayer = importedConstruction.ConstructionLayers[0];
+
+                // The whole point of the nominal-thickness reconstruction: R is preserved exactly.
+                Assert.That(constructionLayer.Thickness / opaqueMaterial.ThermalConductivity, Is.EqualTo(thermalResistance).Within(1e-9));
+            }
+        }
+
+        [Test]
+        public void SurfaceWithoutConstruction_IsReported()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                AssertHasCode(diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.ConstructionUnsupported);
+
+                Panel panel = result.AnalyticalModel.AdjacencyCluster.GetPanels()[0];
+                Assert.That(panel.Construction, Is.Not.Null, "A missing construction produces a named placeholder, not a null");
+                Assert.That(panel.Construction.ConstructionLayers == null || panel.Construction.ConstructionLayers.Count == 0, Is.True, "No layers may be invented for a construction that does not exist");
+            }
+        }
+
+        [Test]
+        public void UnsupportedLoadKind_IsReported()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.SpaceType spaceType = new global::OpenStudio.SpaceType(model);
+                spaceType.setName("Office");
+                space.setSpaceType(spaceType);
+
+                global::OpenStudio.GasEquipmentDefinition gasEquipmentDefinition = new global::OpenStudio.GasEquipmentDefinition(model);
+                gasEquipmentDefinition.setWattsperSpaceFloorArea(5);
+                global::OpenStudio.GasEquipment gasEquipment = new global::OpenStudio.GasEquipment(gasEquipmentDefinition);
+                gasEquipment.setSpaceType(spaceType);
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                Assert.That(diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.LoadUnsupported && x.Message.Contains("GasEquipment")), Is.True);
+            }
+        }
+
+        [Test]
+        public void DetailedHvac_IsReportedAsNotImported()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.ThermalZone thermalZone = space.thermalZone().get();
+
+                global::OpenStudio.ScheduleConstant availability = new global::OpenStudio.ScheduleConstant(model);
+                availability.setValue(1);
+
+                global::OpenStudio.ZoneHVACBaseboardConvectiveElectric baseboard = new global::OpenStudio.ZoneHVACBaseboardConvectiveElectric(model);
+                baseboard.addToThermalZone(thermalZone);
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                AssertHasCode(diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.HvacUnsupported);
+            }
+        }
+
+        [Test]
+        public void MultiSpaceThermalZone_IsReportedAndNeverCollapsed()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.Space secondSpace = new global::OpenStudio.Space(model);
+                secondSpace.setName("Second Room");
+                secondSpace.setThermalZone(space.thermalZone().get());
+                AddSurface(model, secondSpace, "Wall", "Outdoors", new[] { new[] { 0.0, 5.0, 0.0 }, new[] { 4.0, 5.0, 0.0 }, new[] { 4.0, 5.0, 2.7 }, new[] { 0.0, 5.0, 2.7 } });
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                AssertHasCode(diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.ZoneMultiSpace);
+                Assert.That(result.AnalyticalModel.AdjacencyCluster.GetSpaces().Count, Is.EqualTo(2), "Two spaces in one zone stay two SAM spaces");
+            }
+        }
+
+        [Test]
+        public void SiteAndDesignDays_ImportWithTheirLimitationsStated()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.Site site = model.getSite();
+                site.setName("Boston Logan");
+                site.setLatitude(42.36);
+                site.setLongitude(-71.01);
+                site.setElevation(6);
+
+                global::OpenStudio.DesignDay heatingDesignDay = new global::OpenStudio.DesignDay(model);
+                heatingDesignDay.setName("Boston Heating 99.6%");
+                heatingDesignDay.setDayType("WinterDesignDay");
+                heatingDesignDay.setMonth(1);
+                heatingDesignDay.setDayOfMonth(21);
+
+                global::OpenStudio.DesignDay coolingDesignDay = new global::OpenStudio.DesignDay(model);
+                coolingDesignDay.setName("Boston Cooling 0.4%");
+                coolingDesignDay.setDayType("SummerDesignDay");
+                coolingDesignDay.setMonth(7);
+                coolingDesignDay.setDayOfMonth(21);
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                Core.Location location = result.AnalyticalModel.Location;
+                Assert.That(location, Is.Not.Null);
+                Assert.That(location.Latitude, Is.EqualTo(42.36).Within(1e-6));
+                Assert.That(location.Longitude, Is.EqualTo(-71.01).Within(1e-6));
+
+                Core.SAMCollection<DesignDay> heatingDesignDays;
+                Assert.That(result.AnalyticalModel.TryGetValue(AnalyticalModelParameter.HeatingDesignDays, out heatingDesignDays), Is.True);
+                Assert.That(heatingDesignDays.Count, Is.EqualTo(1));
+
+                Core.SAMCollection<DesignDay> coolingDesignDays;
+                Assert.That(result.AnalyticalModel.TryGetValue(AnalyticalModelParameter.CoolingDesignDays, out coolingDesignDays), Is.True);
+                Assert.That(coolingDesignDays.Count, Is.EqualTo(1));
+
+                AssertHasCode(diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.WeatherLimitation);
+            }
+        }
+
+        [Test]
+        public void UnnamedSiteAtTheOrigin_ProducesNoLocation()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                OpenStudioImportResult result;
+                Import(model, out result);
+
+                Assert.That(result.AnalyticalModel.Location, Is.Null, "An unset site must not become a location at the equator");
+            }
+        }
+
+        [Test]
+        public void SurfaceBelowTheMinimumArea_IsRejectedWithAGeometryDiagnostic()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                // OpenStudio refuses to construct a truly degenerate surface, so the minimum-area
+                // rejection is exercised through the option that exists for it: a real 0.2 x 0.2 m
+                // surface against a 1 m2 minimum.
+                global::OpenStudio.Surface small = new global::OpenStudio.Surface(ToVector(new[] { new[] { 0.0, 1.0, 0.0 }, new[] { 0.2, 1.0, 0.0 }, new[] { 0.2, 1.0, 0.2 }, new[] { 0.0, 1.0, 0.2 } }), model);
+                small.setSpace(space);
+                small.setSurfaceType("Wall");
+                small.setOutsideBoundaryCondition("Outdoors");
+
+                OpenStudioImportResult result = model.ToSAM(new Core.OpenStudio.OpenStudioImportOptions { MinimumArea = 1.0 });
+                foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in result.Diagnostics)
+                {
+                    TestContext.Out.WriteLine(diagnostic.ToString());
+                }
+
+                AssertHasCode(result.Diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.GeometryInvalid);
+                Assert.That(result.Statistics.SkippedObjects, Is.GreaterThan(0), "A rejected surface must be counted, not silently absent");
+                Assert.That(result.AnalyticalModel.AdjacencyCluster.GetPanels()?.Count ?? 0, Is.EqualTo(1), "Only the 10.8 m2 wall survives; the 0.04 m2 surface is rejected");
+            }
+        }
+
+        [Test]
+        public void ScheduleRuleset_ExpandsToAnnualHourlyValuesHonouringItsRules()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.SpaceType spaceType = new global::OpenStudio.SpaceType(model);
+                spaceType.setName("Office");
+                space.setSpaceType(spaceType);
+
+                global::OpenStudio.ScheduleRuleset scheduleRuleset = new global::OpenStudio.ScheduleRuleset(model, 0.1);
+                scheduleRuleset.setName("Office Lighting");
+
+                // A weekend rule at a distinct value: the expansion must reproduce both values,
+                // which a flattened constant could not.
+                global::OpenStudio.ScheduleRule weekendRule = new global::OpenStudio.ScheduleRule(scheduleRuleset);
+                weekendRule.setApplySaturday(true);
+                weekendRule.setApplySunday(true);
+                weekendRule.daySchedule().addValue(new global::OpenStudio.Time(0, 24, 0, 0), 0.9);
+
+                global::OpenStudio.LightsDefinition lightsDefinition = new global::OpenStudio.LightsDefinition(model);
+                lightsDefinition.setWattsperSpaceFloorArea(8);
+                global::OpenStudio.Lights lights = new global::OpenStudio.Lights(lightsDefinition);
+                lights.setSpaceType(spaceType);
+                lights.setSchedule(scheduleRuleset);
+
+                OpenStudioImportResult result;
+                Import(model, out result);
+
+                InternalCondition internalCondition = result.AnalyticalModel.AdjacencyCluster.GetSpaces()[0].InternalCondition;
+
+                string lightingProfileName;
+                Assert.That(internalCondition.TryGetValue(InternalConditionParameter.LightingProfileName, out lightingProfileName), Is.True);
+
+                Profile profile = result.AnalyticalModel.ProfileLibrary.GetProfiles().Find(x => x.Name == lightingProfileName);
+                Assert.That(profile, Is.Not.Null);
+                Assert.That(profile.Max, Is.EqualTo(8759), "A ruleset must expand to a full annual hourly profile");
+
+                HashSet<double> distinctValues = new HashSet<double>();
+                for (int i = 0; i <= profile.Max; i++)
+                {
+                    distinctValues.Add(System.Math.Round(profile[i], 4));
+                }
+
+                Assert.That(distinctValues.Contains(0.1), Is.True, "The default day value must be present");
+                Assert.That(distinctValues.Contains(0.9), Is.True, "The weekend rule value must be present - the schedule must not be flattened");
+            }
+        }
+
+        /// <summary>
+        /// Builds an office space with a Lights load driven by <paramref name="schedule"/>, imports
+        /// the model, and returns the SAM lighting profile the load resolves to (null when none was
+        /// produced). The lazy schedule→profile conversion only runs when a load references the
+        /// schedule, so the load is what makes the reverse expansion observable.
+        /// </summary>
+        private static Profile ImportLightingProfile(global::OpenStudio.Model model, global::OpenStudio.Space space, global::OpenStudio.Schedule schedule, out OpenStudioImportResult result)
+        {
+            global::OpenStudio.SpaceType spaceType = new global::OpenStudio.SpaceType(model);
+            spaceType.setName("Office");
+            space.setSpaceType(spaceType);
+
+            global::OpenStudio.LightsDefinition lightsDefinition = new global::OpenStudio.LightsDefinition(model);
+            lightsDefinition.setWattsperSpaceFloorArea(8);
+            global::OpenStudio.Lights lights = new global::OpenStudio.Lights(lightsDefinition);
+            lights.setSpaceType(spaceType);
+            lights.setSchedule(schedule);
+
+            Import(model, out result);
+
+            InternalCondition internalCondition = result.AnalyticalModel.AdjacencyCluster.GetSpaces()[0].InternalCondition;
+
+            string lightingProfileName;
+            if (internalCondition == null || !internalCondition.TryGetValue(InternalConditionParameter.LightingProfileName, out lightingProfileName))
+            {
+                return null;
+            }
+
+            return result.AnalyticalModel.ProfileLibrary.GetProfiles().Find(x => x.Name == lightingProfileName);
+        }
+
+        [Test]
+        public void ScheduleFixedInterval_WithDailyInterval_HoldsEachValueForItsWholeDay()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                // 365 daily values, a strictly increasing ramp so the failure mode is unmistakable:
+                // the old modulo/count expansion produced 1, 2, 3, ... across the first 24 hours
+                // instead of holding day 0's value for the whole day.
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(365u);
+                for (uint d = 0; d < 365u; d++)
+                {
+                    vector.__setitem__(d, d + 1);
+                }
+
+                global::OpenStudio.ScheduleFixedInterval schedule = new global::OpenStudio.ScheduleFixedInterval(model);
+                schedule.setName("Daily Interval Lighting");
+                // Time(days, hours, minutes, seconds): a one-day reporting interval.
+                global::OpenStudio.TimeSeries timeSeries = new global::OpenStudio.TimeSeries(new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1), new global::OpenStudio.Time(1, 0, 0, 0), vector, string.Empty);
+                Assert.That(schedule.setTimeSeries(timeSeries), Is.True, "The daily fixed-interval time series must be accepted");
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile, Is.Not.Null, "The daily interval schedule must expand to a profile");
+                Assert.That(profile.Max, Is.EqualTo(8759), "A fixed-interval schedule must expand to a full annual hourly profile");
+
+                Assert.That(profile[0], Is.EqualTo(1), "Hour 0 is day 0's value");
+                Assert.That(profile[1], Is.EqualTo(1), "Hour 1 must still hold day 0's value, not ramp to day 1");
+                Assert.That(profile[23], Is.EqualTo(1), "The whole first day holds day 0's value");
+                Assert.That(profile[24], Is.EqualTo(2), "Hour 24 is the first hour of day 1");
+                Assert.That(profile[47], Is.EqualTo(2), "The whole second day holds day 1's value");
+                Assert.That(profile[364 * 24], Is.EqualTo(365), "The last day holds the last value");
+            }
+        }
+
+        [Test]
+        public void ScheduleFixedInterval_LeapYearSkipsFebruary29WithoutShiftingTheCalendar()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(8784u);
+                for (uint hour = 0; hour < 8784u; hour++)
+                {
+                    vector.__setitem__(hour, (hour / 24u) + 1u);
+                }
+
+                global::OpenStudio.ScheduleFixedInterval schedule = new global::OpenStudio.ScheduleFixedInterval(model);
+                schedule.setName("Leap Year Interval Lighting");
+                global::OpenStudio.TimeSeries timeSeries = new global::OpenStudio.TimeSeries(new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1, 2020), new global::OpenStudio.Time(0, 1, 0, 0), vector, string.Empty);
+                Assert.That(schedule.setTimeSeries(timeSeries), Is.True);
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile[58 * 24], Is.EqualTo(59), "28 February remains aligned");
+                Assert.That(profile[59 * 24], Is.EqualTo(61), "1 March skips the source leap day");
+                Assert.That(profile[364 * 24], Is.EqualTo(366), "31 December must not be truncated");
+            }
+        }
+
+        [Test]
+        public void ScheduleFixedInterval_PartialYearHonoursStartDateAndOutOfRangeValue()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(24u);
+                for (uint hour = 0; hour < 24u; hour++)
+                {
+                    vector.__setitem__(hour, 7);
+                }
+
+                global::OpenStudio.TimeSeries timeSeries = new global::OpenStudio.TimeSeries(new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(7), 1, 2021), new global::OpenStudio.Time(0, 1, 0, 0), vector, string.Empty);
+
+                global::OpenStudio.ScheduleFixedInterval schedule = new global::OpenStudio.ScheduleFixedInterval(model);
+                schedule.setName("Partial Year Interval Lighting");
+                Assert.That(schedule.setTimeSeries(timeSeries), Is.True);
+                Assert.That(schedule.setOutOfRangeValue(-1), Is.True);
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile[0], Is.EqualTo(-1), "January is outside the series coverage");
+                Assert.That(profile[181 * 24], Is.EqualTo(7), "1 July uses the series value");
+                Assert.That(profile[(181 * 24) + 23], Is.EqualTo(7));
+                Assert.That(profile[182 * 24], Is.EqualTo(-1), "2 July is outside the one-day series");
+                Assert.That(result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied && x.Message.Contains("out-of-range")), Is.True);
+            }
+        }
+
+        [Test]
+        public void ScheduleFixedInterval_IntervalsCrossingHourBoundariesAreWeighted()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(2u);
+                vector.__setitem__(0u, 2);
+                vector.__setitem__(1u, 4);
+
+                global::OpenStudio.TimeSeries timeSeries = new global::OpenStudio.TimeSeries(new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1, 2021), new global::OpenStudio.Time(0, 1, 30, 0), vector, string.Empty);
+
+                global::OpenStudio.ScheduleFixedInterval schedule = new global::OpenStudio.ScheduleFixedInterval(model);
+                schedule.setName("Ninety Minute Interval Lighting");
+                Assert.That(schedule.setTimeSeries(timeSeries), Is.True);
+                Assert.That(schedule.setOutOfRangeValue(-1), Is.True);
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile[0], Is.EqualTo(2));
+                Assert.That(profile[1], Is.EqualTo(3), "The hour straddles equal parts of the two reporting intervals");
+                Assert.That(profile[2], Is.EqualTo(4));
+                Assert.That(profile[3], Is.EqualTo(-1));
+            }
+        }
+
+        [Test]
+        public void ScheduleVariableInterval_IsReportedUnsupported_AndLeavesTheLoadWithoutAProfile()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                // A variable-interval series: irregular timestamps, no fixed cadence to resample.
+                global::OpenStudio.DateTimeVector dateTimeVector = new global::OpenStudio.DateTimeVector();
+                global::OpenStudio.Date startDate = new global::OpenStudio.Date(new global::OpenStudio.MonthOfYear(1), 1);
+                dateTimeVector.Add(new global::OpenStudio.DateTime(startDate, new global::OpenStudio.Time(0, 2, 0, 0)));
+                dateTimeVector.Add(new global::OpenStudio.DateTime(startDate, new global::OpenStudio.Time(0, 5, 0, 0)));
+                dateTimeVector.Add(new global::OpenStudio.DateTime(startDate, new global::OpenStudio.Time(0, 9, 0, 0)));
+
+                global::OpenStudio.Vector vector = new global::OpenStudio.Vector(3u);
+                vector.__setitem__(0u, 0.2);
+                vector.__setitem__(1u, 0.6);
+                vector.__setitem__(2u, 0.9);
+
+                global::OpenStudio.ScheduleVariableInterval schedule = new global::OpenStudio.ScheduleVariableInterval(model);
+                schedule.setName("Variable Interval Lighting");
+                Assert.That(schedule.setTimeSeries(new global::OpenStudio.TimeSeries(dateTimeVector, vector, string.Empty)), Is.True, "The variable-interval time series must be accepted");
+
+                OpenStudioImportResult result;
+                Profile profile = ImportLightingProfile(model, space, schedule, out result);
+
+                Assert.That(profile, Is.Null, "A variable-interval schedule has no fixed cadence and must not be expanded");
+                Assert.That(result.Diagnostics.Any(x => x.Code == Core.OpenStudio.OpenStudioImportDiagnosticCodes.ScheduleUnsupported && x.Message.Contains("variable-interval")), Is.True, "The variable-interval schedule must be reported unsupported, never guessed");
+            }
+        }
+
+        [Test]
+        public void UnsupportedScheduleKind_IsReportedAndLeavesTheLoadWithoutAProfile()
+        {
+            global::OpenStudio.Space space;
+            global::OpenStudio.Surface wall;
+            using (global::OpenStudio.Model model = BuildModel(out space, out wall))
+            {
+                global::OpenStudio.SpaceType spaceType = new global::OpenStudio.SpaceType(model);
+                spaceType.setName("Office");
+                space.setSpaceType(spaceType);
+
+                global::OpenStudio.ScheduleCompact scheduleCompact = new global::OpenStudio.ScheduleCompact(model);
+                scheduleCompact.setName("Compact Lighting");
+
+                global::OpenStudio.LightsDefinition lightsDefinition = new global::OpenStudio.LightsDefinition(model);
+                lightsDefinition.setWattsperSpaceFloorArea(8);
+                global::OpenStudio.Lights lights = new global::OpenStudio.Lights(lightsDefinition);
+                lights.setSpaceType(spaceType);
+                lights.setSchedule(scheduleCompact);
+
+                OpenStudioImportResult result;
+                List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = Import(model, out result);
+
+                AssertHasCode(diagnostics, Core.OpenStudio.OpenStudioImportDiagnosticCodes.ScheduleUnsupported);
+
+                InternalCondition internalCondition = result.AnalyticalModel.AdjacencyCluster.GetSpaces()[0].InternalCondition;
+
+                string lightingProfileName;
+                Assert.That(internalCondition.TryGetValue(InternalConditionParameter.LightingProfileName, out lightingProfileName), Is.False, "An unexpandable schedule must leave the load without a profile, not with an invented one");
+            }
+        }
+    }
+}

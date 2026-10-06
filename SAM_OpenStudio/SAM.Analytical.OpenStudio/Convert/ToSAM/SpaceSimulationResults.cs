@@ -1,4 +1,7 @@
-﻿using System.Collections.Generic;
+﻿// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
+
+using System.Collections.Generic;
 using System.Data;
 
 namespace SAM.Analytical.OpenStudio
@@ -57,7 +60,13 @@ namespace SAM.Analytical.OpenStudio
                 }
 
                 SpaceSimulationResult spaceSimulationResult = new SpaceSimulationResult(zoneName, source, zoneIndex.ToString());
-                
+
+                // The engine-zone identity is kept as parameters as well: Modify.AddResults
+                // replaces Reference with the matched SAM Space Guid so results map back to the
+                // model, and the SQL zone identity must survive that.
+                spaceSimulationResult.SetValue(SpaceSimulationResultParameter.ZoneIndex, zoneIndex);
+                spaceSimulationResult.SetValue(SpaceSimulationResultParameter.ZoneName, zoneName);
+
                 if(index_FloorArea != -1 && Core.Query.TryConvert(values[index_FloorArea], out double floorArea))
                 {
                     spaceSimulationResult.SetValue(Analytical.SpaceSimulationResultParameter.Area, floorArea);

@@ -15,6 +15,12 @@ and process analytical building models for energy and environmental analysis.
 This repository provides **OpenStudio model generation and interoperability utilities**
 and is intended to be used alongside the SAM core libraries and related SAM-BIM modules.
 
+Native SAM → OpenStudio conversion of the full non-HVAC `AnalyticalModel` (geometry,
+constructions, schedules, internal gains, frames, weather/design days, Ideal Loads) with
+cancellable asynchronous CLI execution and structured results extraction — see
+[docs/openstudio-mvp-usage.md](docs/openstudio-mvp-usage.md) and
+[docs/openstudio-analytical-completeness-status.md](docs/openstudio-analytical-completeness-status.md).
+
 Welcome — and let’s keep the open-source journey going. 🤝
 
 ---

@@ -1,0 +1,1 @@
+b2ab6826e085d621cfd219d58d924f38cc02a3406852d39bfad8aeb205abf32d  rawModel-WindowsWeatherDataDDYAdiabaticAirPanel.sam
