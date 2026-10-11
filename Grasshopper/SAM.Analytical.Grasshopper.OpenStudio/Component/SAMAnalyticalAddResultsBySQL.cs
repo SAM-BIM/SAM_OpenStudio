@@ -24,7 +24,7 @@ namespace SAM.Analytical.Grasshopper.OpenStudio
         /// <summary>
         /// Provides an Icon for the component.
         /// </summary>
-        protected override System.Drawing.Bitmap Icon => Properties.Resources.SAM_OpenStudio;
+        protected override System.Drawing.Bitmap Icon => Properties.Resources.SAM_GH_ResultAdd;
 
         /// <summary>
         /// Initializes a new instance of the SAMGeometryByGHGeometry class.
