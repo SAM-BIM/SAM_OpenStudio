@@ -182,6 +182,7 @@ namespace SAM.Analytical.OpenStudio
             analyticalModel_Temp.ReplaceTransparentPanels(0.1);
 
             OpenStudioConversionContext context = new OpenStudioConversionContext(analyticalModel_Temp, new global::OpenStudio.Model(), options);
+            ReportComplianceInputs(context);
             if (firstDayOfWeekOffset.HasValue)
             {
                 context.FirstDayOfWeekOffset = firstDayOfWeekOffset.Value;
