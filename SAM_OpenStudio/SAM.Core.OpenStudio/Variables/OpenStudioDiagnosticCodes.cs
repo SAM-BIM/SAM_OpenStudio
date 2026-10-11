@@ -54,6 +54,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>Unsupported or rejected simulation-setting value (e.g. shading calculation method); workflow issues such as unusable measure directories.</summary>
         public const string SimulationSettingsUnsupported = "SAM-OS-SET-001";
 
+        /// <summary>Part F/Part O design or scenario inputs not applied by the Ideal Loads translator.</summary>
+        public const string ComplianceInputUnsupported = "SAM-OS-SET-002";
+
         /// <summary>EnergyPlus severe error.</summary>
         public const string EnergyPlusSevereError = "SAM-OS-EPLUS-001";
     }
