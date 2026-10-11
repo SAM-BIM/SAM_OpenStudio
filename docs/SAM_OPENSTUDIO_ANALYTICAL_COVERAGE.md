@@ -2,6 +2,12 @@
 
 Status: reviewed 2026-07-19 (programme *SAM → OpenStudio Analytical Completeness v1*, milestone C0).
 
+Q4 dependency audit, 2026-10-11: added the 16 current SAM enum members after tracing their
+authoritative types and the translation pipeline. Seven unapplied design/scenario inputs now
+produce `SAM-OS-SET-002` warnings with source identity. The remaining nine are semantic,
+commissioning or run-audit metadata; materialised geometry/conditions remain authoritative.
+This classification does not implement Part F/Part O preparation, compliance or detailed HVAC.
+
 This document is the complete audit of the `SAM.Analytical.AnalyticalModel` data surface
 against the native OpenStudio translation in this repository. It is **generated from and kept
 in lockstep with** the machine-readable manifest
@@ -133,6 +139,9 @@ diagnostic code and/or note recorded in the manifest.
 | `SpaceParameter.ExhaustAirFlow` | m3/s | - | Deferred | C0 | - |
 | `SpaceParameter.DaylightFactor` | - | - | NA | C0 | Result-style metric; no translation input. |
 | `SpaceParameter.PartFSpaceData` | - | - | NA | C0 | UK Part F compliance metadata. |
+| `SpaceParameter.SpaceSemantics` | - | - | NA | C0 | Shared Part F/Part O/TM59 semantic classification; this translator consumes the supplied InternalCondition, not compliance classification or name matching. |
+| `SpaceParameter.SpaceUseOverride` | - | - | NA | C0 | Authority for SAM semantic classification, not a load/profile override. InternalCondition remains the energy-model source; no SpaceUse-to-load assumptions are invented. |
+| `SpaceParameter.PartFLocalExtractMethod` | - | - | Unsupported | C0 | SAM-OS-SET-002 warning when present; Cooker/local extract design method needs an airflow/equipment model; Ideal Loads outdoor air is not a local extract fan. |
 
 ### Profile types (`SAM.Analytical.ProfileType`)
 
@@ -180,6 +189,7 @@ diagnostic code and/or note recorded in the manifest.
 | `ApertureParameter.OpeningProperties` | - | - | Unsupported | C3 | SAM-OS-CON-002 info; openable fraction/discharge coefficient need AirflowNetwork or ZoneVentilation (deferred HVAC domain) |
 | `ApertureParameter.Color` | - | - | NA | C0 | Display colour. |
 | `ApertureParameter.FeatureShade` | - | - | Unsupported | C3 | SAM-OS-CON-002 info; no slat/shade geometry in SAM to build WindowMaterial:Blind or WindowShadingControl |
+| `ApertureParameter.PartFDoorTransferData` | - | - | Unsupported | C0 | SAM-OS-SET-002 warning when present; Undercut/free-area/device and transfer-flow design inputs cannot be inferred as inter-zone mixing or AirflowNetwork from the door surface. |
 
 ### Aperture construction parameters (`SAM.Analytical.ApertureConstructionParameter`)
 
@@ -258,6 +268,7 @@ diagnostic code and/or note recorded in the manifest.
 | `PanelParameter.PilkingtonShadingLongWavelengthCoefficient` | - | - | NA | C0 | - |
 | `PanelParameter.Adiabatic` | - | Adiabatic outside boundary condition | Native | C1 | C1 verifies the flag is honoured by OutsideBoundaryCondition. |
 | `PanelParameter.FeatureShade` | - | - | Unsupported | C3 | SAM-OS-CON-002 info |
+| `PanelParameter.IsolationCut` | - | - | NA | C0 | Audit marker explaining an already-materialised adiabatic cut. Panel topology and Adiabatic boundary condition are translated independently; this marker does not perform isolation. |
 
 ### Panel structure
 
@@ -364,6 +375,15 @@ diagnostic code and/or note recorded in the manifest.
 | `AnalyticalModelParameter.CoolingDesignDays` | - | OS:SizingPeriod:DesignDay (parametric fit) | Approximated | C4 | - |
 | `AnalyticalModelParameter.CaseDataCollection` | - | - | NA | C0 | Scenario/case metadata. |
 | `AnalyticalModelParameter.SolarModel` | - | - | NA | C0 | TAS solar model object; EnergyPlus solar behaviour is governed by the SolarDistribution conversion option. |
+| `AnalyticalModelParameter.OverheatingScenarios` | - | - | Unsupported | C0 | SAM-OS-SET-002 warning when present; Part O scenario orchestration/operating assumptions are not executed by a single Ideal Loads conversion; prepare intended conditions and schedules before export. |
+| `AnalyticalModelParameter.SimulationResultProvenance` | - | - | NA | C0 | Existing simulation-result identity/fingerprint; not a new OpenStudio run input or claim of equivalent provenance. |
+| `AnalyticalModelParameter.PartOIsolationContext` | - | - | NA | C0 | Audit of materialised isolation; translated topology/boundary conditions carry its physical effect. Export does not execute Part O isolation. |
+| `AnalyticalModelParameter.PartOEquipmentSelection` | - | - | Deferred | C0 | SAM-OS-SET-002 warning when present; Project catalogue/procurement restrictions need Part O equipment preparation and detailed HVAC; no unit is selected by Ideal Loads. |
+| `AnalyticalModelParameter.PartOProjectTestVentilationUnit` | - | - | Deferred | C0 | SAM-OS-SET-002 warning when present; Project-only what-if unit capacity is not translated into fan/equipment performance or silently substituted for outdoor-air design rates. |
+| `AnalyticalModelParameter.PartODwellingStrategies` | - | - | Unsupported | C0 | SAM-OS-SET-002 warning when present; Persisted mixed-dwelling strategy intent requires SAM materialisation; the translator neither materialises it nor executes compliance iterations. |
+| `AnalyticalModelParameter.PartOMaterialisationRecord` | - | - | NA | C0 | Run-artifact audit of a completed materialisation; the supplied geometry/conditions are translated, not reconstructed from the record. |
+| `AnalyticalModelParameter.PartOManualEquipmentSelection` | - | - | Deferred | C0 | SAM-OS-SET-002 warning when present; Engineer-selected dwelling products require Part O preparation/detailed HVAC; Ideal Loads does not apply product performance. |
+| `AnalyticalModelParameter.PartOBaselineReference` | - | - | NA | C0 | Identity of design/source results on a Part O result model; not an OpenStudio run input or a baseline resolution request. |
 
 ### Zone parameters (`SAM.Analytical.ZoneParameter`)
 
@@ -371,6 +391,8 @@ diagnostic code and/or note recorded in the manifest.
 |---|---|---|---|---|---|
 | `ZoneParameter.Color` | - | - | NA | C0 | - |
 | `ZoneParameter.ZoneCategory` | - | - | Deferred | C0 | SAM zone grouping is an HVAC-zoning concept; Ideal Loads keeps one thermal zone per space. C5 aggregates results per SAM zone. |
+| `ZoneParameter.IsDwelling` | - | - | NA | C0 | Compliance scope of a SAM zone group. Existing one-thermal-zone-per-space translation and result-group aggregation are unchanged; no dwelling-dependent loads are invented. |
+| `ZoneParameter.PartFCommissioningData` | - | - | NA | C0 | Measured commissioning evidence kept distinct from design flow rates in SAM; it must not overwrite exported design rates. |
 
 ### Location (`SAM.Core.Location`)
 
@@ -489,9 +511,9 @@ that behavioural semantics — not just parameter slots — are classified.
 
 ## Counts at C0 (before implementation)
 
-Generated from the manifest: 277 entries — Native 135, Derived 28, Approximated 21,
-Unsupported 20, Deferred 17, NA 56. Milestones: MVP 90, C1 3, C2 37, C3 23, C4 26, C5 36,
-classification-only (C0) 62.
+Generated from the manifest: 293 entries — Native 135, Derived 28, Approximated 21,
+Unsupported 24, Deferred 20, NA 65. Milestones: MVP 90, C1 3, C2 37, C3 23, C4 26, C5 36,
+classification-only (C0) 78.
 
 Stage L review correction (P2-01): the C0 audit transcribed two commented-out members of
 `SAM.Analytical.MaterialParameter` (`TypeName`, `Description`); those stale rows were removed
