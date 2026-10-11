@@ -1,5 +1,12 @@
 # Project Progress - SAM_OpenStudio (2026-Q4)
 
+## Current SAM analytical coverage closeout — 2026-10-11
+
+- Owner-approved SAM-BIM/SAM_OpenStudio#25 merged as `68acc6a74aafb8f097e74e9795d91a2f05fda80f`, reviewed head `fb63d33f8ce365f3f48ea45d479786e7c78d0ace`; exact-head build/SPDX PASS. Merge commit; branch preserved.
+- Audited 16 current SAM enum members: 7 unapplied Part F/Part O design inputs now emit `SAM-OS-SET-002` warnings with source identity; 9 semantic/commissioning/run-audit fields have explicit NA reasons. Manifest/Markdown stay aligned at 293 entries. Physical mappings, existing tests/APIs/GUIDs/icons unchanged. Files: compliance-report helper/call, additive diagnostic constant, coverage JSON/Markdown, two regression tests and `documentation/Current-SAM-Coverage-Q4.md`.
+- Full Release x64 solution build PASS; full functional suite **352 passed / 0 failed / 2 existing optional SQL-fixture skips**; benchmark **41/41** with matching official portable CLI 3.10.0. Focused 22/22; reporting-call removal caught (1 fail/1 pass), exact source restored and regression 2/2 PASS. `git diff --check` PASS. CLI checksum/configuration and skip names recorded in the PR document.
+- Remaining: existing icon PR24 requires Q4 incorporation and its own complete full-suite/build/icon-guard/final-head CI validation before authorised merge. Next: finish that validation; preserve approved icons, branches and frozen Q3. This docs-only Q4 `[skip ci]` closeout follows the known fix merge SHA.
+
 ## Branch
 
 `sow/2026-Q4` - bootstrapped 2026-10-06 from `master` `5522dd80`. Frozen Q3 record: `sow/2026-Q3` @ `68a428f4` (not modified).
