@@ -1,5 +1,14 @@
 # Project Progress - SAM_OpenStudio (2026-Q4)
 
+## Q4 Grasshopper icon migration closeout — 2026-10-11
+
+- SAM-BIM/SAM_OpenStudio#24 merged as `f9e16d29715cc3734eafb1cf9fcf0ae48c391be9`, reviewed final head `745be552f4d96931948f8eab643fd03a495d545a`. Merge commit; branches preserved. Approved frozen design applies to 6 concrete objects; component GUIDs/APIs/namespaces/behaviour preserved.
+- Approved non-icon fix25 already merged as `68acc6a74aafb8f097e74e9795d91a2f05fda80f` and incorporated through normal Q4 merges. Matching official portable OpenStudio 3.10.0/EnergyPlus CLI resolves environment failures; process-local PATH only. No system installation, ACL change or existing test/skip weakening.
+- Full Release x64 solution Restore,Build PASS; complete functional suite **352 passed / 0 failed / 2 existing optional SQL-fixture skips**, total354; complete benchmark **41 passed / 0 failed / 0 skipped**. Tested production/test tree `8f602f90`; final evidence commit docs only. Local evidence `.icon-migration/SAM_OpenStudio/environment/icon-final-*` in parent; reproducible configuration recorded in `documentation/Current-SAM-Coverage-Q4.md` and icon validation record.
+- Skips: `RealSqlFixture_SpaceAndSurfaceResults_NoThrow`, `CreateDesignDays_RealSqlReproductionFixture_NoThrow`; real SQL fixture absent. Supply `SAM_OPENSTUDIO_TEST_SQL` or `tests/resources/sql/eplusout.sql` to run them. Existing skip conditions unchanged.
+- Icon source/resource/embedded guards PASS: 6 token swaps, zero unrelated production C# changes against Q4, 6 manifest resource references, zero errors, all required embedded PNGs present; GUIDs unchanged. `git diff --check` PASS. Fresh hosted Rhino smoke not claimed.
+- Final-head CI: build `38149155742`, SPDX `38149155581`, both SUCCESS before merge. Files: icon getters/resources/design assets and validation record; separate coverage fix files documented above.
+- Remaining blockers: none for this authorised icon merge. Next: owner visual review in installed Rhino/Grasshopper; provision optional SQL fixture when available. No installer/submodule repin included. This is the docs-only Q4 `[skip ci]` closeout after the known merge SHA.
 ## Current SAM analytical coverage closeout — 2026-10-11
 
 - Owner-approved SAM-BIM/SAM_OpenStudio#25 merged as `68acc6a74aafb8f097e74e9795d91a2f05fda80f`, reviewed head `fb63d33f8ce365f3f48ea45d479786e7c78d0ace`; exact-head build/SPDX PASS. Merge commit; branch preserved.
@@ -13,11 +22,11 @@
 
 ## Last updated
 
-2026-10-06 (Q4 icon-redesign migration).
+2026-10-11 (coverage fix and icon merge closeouts).
 
 ## Current status
 
-Q4 branch cut from `master` `5522dd80`, which is the exact commit pinned in SAM_Deploy's frozen Q3 baseline (`v20261006.1`). Bootstrap added only internal docs (this file, `AGENTS.md`). No product source changed. No Q4 product work has started.
+Q4 coverage fix25 and icon PR24 are merged with passing validation; see the dated closeouts above. Frozen Q3 remains preserved.
 
 ## Q4 priorities
 
