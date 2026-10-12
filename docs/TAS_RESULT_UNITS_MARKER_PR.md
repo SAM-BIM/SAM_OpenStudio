@@ -46,6 +46,22 @@ depend on the producer rule.
   it passes with the verified portable OpenStudio 3.10.0 CLI on a process-local PATH (as recorded for PR25). Not run in CI.
 - PR CI (`build`, `spdx`): see the PR.
 
+## Tested content, local versus GitHub checks, reproduction
+
+- PR SAM-BIM/SAM_OpenStudio#26, base `sow/2026-Q4`. **Validated content SHA `693954d00cb33d890d0c00f6fb2c42af184b0a0c`**, built
+  against SAM `b28daa77`; later commits are record-only. The final PR head and its GitHub checks are named in the PR
+  description.
+- "Validation" above is **local** unless it says "PR CI"; the GitHub checks are `build` (which runs the benchmark tests,
+  `TestCategory!=Simulation`) and `spdx`. The main `tests/` project is not run in CI.
+- Reproduce (SAM, SAM_SQLite and SAM_Validation built first):
+
+  ```
+  dotnet test benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests/SAM.Analytical.OpenStudio.Benchmark.Tests.csproj -c Release -p:Platform=x64 --filter "TestCategory!=Simulation"   # 42/42
+  dotnet test tests/SAM.Analytical.OpenStudio.Tests/SAM.Analytical.OpenStudio.Tests.csproj -c Release -p:Platform=x64 --filter "TestCategory!=Simulation"                     # 327 + 2 skips; CLI test needs the CLI on PATH
+  ```
+
+- Machine-local prerequisite: the portable OpenStudio 3.10.0 CLI (here `SAM-BIM\.icon-migration\runtime\OpenStudio-3.10.0+86d7e215a1-Windows\bin`) on a process-local PATH for `OpenStudioCli_Discovered_And_OpensGeneratedOsm`.
+
 ## Unresolved issues and risks
 
 None specific; order constraints are in SAM's record.
