@@ -1,5 +1,14 @@
 # Project Progress - SAM_OpenStudio (2026-Q4)
 
+## Q4 agent instructions rollout closeout - 2026-10-12
+
+- SAM-BIM/SAM_OpenStudio#27 merged as `3e6a60cbd1ea4f7218fcc4f2955b2f7da2c13933` (merge commit pinned to approved head `4c24edf81ce9c8b65eca34290f021b7b5db4347c`; base `sow/2026-Q4` `3f5940e50983589b138c391b0d25a20cafea359a`; validated content `edb3021510d68475177c27b75be3994e7c96e885`). Owner-authorized 2026-10-12 after an independent review (`AGENT_ROLLOUT_REVIEW_2026-10-12.md`, local to the owner's workspace, not committed).
+- Docs only: AGENTS.md, CLAUDE.md, plus the rollout record `documentation/Agent-Continuity-Rollout-Q4.md`. No product code, build, workflow, dependency pin or tool changed; this closeout is the only `PROJECT_PROGRESS.md` change.
+- Validation: local documentation checks and commands are in `documentation/Agent-Continuity-Rollout-Q4.md` (`git diff --check`, file scope, UTF-8/LF/no BOM, import). Hosted checks at the approved head: build success (run 38258005225); spdx success (run 38258005258). Dependency selection: dependency clones in the build log: SAM @ sow/2026-Q4, SAM_SQLite @ sow/2026-Q4, SAM_Validation @ sow/2026-Q4.
+- Cleanup: remote docs/agent-instructions-rollout-q4 deleted with an expected-SHA lease on 4c24edf81ce9c8b65eca34290f021b7b5db4347c after confirming it is contained in sow/2026-Q4 and no open PR uses it as head or base; the local branch and its worktree are preserved (worktree in use). Other branches, worktrees and the frozen quarters were not touched.
+- Remaining gaps: no agent-client behaviour or token benchmark has been run.
+- Exact next step: Continue from the shared `AGENTS.md`. Open item carried from the pilots: verify on each installed agent client, in a fresh Q4 session, that it follows the instructions without loading the full progress history, and record the result.
+
 ## Q4 Tas result units correction closeout - 2026-10-12
 
 - SAM-BIM/SAM_OpenStudio#26 merged as `e0f9d17cc392a7217694d3ed8805c187c9d4a58b`, approved head `310bcffc0bcf151d7d65f7ffdf8989f61b9e120a` (record-only commits after the tested content). Owner-approved. The OpenStudio result writer now stamps `ResultUnitsVersion = 1`; its values were already kWh/kW, so they are unchanged.
