@@ -1,5 +1,15 @@
 # Project Progress - SAM_OpenStudio (2026-Q4)
 
+## Q4 Tas result units correction closeout - 2026-10-12
+
+- SAM-BIM/SAM_OpenStudio#26 merged as `e0f9d17cc392a7217694d3ed8805c187c9d4a58b`, approved head `310bcffc0bcf151d7d65f7ffdf8989f61b9e120a` (record-only commits after the tested content). Owner-approved. The OpenStudio result writer now stamps `ResultUnitsVersion = 1`; its values were already kWh/kW, so they are unchanged.
+- Coordinated set (option A of SAM_Tas#92, owner-approved 2026-10-12): SAM#192 -> `be9c00cadb237cdc5a64351dce90dd7731be438c` (head `9268ccb7`), SAM_Tas_Grasshopper#13 -> `8054867fc317135e30792defe9796addfd12cef2` (head `d57b150c`), SAM_OpenStudio#26 -> `e0f9d17cc392a7217694d3ed8805c187c9d4a58b` (head `310bcffc`), SAM_Tas#98 -> `92bfad33c9812d0be4190fc18dfc1bb18d63adaa` (head `72c4f3fe`). Merge commits, each pinned to its approved full head SHA, in the approved order SAM -> Grasshopper/OpenStudio -> SAM_Tas the same day.
+- Validation (recorded in the PR record): benchmark 42/42; main offline suite passes with the portable OpenStudio CLI on PATH, with the two documented optional SQL-fixture skips. Merged-Q4 CI: Build `38250215382` success at `e0f9d17c`. PR checks build/spdx green on the exact head; no review findings.
+- Dependency CI: each downstream PR CI was rerun after SAM#192 merged and its task branch was deleted; the logs show `Cloning SAM-BIM/SAM @ sow/2026-Q4` (Grasshopper run `38247874467` attempt 2, OpenStudio run `38247876785` attempt 2, SAM_Tas run `38247884982` attempt 3, all success on the unchanged approved heads).
+- Compatibility: results carry `ResultUnitsVersion = 1` (consumption kWh, peaks kW). Unmarked results are read by exact recorded `Source` (`SAM.Analytical.Tas` = legacy Wh/W, divided once; `SAM.Analytical.OpenStudio` = kWh/kW); any other producer or marker gives unknown units, which DesignExplorer shows as empty cells. Persisted results are not migrated. Limitation: generic parameter views and external scripts reading the raw parameter see Wh/W on old unmarked Tas results and kWh/kW on new ones; scripts that applied their own /1000 to Tas values must stop doing so for newly corrected results. Details: SAM `documentation/TasResultUnits-PR.md`.
+- Cleanup: remote task branch `fix/tas-result-units-kwh` deleted with a lease on the approved head after confirming it was in `sow/2026-Q4` and no open PR used it; local branch deleted and the checkout returned to `sow/2026-Q4` (clean, equal to origin). No other branch touched.
+- Remaining: none. Next: PR10 packaging and installed-build validation; not started.
+
 ## Q4 Grasshopper icon migration closeout — 2026-10-11
 
 - SAM-BIM/SAM_OpenStudio#24 merged as `f9e16d29715cc3734eafb1cf9fcf0ae48c391be9`, reviewed final head `745be552f4d96931948f8eab643fd03a495d545a`. Merge commit; branches preserved. Approved frozen design applies to 6 concrete objects; component GUIDs/APIs/namespaces/behaviour preserved.
