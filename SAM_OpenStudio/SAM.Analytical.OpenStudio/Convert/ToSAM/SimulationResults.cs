@@ -10,7 +10,9 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>
         /// Maps an engine-neutral result set to a SAM AnalyticalModelSimulationResult (C5):
         /// annual heating/cooling consumption [kWh], coincident peak loads [kW] with their
-        /// hour-of-year, and the model floor area/volume derived from the source model.
+        /// hour-of-year, and the model floor area/volume derived from the source model. The result is
+        /// marked with <see cref="AnalyticalModelSimulationResultParameter.ResultUnitsVersion"/> 1
+        /// (kWh, kW); an older OpenStudio result without the marker holds the same units.
         /// </summary>
         /// <param name="openStudioSimulationResultSet">Extracted result set.</param>
         /// <param name="analyticalModel">Source model (floor area/volume derivation); may be null.</param>
@@ -29,6 +31,9 @@ namespace SAM.Analytical.OpenStudio
             result.SetValue(AnalyticalModelSimulationResultParameter.PeakHeatingHour, openStudioSimulationResultSet.PeakHeatingHourTotal);
             result.SetValue(AnalyticalModelSimulationResultParameter.PeakCoolingLoad, openStudioSimulationResultSet.PeakCoolingLoadTotal);
             result.SetValue(AnalyticalModelSimulationResultParameter.PeakCoolingHour, openStudioSimulationResultSet.PeakCoolingHourTotal);
+
+            // Already kWh and kW: record it, so a reader never has to infer the units from the producer.
+            result.SetResultUnitsVersion();
 
             AdjacencyCluster adjacencyCluster = analyticalModel?.AdjacencyCluster;
             if (adjacencyCluster != null)

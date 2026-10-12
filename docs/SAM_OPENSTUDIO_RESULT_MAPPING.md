@@ -58,6 +58,7 @@ every dictionary — never zero-filled. A variable with no rows for a key produc
 | `.PeakHeating/CoolingLoad` [kW] | coincident totals | |
 | `.PeakHeating/CoolingHour` [h] | hour-of-year of the coincident peak | |
 | `.FloorArea` / `.Volume` [m²/m³] | Σ `SpaceParameter.Area` / `.Volume` | Derived |
+| `.ResultUnitsVersion` | `1` | Records that consumption is kWh and peaks kW (SAM_Tas#92 option A). An older OpenStudio result without it holds the same units; SAM reads both through `Query.TryGetConsumptionOrPeakLoad`. |
 | `SpaceSimulationResultParameter.Load` [W] | per-zone peak load × 1000 | one result per LoadType (Heating/Cooling), SAM pattern |
 | `.LoadIndex` [h] | hour-of-year of the zone peak | |
 | `.UnmetHours` [h] | per-zone not-met hours | |
