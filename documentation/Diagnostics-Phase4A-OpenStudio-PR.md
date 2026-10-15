@@ -1,11 +1,11 @@
 # Unified Diagnostics, Phase 4A (SAM_OpenStudio integration) - PR record
 
 Base: `sow/2026-Q4` (`fb21e03`). Branch: `feature/openstudio-diagnostics-phase4a-q4`. Dependencies: SAM `sow/2026-Q4` with SAM#201 / SAM#202 (`SAM.Core.Diagnostic`, `Diagnostics`, `DiagnosticSeverity`, `DiagnosticDetail`); no SAM, SAM_OCCT or SAM_Tas change. TAS is Phase 4B and is not touched.
-Validated content SHA: `d32658c7a2bda763072818f426cf658b7fc897c9` (code and tests). A record-only commit follows; the final PR head and hosted checks are in the PR description.
+Validated content SHA: `0d0b702acfe1961c869bfa7400315e7c3cbb7b9e` (code and tests). A record-only commit follows; the final PR head and hosted checks are in the PR description.
 Draft. Merge needs owner approval (AGENTS.md). `PROJECT_PROGRESS.md` is not touched (post-merge closeout only).
 
 ## Status
-Implementation complete; local Windows build and tests done (below). **Not run:** tests that need `openstudio.exe` / EnergyPlus (not installed on the build machine), interactive Rhino / Grasshopper. Windows acceptance list below.
+Implementation complete; local Windows build and tests done including real EnergyPlus runs (below). **Not run:** interactive Rhino / Grasshopper; a base-vs-head comparison of Grasshopper component outputs. Windows acceptance list below.
 
 ## Investigation (what was found)
 - One diagnostic type, `OpenStudioDiagnostic` (`Code`, `Severity` Information/Warning/Error, `Message`, `SamGuid`, `SamObjectType`, `OpenStudioObjectName`), 17 forward codes (`SAM-OS-*`) and 31 import codes (`SAM-OSI-*`). Severity is a literal chosen at each production site (about 283), never inferred from text.
@@ -32,36 +32,39 @@ Unchanged: all existing members and signatures, codes, `OpenStudioDiagnostic.ToS
 - Not covered: the string-only producers `Create.DesignDays` and `Modify.AddResults` (no producer severity; their two legacy components keep their Warning mapping).
 
 ## Files changed
-New: `SAM_OpenStudio/SAM.Core.OpenStudio/Classes/OpenStudioDiagnosticRecord.cs`; `SAM_OpenStudio/SAM.Core.OpenStudio/Query/{ToDiagnosticSeverity,GetDiagnosticDetail,ToDiagnostic,CreateDiagnosticRecords,FilterDiagnosticRecords,ToDiagnostics,FormatDiagnostics}.cs`; `tests/SAM.Analytical.OpenStudio.Tests/D1/DiagnosticsAdapterTests.cs` (20 tests); this record.
+New: `SAM_OpenStudio/SAM.Core.OpenStudio/Classes/OpenStudioDiagnosticRecord.cs`; `SAM_OpenStudio/SAM.Core.OpenStudio/Query/{ToDiagnosticSeverity,GetDiagnosticDetail,ToDiagnostic,CreateDiagnosticRecords,FilterDiagnosticRecords,ToDiagnostics,FormatDiagnostics}.cs`; `tests/SAM.Analytical.OpenStudio.Tests/D1/DiagnosticsAdapterTests.cs` (21 tests); this record.
 Modified: `SAM_OpenStudio/SAM.Analytical.OpenStudio/Classes/{OpenStudioConversionResult,OpenStudioImportResult}.cs` (one added method each).
 `git diff --stat -- Grasshopper benchmark` is empty.
 
 ## Validation (local Windows, machine-local; not hosted CI)
-Windows 11, .NET SDK 10.0.401 (tests target net8.0), SAM built from `sow/2026-Q4` (`SAM\build\SAM.Core.dll` contains the Diagnostics types). `openstudio.exe` **not installed**.
+Windows 11, .NET SDK 10.0.401 (tests target net8.0), SAM built from `sow/2026-Q4` (`SAM\build\SAM.Core.dll` contains the Diagnostics types). OpenStudio 3.10.0 CLI at `C:\Program Files\ladybug_tools\openstudio\bin\openstudio.exe` (installed after a first CLI-less run; both runs are recorded below).
 Commands: `dotnet build tests/SAM.Analytical.OpenStudio.Tests/SAM.Analytical.OpenStudio.Tests.csproj -c Release -p:Platform=x64`, then `dotnet test <same project> -c Release -p:Platform=x64 --no-build` and `dotnet test benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests/... -c Release -p:Platform=x64 --filter "TestCategory!=Simulation"`.
 
-| Check | Base `fb21e03` | Head `d32658c` |
+| Check | Base `fb21e03` | Head |
 |---|---|---|
 | Build (tests + 3 library projects), Release x64 | 0 errors | 0 errors |
-| Functional suite | 328 passed, 24 failed, 2 skipped (354) | **348 passed, 24 failed, 2 skipped (374)** = 328 + 20 new |
-| Failing set | 24 tests | **identical 24** (names diffed) |
-| Benchmark producer tests | not run on base | 42 / 42 |
-| New `DiagnosticsAdapterTests` | - | 20 / 20 |
+| Functional suite, **CLI absent** (first run) | 328 passed, 24 failed, 2 skipped (354) | `d32658c`: 348 passed, 24 failed, 2 skipped (374) = 328 + 20 new; the failing set is the **identical 24** (names diffed) |
+| Functional suite, **CLI installed** | not re-run (record of 2026-10-12: 352 passed, 0 failed, 2 skipped) | `0d0b702`: **373 passed, 0 failed, 2 skipped (375)** = 352 + 21 new (includes every real EnergyPlus run test) |
+| Benchmark tests | not run on base | CLI absent, producer filter: 42 / 42; CLI installed, no filter: **43 / 43** |
+| New `DiagnosticsAdapterTests` | - | 21 / 21 (20 CLI-free + 1 real-run test, `Assume`-skipped without the CLI) |
 
-The 24 failures are the same on base and head and are all simulation tests that need `openstudio.exe` (`CLI required`, `The run must succeed`, `openstudio.exe was not found`); they fail rather than skip when the CLI is absent. The 2 skips are the optional SQL fixture. Hosted CI builds the solution and runs only the benchmark producer tests, not the functional suite.
+The 24 failures of the first run are all simulation tests that need `openstudio.exe` (`CLI required`, `The run must succeed`, `openstudio.exe was not found`); they fail rather than skip when the CLI is absent, and they all pass once the CLI is installed. The 2 skips are the optional SQL fixture. Hosted CI builds the solution and runs only the benchmark producer tests, not the functional suite.
 
-What the 20 new tests establish: severity maps one to one and an undefined value is Error; code, message, subject and index preserved, original not modified; Warnings and Errors are the same instances in the same order at every level for every code of both code classes (and an unknown future code); Info grows monotonically and each level is an order-preserving subsequence of the next; **Detailed equals the legacy `ToString()` list in text and order**; severity is never taken from text; null / empty inputs; golden legacy text; public-API reflection (constructor, read-only properties, enum names and values, `Diagnostics` property types, `AddDiagnostic` overloads, 17 / 31 code constants); real fixture conversions (clean, missing profiles, two boxes, degenerate panel): the diagnostics, `IsValid` and statistics are unchanged by calling the adapters and match the structured counts; **the saved OSM of the same model is identical (handles normalised) whether or not the adapters run**; failure scenarios without the CLI: missing adjacency cluster, conversion Errors preventing the run (Warning "Simulation not executed" kept with the Error), missing output directory, missing input file, missing import path.
+`RealRun_DiagnosticsAndLoads_AreUnchangedByTheAdapters` (CLI-gated): a real EnergyPlus run of `SingleBox`: every Warning and Error of the run is kept at Summary / Standard / Detailed, structured Errors agree with `IsValid`, `FormatDiagnostics()` equals the legacy list, and the same model run again after the adapters ran gives the same diagnostics text and exactly the same annual heating and cooling.
+
+What the 21 new tests establish: severity maps one to one and an undefined value is Error; code, message, subject and index preserved, original not modified; Warnings and Errors are the same instances in the same order at every level for every code of both code classes (and an unknown future code); Info grows monotonically and each level is an order-preserving subsequence of the next; **Detailed equals the legacy `ToString()` list in text and order**; severity is never taken from text; null / empty inputs; golden legacy text; public-API reflection (constructor, read-only properties, enum names and values, `Diagnostics` property types, `AddDiagnostic` overloads, 17 / 31 code constants); real fixture conversions (clean, missing profiles, two boxes, degenerate panel): the diagnostics, `IsValid` and statistics are unchanged by calling the adapters and match the structured counts; **the saved OSM of the same model is identical (handles normalised) whether or not the adapters run**; a real EnergyPlus run (below); failure scenarios without the CLI: missing adjacency cluster, conversion Errors preventing the run (Warning "Simulation not executed" kept with the Error), missing output directory, missing input file, missing import path.
 Mutation checks (temporary edits, restored): Warning mapped to Info, filter dropping Warnings, an out-of-range detail level, undefined severity mapped to Info: caught by 4, 5, 3 and 1 failing tests.
 
 ## Not run / limitations
-- Tests that need `openstudio.exe` / EnergyPlus (24, listed above) and any real simulation: **require a Windows machine with the OpenStudio CLI**. Therefore numerical results of a real run (`heating`, `cooling`, SQL) were not compared base vs head here; the change does not touch the runner, converters or result extraction (diff above), and the OSM identity test covers the exported model.
+- Real-run numbers were checked head-vs-head (same model, adapters in between: identical heating and cooling) and by the existing end-to-end run tests, which pass at head. They were **not** compared base-vs-head in one session; the change does not touch the runner, converters or result extraction (diff above), and the OSM identity test covers the exported model.
+- The Grasshopper component outputs (`osmPath`, `heating`, `diagnostics`, ...) were not compared on a canvas; see acceptance steps 3 and 4.
 - The Grasshopper projects were **not built locally** (their post-build step deploys into `%APPDATA%\SAM`); their source is unchanged, hosted CI builds them. No interactive Rhino / Grasshopper check.
 - The adapters are not consumed by any component yet; nothing reads the Info detail table in production.
 - Detail table is a first classification; no canvas shows it.
 
 ## Windows acceptance (exact requirements)
 1. SAM `sow/2026-Q4` built Release (`SAM\build\SAM.Core.dll` contains `SAM.Core.Diagnostic`); `dotnet build SAM_OpenStudio.sln -c Release -p:Platform=x64` (this also builds both GH projects and deploys to `%APPDATA%\SAM`, as before).
-2. With `openstudio.exe` installed (PATH or standard location): `dotnet test tests/SAM.Analytical.OpenStudio.Tests -c Release -p:Platform=x64`. Expect 374 tests, only the 2 SQL-fixture skips; compare against base `fb21e03`; any failure must also fail identically on base.
+2. With `openstudio.exe` installed (PATH or standard location): `dotnet test tests/SAM.Analytical.OpenStudio.Tests -c Release -p:Platform=x64`. Expect 375 tests, only the 2 SQL-fixture skips (done locally 2026-10-15: 373 passed, 0 failed); repeat on the final PR head.
 3. In Grasshopper (Rhino 8, metre document), on base and on this branch with the same model and EPW: run `SAMAnalyticalToOpenStudio` with `_run` true; `osmPath`, `oswPath`, `sqlPath`, `heating`, `cooling` and `successful` identical, and `diagnostics` byte-identical (text and order). Repeat `OpenStudioRunModel` and `OpenStudioToSAMAnalytical` (OSM and OSW).
 4. Open a saved definition containing the three components: loads, wires intact, no "update component" mark (no version change).
 5. Optional library check: `result.GetDiagnostics(DiagnosticDetail.Summary)` still holds every Warning and Error of a real run, and `result.Diagnostics.FormatDiagnostics()` equals the `diagnostics` output.
