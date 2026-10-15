@@ -10,7 +10,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>
         /// The legacy diagnostic lines (<see cref="OpenStudioDiagnostic.ToString"/>) kept at <paramref name="detail"/>.
         /// At <see cref="DiagnosticDetail.Detailed"/> (default) this is exactly the list the Grasshopper <c>diagnostics</c>
-        /// outputs have always shown, in the same order. Null entries are skipped.
+        /// outputs have always shown, in the same order, with the code and object names. Null entries are skipped.
+        /// This is the legacy-string counterpart of <see cref="ToDiagnostics"/>, whose <c>Format()</c> is the structured
+        /// shared format instead.
         /// </summary>
         public static List<string> FormatDiagnostics(this IEnumerable<OpenStudioDiagnostic> openStudioDiagnostics, DiagnosticDetail detail = DiagnosticDetail.Detailed)
         {

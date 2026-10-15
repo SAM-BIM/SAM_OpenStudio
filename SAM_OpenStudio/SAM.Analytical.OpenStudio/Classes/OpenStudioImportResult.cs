@@ -130,6 +130,9 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>
         /// The import diagnostics as a shared <see cref="Core.Diagnostics"/> collection collected at
         /// <paramref name="detail"/> (default Detailed: everything). <see cref="Diagnostics"/> itself is unchanged.
+        /// <c>Format()</c> of the result is the structured shared format (no code, no legacy layout); the legacy strings are
+        /// <c>Diagnostics.FormatDiagnostics()</c>. <see cref="IsValid"/> keeps its legacy rule (only the defined Error severity
+        /// invalidates), so a diagnostic with an undefined severity is an Error here but does not invalidate the result.
         /// </summary>
         public Core.Diagnostics GetDiagnostics(Core.DiagnosticDetail detail = Core.DiagnosticDetail.Detailed)
         {

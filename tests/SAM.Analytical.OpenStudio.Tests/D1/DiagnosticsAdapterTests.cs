@@ -89,22 +89,75 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(diagnostic.Code, Is.EqualTo("SAM-OS-SCH-001"));
             Assert.That(diagnostic.Message, Is.EqualTo("profile 'Office' missing."), "The message is carried verbatim (no capitalisation, no prefix)");
             Assert.That(diagnostic.Severity, Is.EqualTo(Core.DiagnosticSeverity.Error));
-            Assert.That(diagnostic.Subject, Is.EqualTo("Space " + spaceGuid));
+            Assert.That(diagnostic.Subject, Is.EqualTo("Space " + spaceGuid + " (OpenStudio SAM_Space_Office_3f2a9c1e)"), "Both the SAM and the OpenStudio identity are carried");
             Assert.That(diagnostic.SourceIndex, Is.EqualTo(7));
             Assert.That(source.ToString(), Is.EqualTo(before), "The original diagnostic is not modified");
         }
 
         [Test]
-        public void ToDiagnostic_SubjectFallsBackToOpenStudioNameThenNull()
+        public void ToDiagnostic_SubjectCarriesWhicheverIdentitiesExist()
         {
-            Assert.That(Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m", null, null, "SAM_Space_X_1").ToDiagnostic().Subject, Is.EqualTo("SAM_Space_X_1"));
+            Assert.That(Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m", spaceGuid, "Space").ToDiagnostic().Subject, Is.EqualTo("Space " + spaceGuid));
+            Assert.That(Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m", spaceGuid).ToDiagnostic().Subject, Is.EqualTo(spaceGuid.ToString()));
+            Assert.That(Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m", null, null, "SAM_Space_X_1").ToDiagnostic().Subject, Is.EqualTo("OpenStudio SAM_Space_X_1"));
+            Assert.That(Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m", null, "Panel", "SAM_Panel_1").ToDiagnostic().Subject, Is.EqualTo("Panel (OpenStudio SAM_Panel_1)"));
             Assert.That(Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m").ToDiagnostic().Subject, Is.Null);
-            Assert.That(Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m", null, "Panel").ToDiagnostic().Subject, Is.EqualTo("Panel"));
+            Assert.That(Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m", null, null, "  ").ToDiagnostic().Subject, Is.Null);
             Assert.That(((Core.OpenStudio.OpenStudioDiagnostic)null).ToDiagnostic(), Is.Null);
         }
 
         [Test]
-        public void Detail_WarningsAndErrorsAreAlwaysSummary_InformationFollowsTheCodeTable()
+        public void Record_ExposesBothIdentitiesSeparately()
+        {
+            Core.OpenStudio.OpenStudioDiagnostic source = Create("C", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "m", spaceGuid, "Space", "SAM_Space_Office_3f2a9c1e");
+            Core.OpenStudio.OpenStudioDiagnosticRecord record = new[] { source }.CreateDiagnosticRecords().Single();
+
+            Assert.That(record.SamGuid, Is.EqualTo(spaceGuid));
+            Assert.That(record.SamObjectType, Is.EqualTo("Space"));
+            Assert.That(record.OpenStudioObjectName, Is.EqualTo("SAM_Space_Office_3f2a9c1e"));
+            Assert.That(record.Source, Is.SameAs(source));
+        }
+
+        [Test]
+        public void NullMessage_IsKeptByTheLegacyDiagnostic_AndIsEmptyInTheStructuredOne()
+        {
+            Core.OpenStudio.OpenStudioDiagnostic source = Create("SAM-OS-RUN-001", Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, null);
+
+            Assert.That(source.Message, Is.Null, "The legacy diagnostic is not changed");
+            Assert.That(source.ToString(), Is.EqualTo("[SAM-OS-RUN-001] Warning: "), "Legacy text with a null message is unchanged");
+            Assert.That(source.ToDiagnostic().Message, Is.EqualTo(string.Empty), "SAM.Core.Diagnostic stores a null message as an empty string");
+
+            Core.OpenStudio.OpenStudioDiagnosticRecord record = new[] { source }.CreateDiagnosticRecords().Single();
+            Assert.That(record.Text, Is.EqualTo(source.ToString()));
+            Assert.That(new[] { source }.FormatDiagnostics(Core.DiagnosticDetail.Summary), Is.EqualTo(new[] { "[SAM-OS-RUN-001] Warning: " }));
+        }
+
+        [Test]
+        public void Record_CannotBeInconsistent()
+        {
+            Core.OpenStudio.OpenStudioDiagnostic source = Create(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "message");
+            Core.Diagnostic matching = source.ToDiagnostic(3);
+
+            Core.OpenStudio.OpenStudioDiagnosticRecord record = new Core.OpenStudio.OpenStudioDiagnosticRecord(source, matching);
+            Assert.That(record.Text, Is.EqualTo(source.ToString()));
+            Assert.That(record.ToString(), Is.EqualTo(source.ToString()));
+
+            Assert.Throws<ArgumentNullException>(() => new Core.OpenStudio.OpenStudioDiagnosticRecord(null, matching));
+            Assert.Throws<ArgumentNullException>(() => new Core.OpenStudio.OpenStudioDiagnosticRecord(source, null));
+
+            Core.DiagnosticDetail detail = source.GetDiagnosticDetail();
+            Assert.Throws<ArgumentException>(() => new Core.OpenStudio.OpenStudioDiagnosticRecord(source, new Core.Diagnostic(Core.DiagnosticSeverity.Warning, detail, null, "message", source.Code)), "severity differs");
+            Assert.Throws<ArgumentException>(() => new Core.OpenStudio.OpenStudioDiagnosticRecord(source, new Core.Diagnostic(Core.DiagnosticSeverity.Info, detail, null, "message", "SAM-OS-OTHER")), "code differs");
+            Assert.Throws<ArgumentException>(() => new Core.OpenStudio.OpenStudioDiagnosticRecord(source, new Core.Diagnostic(Core.DiagnosticSeverity.Info, detail, null, "other message", source.Code)), "message differs");
+            Assert.Throws<ArgumentException>(() => new Core.OpenStudio.OpenStudioDiagnosticRecord(source, new Core.Diagnostic(Core.DiagnosticSeverity.Info, Core.DiagnosticDetail.Detailed, null, "message", source.Code)), "detail differs (Summary expected)");
+
+            // A Warning source cannot be paired with an Info diagnostic that would be filtered away.
+            Core.OpenStudio.OpenStudioDiagnostic warning = Create(source.Code, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "message");
+            Assert.Throws<ArgumentException>(() => new Core.OpenStudio.OpenStudioDiagnosticRecord(warning, matching));
+        }
+
+        [Test]
+        public void Detail_WarningsAndErrorsAreAlwaysSummary()
         {
             foreach (Core.OpenStudio.OpenStudioDiagnostic diagnostic in AllCodesAllSeverities())
             {
@@ -114,13 +167,48 @@ namespace SAM.Analytical.OpenStudio.Tests
                 }
             }
 
-            Assert.That(Create(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information).GetDiagnosticDetail(), Is.EqualTo(Core.DiagnosticDetail.Summary));
-            Assert.That(Create(Core.OpenStudio.OpenStudioImportDiagnosticCodes.OswWorkflowExecuted, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information).GetDiagnosticDetail(), Is.EqualTo(Core.DiagnosticDetail.Summary));
-            Assert.That(Create(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information).GetDiagnosticDetail(), Is.EqualTo(Core.DiagnosticDetail.Standard));
-            Assert.That(Create(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information).GetDiagnosticDetail(), Is.EqualTo(Core.DiagnosticDetail.Detailed));
-            Assert.That(Create(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryVerticesCleaned, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information).GetDiagnosticDetail(), Is.EqualTo(Core.DiagnosticDetail.Detailed));
             Assert.That(Create("SAM-FUTURE-999", Core.OpenStudio.OpenStudioDiagnosticSeverity.Information).GetDiagnosticDetail(), Is.EqualTo(Core.DiagnosticDetail.Standard), "Unknown and future codes are Standard");
             Assert.That(((Core.OpenStudio.OpenStudioDiagnostic)null).GetDiagnosticDetail(), Is.EqualTo(Core.DiagnosticDetail.Summary));
+        }
+
+        [Test]
+        public void UndefinedSeverity_IsAnErrorStructurally_ButLegacyIsValidAndStatisticsAreUnchanged()
+        {
+            const Core.OpenStudio.OpenStudioDiagnosticSeverity undefinedSeverity = (Core.OpenStudio.OpenStudioDiagnosticSeverity)99;
+
+            OpenStudioConversionContext context = new OpenStudioConversionContext(null, new global::OpenStudio.Model());
+            context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.RunCliFailed, undefinedSeverity, "undefined severity");
+
+            using (OpenStudioConversionResult result = new OpenStudioConversionResult(context))
+            {
+                // Legacy semantics, deliberately unchanged: only the defined Error invalidates and is counted.
+                Assert.That(context.HasErrors, Is.False);
+                Assert.That(result.IsValid, Is.True);
+                Assert.That(result.Statistics.ErrorCount, Is.EqualTo(0));
+                Assert.That(result.Statistics.WarningCount, Is.EqualTo(0));
+                Assert.That(result.Statistics.InformationCount, Is.EqualTo(0));
+
+                // Structured view: never downgraded.
+                Core.Diagnostics structured = result.GetDiagnostics(Core.DiagnosticDetail.Summary);
+                Assert.That(structured.Single().Severity, Is.EqualTo(Core.DiagnosticSeverity.Error));
+                Assert.That(structured.HasErrors, Is.True);
+                Assert.That(result.Diagnostics.FormatDiagnostics(Core.DiagnosticDetail.Summary), Has.Count.EqualTo(1), "An Error is kept at Summary");
+            }
+        }
+
+        [Test]
+        public void StructuredFormat_IsNotTheLegacyFormat()
+        {
+            Core.OpenStudio.OpenStudioDiagnostic source = Create("SAM-OS-SCH-001", Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Profile missing", spaceGuid, "Space", "SAM_Space_Office_3f2a9c1e");
+
+            string structured = new[] { source }.ToDiagnostics().Format().Single();
+            string legacy = new[] { source }.FormatDiagnostics().Single();
+
+            Assert.That(legacy, Is.EqualTo(source.ToString()));
+            Assert.That(legacy, Does.Contain("[SAM-OS-SCH-001]"));
+            Assert.That(structured, Does.Not.Contain("SAM-OS-SCH-001"), "Core.Diagnostics.Format() is the shared structured format and carries no code");
+            Assert.That(structured, Is.Not.EqualTo(legacy));
+            Assert.That(structured, Does.Contain("Error:").And.Contain("Profile missing").And.Contain(spaceGuid.ToString()).And.Contain("SAM_Space_Office_3f2a9c1e"), "The structured text still names the object and message");
         }
 
         [Test]
@@ -182,7 +270,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         [Test]
         public void Severity_IsNeverInferredFromText()
         {
-            Core.OpenStudio.OpenStudioDiagnostic information = Create(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Error: fatal Warning: failed");
+            Core.OpenStudio.OpenStudioDiagnostic information = Create(Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryNonConvexCasting, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Error: fatal Warning: failed");
             Core.OpenStudio.OpenStudioDiagnostic warning = Create(Core.OpenStudio.OpenStudioDiagnosticCodes.WeatherDataIssue, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, "all good, information only");
 
             Assert.That(information.ToDiagnostic().Severity, Is.EqualTo(Core.DiagnosticSeverity.Info));
@@ -233,7 +321,6 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             Core.OpenStudio.OpenStudioDiagnostic diagnostic = Create("SAM-OS-RUN-001", Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Boom");
             Assert.That(new Core.OpenStudio.OpenStudioDiagnosticRecord(diagnostic, diagnostic.ToDiagnostic()).Text, Is.EqualTo(diagnostic.ToString()));
-            Assert.That(new Core.OpenStudio.OpenStudioDiagnosticRecord(null, null).Text, Is.EqualTo(string.Empty));
         }
 
         [Test]
@@ -260,9 +347,52 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(typeof(OpenStudioConversionContext).GetMethod("AddDiagnostic", new[] { typeof(string), typeof(Core.OpenStudio.OpenStudioDiagnosticSeverity), typeof(string), typeof(Core.SAMObject), typeof(string) }), Is.Not.Null);
             Assert.That(typeof(OpenStudioImportContext).GetMethod("AddDiagnostic", new[] { typeof(string), typeof(Core.OpenStudio.OpenStudioDiagnosticSeverity), typeof(string), typeof(global::OpenStudio.ModelObject), typeof(Core.SAMObject) }), Is.Not.Null);
             Assert.That(typeof(OpenStudioImportContext).GetMethod("AddDiagnostic", new[] { typeof(string), typeof(Core.OpenStudio.OpenStudioDiagnosticSeverity), typeof(string), typeof(string), typeof(Core.SAMObject) }), Is.Not.Null);
+        }
 
-            Assert.That(typeof(Core.OpenStudio.OpenStudioDiagnosticCodes).GetFields(BindingFlags.Public | BindingFlags.Static).Length, Is.EqualTo(17), "No forward code added or removed");
-            Assert.That(typeof(Core.OpenStudio.OpenStudioImportDiagnosticCodes).GetFields(BindingFlags.Public | BindingFlags.Static).Length, Is.EqualTo(31), "No import code added or removed");
+        /// <summary>The released codes, by constant name and value. New codes may be added; none may be renamed, re-valued or removed.</summary>
+        private static readonly Dictionary<string, string> releasedForwardCodes = new Dictionary<string, string>
+        {
+            ["GeometryInvalidBoundary"] = "SAM-OS-GEO-001", ["GeometryVerticesCleaned"] = "SAM-OS-GEO-002", ["GeometryNonConvexCasting"] = "SAM-OS-GEO-003",
+            ["AdjacencyMissingSurface"] = "SAM-OS-ADJ-001", ["MaterialUnsupported"] = "SAM-OS-MAT-001", ["MaterialUnsupportedParameter"] = "SAM-OS-MAT-002",
+            ["ConstructionMissingLayer"] = "SAM-OS-CON-001", ["ConstructionUnsupportedParameter"] = "SAM-OS-CON-002", ["ScheduleMissingProfile"] = "SAM-OS-SCH-001",
+            ["InternalConditionUnsupportedParameter"] = "SAM-OS-IC-001", ["HvacMissingSetpoints"] = "SAM-OS-HVAC-001", ["RunCliFailed"] = "SAM-OS-RUN-001",
+            ["WeatherDataIssue"] = "SAM-OS-RUN-002", ["ResultExtractionLimitation"] = "SAM-OS-RUN-003", ["SimulationSettingsUnsupported"] = "SAM-OS-SET-001",
+            ["ComplianceInputUnsupported"] = "SAM-OS-SET-002", ["EnergyPlusSevereError"] = "SAM-OS-EPLUS-001",
+        };
+
+        private static readonly Dictionary<string, string> releasedImportCodes = new Dictionary<string, string>
+        {
+            ["InputPathInvalid"] = "SAM-OSI-IN-001", ["InputExtensionUnsupported"] = "SAM-OSI-IN-002", ["OsmLoadFailed"] = "SAM-OSI-OSM-001",
+            ["OsmVersionTranslationFailed"] = "SAM-OSI-OSM-002", ["OswParseFailed"] = "SAM-OSI-OSW-001", ["OswSeedMissing"] = "SAM-OSI-OSW-002",
+            ["OswSeedNotFound"] = "SAM-OSI-OSW-003", ["OswWorkflowNotExecuted"] = "SAM-OSI-OSW-004", ["OswExecutionFailed"] = "SAM-OSI-OSW-005",
+            ["OswFinalOsmNotFound"] = "SAM-OSI-OSW-006", ["OswEnergyPlusMeasureNotRepresentable"] = "SAM-OSI-OSW-007", ["OswWorkflowExecuted"] = "SAM-OSI-OSW-008",
+            ["OswNoSimulationResults"] = "SAM-OSI-OSW-009", ["GeometryInvalid"] = "SAM-OSI-GEO-001", ["GeometryVerticesCleaned"] = "SAM-OSI-GEO-002",
+            ["AdjacencyGeometricFallback"] = "SAM-OSI-ADJ-001", ["AdjacencyPairingFailed"] = "SAM-OSI-ADJ-002", ["BoundaryConditionUnsupported"] = "SAM-OSI-BC-001",
+            ["SubSurfaceUnsupported"] = "SAM-OSI-SUB-001", ["MaterialUnsupported"] = "SAM-OSI-MAT-001", ["ConstructionUnsupported"] = "SAM-OSI-CON-001",
+            ["ScheduleUnsupported"] = "SAM-OSI-SCH-001", ["LoadUnsupported"] = "SAM-OSI-LOAD-001", ["LoadAssignmentConflict"] = "SAM-OSI-LOAD-002",
+            ["HvacUnsupported"] = "SAM-OSI-HVAC-001", ["ZoneMultiSpace"] = "SAM-OSI-ZONE-001", ["ZoneIncomplete"] = "SAM-OSI-ZONE-002",
+            ["IdentityCollision"] = "SAM-OSI-ID-001", ["WeatherLimitation"] = "SAM-OSI-WEA-001", ["SimulationSettingUnsupported"] = "SAM-OSI-SET-001",
+            ["ApproximationApplied"] = "SAM-OSI-APX-001",
+        };
+
+        [Test]
+        public void DiagnosticCodes_ReleasedValuesAreStable_AndEveryCodeIsUniqueAndWellFormed()
+        {
+            foreach ((Type type, Dictionary<string, string> released, string prefix) in new[] { (typeof(Core.OpenStudio.OpenStudioDiagnosticCodes), releasedForwardCodes, "SAM-OS-"), (typeof(Core.OpenStudio.OpenStudioImportDiagnosticCodes), releasedImportCodes, "SAM-OSI-") })
+            {
+                Dictionary<string, string> current = type.GetFields(BindingFlags.Public | BindingFlags.Static).Where(x => x.IsLiteral && x.FieldType == typeof(string)).ToDictionary(x => x.Name, x => (string)x.GetRawConstantValue());
+
+                foreach (KeyValuePair<string, string> pair in released)
+                {
+                    Assert.That(current.ContainsKey(pair.Key), Is.True, type.Name + "." + pair.Key + " was removed or renamed");
+                    Assert.That(current[pair.Key], Is.EqualTo(pair.Value), type.Name + "." + pair.Key + " changed value");
+                }
+
+                Assert.That(current.Values.Distinct().Count(), Is.EqualTo(current.Count), type.Name + " has duplicate code values");
+                Assert.That(current.Values.All(x => x.StartsWith(prefix, StringComparison.Ordinal) && x.Length > prefix.Length), Is.True, type.Name + " codes use the " + prefix + " prefix");
+            }
+
+            Assert.That(releasedForwardCodes.Values.Intersect(releasedImportCodes.Values), Is.Empty, "Forward and import codes never collide");
         }
 
         [Test]
@@ -357,52 +487,69 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(withAdapters, Is.EqualTo(withoutAdapters), "The exported OSM is identical apart from OpenStudio's random handles");
         }
 
-        /// <summary>Needs the OpenStudio CLI and EnergyPlus; skipped (not failed) when the CLI is absent.</summary>
+        /// <summary>
+        /// One real EnergyPlus run. Everything that existed after the run (diagnostics, statistics, loads, the saved OSM and
+        /// SQL files) must be unchanged by calling the adapters. Needs the OpenStudio CLI; skipped (not failed) without it.
+        /// A second simulation would only re-test EnergyPlus determinism, which the adapters cannot influence.
+        /// </summary>
         [Test]
         [Category("Simulation")]
-        public void RealRun_DiagnosticsAndLoads_AreUnchangedByTheAdapters()
+        public void RealRun_ResultsAreUnchangedByTheAdapters()
         {
             Assume.That(Core.OpenStudio.Query.OpenStudioCliPath(), Is.Not.Null, "OpenStudio CLI not installed");
 
             string epwPath = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "..", "resources", "weather", "USA_MA_Boston-Logan.Intl.AP.725090_TMYx.2004-2018.epw"));
             Assert.That(File.Exists(epwPath), Is.True);
 
-            AnalyticalModel analyticalModel = AnalyticalModelFixtures.SingleBox();
-
-            OpenStudioConversionResult Run(string name)
+            string outputDirectory = Path.Combine(TestContext.CurrentContext.WorkDirectory, "d1_real_run");
+            if (Directory.Exists(outputDirectory))
             {
-                string outputDirectory = Path.Combine(TestContext.CurrentContext.WorkDirectory, name);
-                if (Directory.Exists(outputDirectory))
+                Directory.Delete(outputDirectory, true);
+            }
+
+            using (OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox().ToOpenStudio(epwPath, outputDirectory))
+            {
+                // The run must have succeeded before anything of it is read.
+                Assert.That(result.RunResult, Is.Not.Null, "A run result must be produced");
+                Assert.That(result.RunResult.Success, Is.True, "The run must succeed: " + string.Join(" | ", result.Diagnostics.Select(x => x.ToString())));
+                Assert.That(result.Loads, Is.Not.Null, "Loads must be extracted");
+                Assert.That(File.Exists(result.OsmPath), Is.True);
+                Assert.That(File.Exists(result.RunResult.SqlPath), Is.True);
+
+                List<string> legacy = result.Diagnostics.Select(x => x.ToString()).ToList();
+                bool isValid = result.IsValid;
+                int[] statistics = { result.Statistics.InformationCount, result.Statistics.WarningCount, result.Statistics.ErrorCount };
+                double heating = result.Loads.TotalHeating;
+                double cooling = result.Loads.TotalCooling;
+                string osmHash = Hash(result.OsmPath);
+                string sqlHash = Hash(result.RunResult.SqlPath);
+
+                foreach (Core.DiagnosticDetail detail in new[] { Core.DiagnosticDetail.Summary, Core.DiagnosticDetail.Standard, Core.DiagnosticDetail.Detailed })
                 {
-                    Directory.Delete(outputDirectory, true);
+                    Core.Diagnostics structured = result.GetDiagnostics(detail);
+                    Assert.That(structured.Count(x => x.Severity != Core.DiagnosticSeverity.Info), Is.EqualTo(statistics[1] + statistics[2]), "Every Warning and Error of the real run is kept at " + detail);
+                    Assert.That(structured.HasErrors, Is.EqualTo(!isValid));
+                    Assert.That(result.Diagnostics.FormatDiagnostics(detail).Count, Is.EqualTo(structured.Count), "The legacy and structured views keep the same lines at " + detail);
                 }
 
-                return analyticalModel.ToOpenStudio(epwPath, outputDirectory);
+                Assert.That(result.Diagnostics.FormatDiagnostics(), Is.EqualTo(legacy), "Detailed equals the legacy list");
+                Assert.That(result.Diagnostics.Select(x => x.ToString()).ToList(), Is.EqualTo(legacy));
+                Assert.That(result.IsValid, Is.EqualTo(isValid));
+                Assert.That(new[] { result.Statistics.InformationCount, result.Statistics.WarningCount, result.Statistics.ErrorCount }, Is.EqualTo(statistics));
+                Assert.That(result.Loads.TotalHeating, Is.EqualTo(heating));
+                Assert.That(result.Loads.TotalCooling, Is.EqualTo(cooling));
+                Assert.That(Hash(result.OsmPath), Is.EqualTo(osmHash), "The saved OSM is byte-identical after the adapters ran");
+                Assert.That(Hash(result.RunResult.SqlPath), Is.EqualTo(sqlHash), "The EnergyPlus results are byte-identical after the adapters ran");
             }
+        }
 
-            OpenStudioConversionResult first = Run("d1_real_run_1");
-            List<string> legacy = first.Diagnostics.Select(x => x.ToString()).ToList();
-            double heating = first.Loads.TotalHeating;
-            double cooling = first.Loads.TotalCooling;
-            Assert.That(first.RunResult.Success, Is.True);
-
-            foreach (Core.DiagnosticDetail detail in new[] { Core.DiagnosticDetail.Summary, Core.DiagnosticDetail.Standard, Core.DiagnosticDetail.Detailed })
+        private static string Hash(string path)
+        {
+            using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+            using (FileStream stream = File.OpenRead(path))
             {
-                Core.Diagnostics structured = first.GetDiagnostics(detail);
-                Assert.That(structured.Count(x => x.Severity != Core.DiagnosticSeverity.Info), Is.EqualTo(first.Statistics.WarningCount + first.Statistics.ErrorCount), "Every Warning and Error of the real run is kept at " + detail);
-                Assert.That(structured.HasErrors, Is.EqualTo(!first.IsValid));
+                return BitConverter.ToString(sha.ComputeHash(stream));
             }
-
-            Assert.That(first.Diagnostics.FormatDiagnostics(), Is.EqualTo(legacy));
-            Assert.That(first.Diagnostics.Select(x => x.ToString()).ToList(), Is.EqualTo(legacy));
-            Assert.That(first.Loads.TotalHeating, Is.EqualTo(heating));
-            Assert.That(first.Loads.TotalCooling, Is.EqualTo(cooling));
-
-            // The same model run again after the adapters ran: same diagnostics text and the same loads.
-            OpenStudioConversionResult second = Run("d1_real_run_2");
-            Assert.That(second.Diagnostics.Select(x => x.ToString()).ToList(), Is.EqualTo(legacy));
-            Assert.That(second.Loads.TotalHeating, Is.EqualTo(heating));
-            Assert.That(second.Loads.TotalCooling, Is.EqualTo(cooling));
         }
 
         [Test]

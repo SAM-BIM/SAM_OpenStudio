@@ -35,7 +35,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// panel-mutation override): 6 panels of <paramref name="construction"/>, office
         /// internal condition, optional mutation of the south wall before it enters the cluster.
         /// </summary>
-        private static AnalyticalModel SingleBoxModel(Core.MaterialLibrary materialLibrary, Construction construction = null, Action<Panel> mutateSouthWall = null)
+        internal static AnalyticalModel SingleBoxModel(Core.MaterialLibrary materialLibrary, Construction construction = null, Action<Panel> mutateSouthWall = null)
         {
             construction = construction ?? AnalyticalModelFixtures.WallConstruction;
 

@@ -11,6 +11,11 @@ namespace SAM.Core.OpenStudio
         /// Collects the diagnostics into a shared <see cref="Diagnostics"/> collection at <paramref name="detail"/>
         /// (default <see cref="DiagnosticDetail.Detailed"/>, which keeps everything and can be re-filtered later with
         /// <see cref="Diagnostics.Filter"/>). Warnings and Errors are never dropped. Null entries are skipped.
+        /// <para>
+        /// <c>Diagnostics.Format()</c> / <c>Diagnostic.ToString()</c> of the result is the shared structured format
+        /// (<c>Severity: Subject: Message</c>): it carries neither the code nor the legacy <c>[CODE]</c> / object-name
+        /// layout. Use <see cref="FormatDiagnostics"/> for the legacy OpenStudio strings.
+        /// </para>
         /// </summary>
         public static Diagnostics ToDiagnostics(this IEnumerable<OpenStudioDiagnostic> openStudioDiagnostics, DiagnosticDetail detail = DiagnosticDetail.Detailed)
         {
