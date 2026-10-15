@@ -128,6 +128,15 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
+        /// The import diagnostics as a shared <see cref="Core.Diagnostics"/> collection collected at
+        /// <paramref name="detail"/> (default Detailed: everything). <see cref="Diagnostics"/> itself is unchanged.
+        /// </summary>
+        public Core.Diagnostics GetDiagnostics(Core.DiagnosticDetail detail = Core.DiagnosticDetail.Detailed)
+        {
+            return Core.OpenStudio.Query.ToDiagnostics(Diagnostics, detail);
+        }
+
+        /// <summary>
         /// True when a model was produced and no diagnostic has Error severity. Warnings — an
         /// unpaired surface, an approximated material, a workflow that was not executed — do not
         /// invalidate a result.
