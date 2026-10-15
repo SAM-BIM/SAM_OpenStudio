@@ -357,6 +357,54 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(withAdapters, Is.EqualTo(withoutAdapters), "The exported OSM is identical apart from OpenStudio's random handles");
         }
 
+        /// <summary>Needs the OpenStudio CLI and EnergyPlus; skipped (not failed) when the CLI is absent.</summary>
+        [Test]
+        [Category("Simulation")]
+        public void RealRun_DiagnosticsAndLoads_AreUnchangedByTheAdapters()
+        {
+            Assume.That(Core.OpenStudio.Query.OpenStudioCliPath(), Is.Not.Null, "OpenStudio CLI not installed");
+
+            string epwPath = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "..", "resources", "weather", "USA_MA_Boston-Logan.Intl.AP.725090_TMYx.2004-2018.epw"));
+            Assert.That(File.Exists(epwPath), Is.True);
+
+            AnalyticalModel analyticalModel = AnalyticalModelFixtures.SingleBox();
+
+            OpenStudioConversionResult Run(string name)
+            {
+                string outputDirectory = Path.Combine(TestContext.CurrentContext.WorkDirectory, name);
+                if (Directory.Exists(outputDirectory))
+                {
+                    Directory.Delete(outputDirectory, true);
+                }
+
+                return analyticalModel.ToOpenStudio(epwPath, outputDirectory);
+            }
+
+            OpenStudioConversionResult first = Run("d1_real_run_1");
+            List<string> legacy = first.Diagnostics.Select(x => x.ToString()).ToList();
+            double heating = first.Loads.TotalHeating;
+            double cooling = first.Loads.TotalCooling;
+            Assert.That(first.RunResult.Success, Is.True);
+
+            foreach (Core.DiagnosticDetail detail in new[] { Core.DiagnosticDetail.Summary, Core.DiagnosticDetail.Standard, Core.DiagnosticDetail.Detailed })
+            {
+                Core.Diagnostics structured = first.GetDiagnostics(detail);
+                Assert.That(structured.Count(x => x.Severity != Core.DiagnosticSeverity.Info), Is.EqualTo(first.Statistics.WarningCount + first.Statistics.ErrorCount), "Every Warning and Error of the real run is kept at " + detail);
+                Assert.That(structured.HasErrors, Is.EqualTo(!first.IsValid));
+            }
+
+            Assert.That(first.Diagnostics.FormatDiagnostics(), Is.EqualTo(legacy));
+            Assert.That(first.Diagnostics.Select(x => x.ToString()).ToList(), Is.EqualTo(legacy));
+            Assert.That(first.Loads.TotalHeating, Is.EqualTo(heating));
+            Assert.That(first.Loads.TotalCooling, Is.EqualTo(cooling));
+
+            // The same model run again after the adapters ran: same diagnostics text and the same loads.
+            OpenStudioConversionResult second = Run("d1_real_run_2");
+            Assert.That(second.Diagnostics.Select(x => x.ToString()).ToList(), Is.EqualTo(legacy));
+            Assert.That(second.Loads.TotalHeating, Is.EqualTo(heating));
+            Assert.That(second.Loads.TotalCooling, Is.EqualTo(cooling));
+        }
+
         [Test]
         public void MissingAdjacencyCluster_IsAnErrorAndNothingIsConverted()
         {
