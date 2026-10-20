@@ -1,5 +1,28 @@
 # Project Progress - SAM_OpenStudio (2026-Q4)
 
+## S06 OpenStudio CLI selection closeout - 2026-10-20
+
+- **PR**: SAM-BIM/SAM_OpenStudio#32 (`fix/s06-openstudio-cli-sdk-match`) -> `sow/2026-Q4`. **Merged 2026-10-20** as merge commit `a9429f7cea975a8f660bac4407779c3828e86627`, whose parents are base `d4216f35` and approved head `3082dc6acebd38778d0e81b1e9b491ac4a759273`. The merge used `gh pr merge 32 --merge --match-head-commit 3082dc6a...`, with explicit owner approval in chat, and no auto-merge or bypass. Immediately before the merge: not draft, MERGEABLE/CLEAN, build and spdx green on `3082dc6`, no reviews or review comments, `sow/2026-Q4` unprotected.
+- **Status**: complete. This PR supports roadmap S06 (SAM_Deploy#66, the installed smoke candidate).
+- **Work**: when more than one OpenStudio CLI is found and no explicit path is given, `Query.OpenStudioCliPath()` now prefers the first CLI whose `--version` equals the loaded SDK version. Otherwise it keeps the first one found, as before (prefer, not refuse). An explicit path is never version-checked (unchanged). New helpers: the pure selection rule `OpenStudioCliPath(candidates, sdkVersion, cliVersion)`, and `OpenStudioCliVersion(cliPath)`, which is cached.
+- **Files changed**:
+  - `SAM_OpenStudio/SAM.Core.OpenStudio/Query/OpenStudioCliPath.cs`;
+  - `benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests/OpenStudioCliSelectionTests.cs` (9 tests, new);
+  - `documentation/S06-OpenStudio-Cli-Selection-PR.md` (the record).
+
+  Tested content `1f4bf60c`. `1f4bf60c..a9429f7c` adds only the record document.
+- **Validation**:
+  - Local: 51/51 benchmark tests, rerun on 2026-10-20: `dotnet test benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests/SAM.Analytical.OpenStudio.Benchmark.Tests.csproj -c Release -p:Platform=x64 --filter "TestCategory!=Simulation"`. A mutation check fails 4 of the 9 new tests.
+  - Hosted: build and spdx on `3082dc6`; post-merge Q4 Build (Windows) [39409026705](https://github.com/SAM-BIM/SAM_OpenStudio/actions/runs/39409026705) PASS on `a9429f7c`.
+  - End to end, licensed (SAM_Deploy#66 evidence): a genuine install of the hosted SAM_Deploy installer run #227, which pins `1f4bf60c`, with ladybug OpenStudio 3.11.0 first on `PATH`. The OpenStudio run used the SDK-matching 3.10.0 CLI.
+- **Decisions**:
+  - Prefer, not refuse: refusing a non-matching CLI would be an owner decision.
+  - Match on the full core version (`3.10.0`).
+  - The S06 provenance check is "Not PASS: accepted limitation" (owner, 2026-10-20; documented in SAM_Validation#16). It does not concern this change.
+- **Cleanup**: the remote `fix/s06-openstudio-cli-sdk-match` was deleted with `--force-with-lease=...:3082dc6a`, after confirming it was fully merged into `sow/2026-Q4` and that no open PR used it. The ref is now absent. The local branch was deleted after the checkout was fast-forwarded to `a9429f7c`. No worktree was touched.
+- **Unresolved**: none for this repository. SAM_Deploy#66 repins its SAM_OpenStudio gitlink to `a9429f7c` (the exact merge commit, not this closeout).
+- **Next step**: none here. S06 continues in SAM_Deploy#66 and the SAM roadmap closeout.
+
 ## Q4 engineering standards references closeout - 2026-10-16
 
 - **PR**: SAM-BIM/SAM_OpenStudio#29 -> `sow/2026-Q4`, **merged 2026-10-16**, merge commit `adb703f6d70eecb29137113f56857457e8893ff4` pinned to approved head `0be6e762a14a8396af60377199586433f127a249` (`--match-head-commit`). Part of a five-repository rollout (SAM_OCCT#79, SAM_OpenStudio#29, SAM_Tas#102, SAM_Tas_Grasshopper#15, SAM_Psychrometrics#13).
