@@ -6,13 +6,23 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 3):** `c1e53328d49feda1794ed9c7868e081f5fc0ee00`.
+- **Tested content (revision 4):** `0c232875c8b872e393cd1ddb883e61f63eed30a6`.
+- **Revision 3:** tested content `c1e53328`, reviewed head `e0a6ea1950455e04dbf086d164500fd8829867ec` (its hosted
+  Build failed; see "Revision 4").
 - **Revision 2:** tested content `cfe097f4`, reviewed head `6f7e6b7dcce37a8db82c997bc718e0b17d5e28e0`.
 - **Revision 1:** tested content `ebd9c4e4`, reviewed head `d6d1cc5b6573ddb3453355e7468ccc83d3ee2419`.
 - The final head and its hosted checks are in the PR description.
 
 ## Status
 
+- **Revision 4 responds to the failed final-head Build 39603021836 at `e0a6ea19`** (see "Revision 4").
+  - One negative's `compare` wrote no report, and the test lost its exit code and stderr.
+  - A defect that produces exactly this failure is fixed: process freshness was judged by process id alone, and Windows
+    reuses ids. A process is now its id and OS creation time.
+  - A failed CLI step now reports its exit code, stdout/stderr and process identities before any report is parsed. CI
+    keeps that text when a step fails.
+  - That id reuse *was* the CI cause is likely but unproven, because the CI run kept no output.
+  - Verdicts, coverage, outcome counts and every `report.txt` are unchanged (acc6 = acc3).
 - **Revision 3 closes the finding the independent review of `6f7e6b7d` reproduced** (see "Revision 3").
   - `OsComparison.Multiplicity` skipped the OSM/IDF multiplier check when the IDF zone or subsurface had no
     `OS:ThermalZone` / `OS:SubSurface` of its name. Such a model kept BLOCKED owner, exit 12, with complete coverage.
@@ -89,6 +99,15 @@ merged.**
 - Excluded: material-writer changes, calculator/UI work, shared-core changes, fixture, weather or tolerance changes,
   Tas calculations, EnergyPlus execution, simulation, sizing, installation, owner decisions, merge and next-stage work.
 
+**Revision 4 (2026-10-21, in substance).**
+- Diagnose the final-head Build 39603021836 failure without widening S09 scope.
+- A failure must expose the CLI exit code, stdout/stderr and run evidence before the report is parsed. Keep bounded CI
+  diagnostics on failure if needed.
+- Reproduce under relevant conditions, investigate from evidence, and do not call it flaky because local tests pass.
+- Make only evidence-supported fixes. Keep fresh-process independence, hash checks, fixture bytes, tolerances and every
+  negative. No retries or relaxed assertions.
+- Excluded as in revision 3.
+
 ## Work completed
 
 | Commit | Change |
@@ -101,7 +120,9 @@ merged.**
 | `cfe097f` | **Revision 2:** `OsComparison.Orientation` / `.Multiplicity`, the `Unsupported` (BLOCKED technical) list, report schema `/2`, reader classes, 6 negatives, 17 tests, acceptance script |
 | `6f7e6b7` | Revision 2 evidence (acc2, A/B, optics table program and output) and this record |
 | `c1e5332` | **Revision 3:** `OsComparison.OsmCounterpart`, `OsmMultiplier` read by position and label, the counterpart counts in the multiplicity Supporting line; 2 CLI negatives (and the acceptance script); 8 tests |
-| (record commit) | Revision 3 evidence (acc3, A/B), the assessment wording corrections and this record |
+| `e0a6ea1` | Revision 3 evidence (acc3, A/B), the assessment wording corrections and this record |
+| `0c23287` | **Revision 4:** `ProcessIdentity` (id + creation time) in the export/reader/compare checks, schemas `s09-export/2` and `s09-native/2`; `TestSupport` failure evidence and `s09-diagnostics`; 4 tests; CI diagnostics upload on failure |
+| (record commit) | Revision 4 evidence (`revision-4/`: CI excerpt, A/B, id-reuse measurement) and this record |
 
 ### Writer change (`SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/`)
 
@@ -130,8 +151,9 @@ comparator reports this as EXPORT-DEFECT, i.e. FAIL. `neg-v1-unscheduled` reprod
      `Schedule:Constant`, and OSM `OS:Schedule:FixedInterval`. Anything else is unreadable.
    - It records the PID, the start time, the hashes before and after reading, and the hash of the EPW the OSM references.
 3. **Compare (fresh process):**
-   - Infrastructure checks as in S08: a different PID, the reader started after the export, the OSM and IDF read are the
-     exported ones, and the frozen model and EPW are byte-identical. A failed check exits 70.
+   - Infrastructure checks as in S08: a different process, the reader started after the export, the OSM and IDF read
+     are the exported ones, and the frozen model and EPW are byte-identical. A failed check exits 70.
+   - Revision 4: a process is its id and OS creation time, both recorded. An unrecorded identity fails.
    - Expectations: S08 `ReadBackExpected.cs`, linked, plus the core formulas.
    - Gate: the S08 core `SAM.Analytical.InputEquivalence`, by project reference. Neither is copied, and revision 2
      changes neither.
@@ -274,6 +296,61 @@ in fresh processes; the IDF unchanged in every input):
 In every FAIL the outcome counts and coverage are those of the unchanged fixture, there is no Unsupported entry, and
 every Consistency entry is a missing-counterpart entry.
 
+## Revision 4: final-head CI failure (Build 39603021836 at `e0a6ea19`)
+
+Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/revision-4/` (README, CI excerpt, scripts, outputs).
+
+**The failed run (preserved, not re-run).** Build (Windows) 39603021836, job 119232047962, on `pull/33/merge` of
+`e0a6ea19`. Dependencies: SAM, SAM_SQLite and SAM_Validation at `sow/2026-Q4`, SAM_Tas `c50e9169` (`sow/2026-Q4`).
+- Benchmark tests: 51/51. S09 tests: 57/58.
+- Failed: `EveryTargetedMutation_Fails("neg-people-density","s08-fix-box")` [695 ms], `DirectoryNotFoundException` on
+  `s09-runs\neg-people-density-b0da74\compare-approved\report.json` (`TestSupport.cs:111`).
+- SPDX run 39603021804 passed. No artifact was kept.
+- **Disposition:** superseded by revision 4. The cause is diagnosed as likely, not proven (below).
+
+**What the run shows.** `compare` returned before `OsReport.Save`, which creates `compare-approved` first. That
+happens only for exit 64 (usage) or exit 70 (an infrastructure check, or an exception caught in `Program.Main`). The
+test loaded `report.json` before checking its exit code, so the exit code and stderr were lost. Which branch ran is
+therefore not known from CI.
+
+**The defect found.** The freshness checks compared process ids only:
+- reader id = export id → "the reader did not run in a fresh process after the export";
+- compare id = reader id → "the comparison runs in the reader's process".
+
+Windows reuses the id of an exited process. A negative copy keeps the id of the one-time export, whose process exited
+long before, so a later fresh reader can carry it. Measured here: 141 of 1000 sequential harness launches got an id an
+earlier launch already had, at least 164 launches apart (`pid-reuse-1000.txt`). It depends on load: 0 of 200 in
+another run. It was not measured on a GitHub runner.
+
+**Reproduction.** `simulate-pid-reuse.ps1` makes the reused-id state by writing the reader's id into a negative copy's
+`export.json`; the reader started after the export finished.
+- Reviewed head build (`5041645c…`): 3/3 exit 70 with the message above and no `compare-approved`. This is the CI
+  signature.
+- Revision 4 (`25a35b92…`): 3/3 FAIL, exit 10, with `report.txt` byte-identical to the unmutated controls and to acc3.
+
+**Conclusion.** The id-only check is a defect, and it is the only mechanism found that produces the CI failure. That it
+caused this run is likely but unproven. An exception inside `compare` is not excluded by CI evidence. Locally, none of
+319 earlier test runs and no acc3, acc5 or acc6 run lacked a report.
+
+**Change (`0c232875`).**
+- `ProcessIdentity`: a process is its id **and** OS creation time.
+  - `export.json` `s09-export/2` and `native.json` `s09-native/2` record `ProcessStartedUtc`.
+  - Same id and creation time = the same process. The reader must still start after the export finished.
+  - A missing identity fails closed (exit 70), so `/1` and hand-made files are refused.
+  - `report.json` Inputs gain the three creation times; `report.txt` is unchanged.
+- `TestSupport.ReadAndCompare` checks that `report.json` exists before parsing it. A failed `read` or `compare` reports:
+  - the exit code and labelled stdout/stderr;
+  - both process identities and times;
+  - the run's files.
+
+  The same text goes to `s09-diagnostics/*.txt`. The Build workflow uploads those files only on failure (30 days).
+- 4 tests:
+  - `AReusedProcessId_IsNotTheExportProcess`: FAIL, exit 10, with a report. It fails against the reviewed head's check.
+  - `AReadNotProvenFresh_IsAnInfrastructureFailure`: the same process, an unrecorded identity and a read before the
+    export finished each give exit 70 and no report.
+- Not changed: the hash checks, fixtures, weather, tolerances, the shared core, the writer, and every existing negative
+  and assertion. No retry was added.
+
 ## Decisions and assumptions (for review)
 
 1. **T-VENT-INACTIVE for OpenStudio.**
@@ -323,7 +400,9 @@ every Consistency entry is a missing-counterpart entry.
 ## Fixture verdicts (approved rules)
 
 Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/`, revision-3 acceptance `acc3`. Harness
-`os-input-readback.dll` `b7cf9f26…`; library `ce8270dd…` (revision 2 `acc2`: `32090bbf…` / `5f279f12…`).
+`os-input-readback.dll` `b7cf9f26…`; library `ce8270dd…` (revision 2 `acc2`: `32090bbf…` / `5f279f12…`). The
+revision-4 acceptance `acc6` (`25a35b92…` / `006668df…`) gives the same table, with every `report.txt` and IDF
+byte-identical to acc3; the committed pack stays acc3.
 
 | Run | Status (exit) | Coverage | Outcomes | Non-PASS (all owner decisions) |
 |---|---|---|---|---|
@@ -615,11 +694,27 @@ calculation, EnergyPlus simulation or sizing was run.
   - this record.
 
   No writer, reader (`Native/`), report schema, shared-core, fixture, weather or tolerance change.
+- Revision 4 changed:
+  - `Classes/ExportManifest.cs` (`ProcessIdentity`, `ProcessStartedUtc`, schema `/2`), `Native/NativeReader.cs` (the
+    reader's `ProcessStartedUtc`, schema `/2`);
+  - `Cli/Export.cs`, `Cli/ReadBackRead.cs` (the infrastructure checks, three report inputs);
+  - `Tests/TestSupport.cs` (failure evidence, `Compare`), `Tests/ReadBackTests.cs` (4 tests);
+  - `.github/workflows/build.yml` (the diagnostics upload on failure);
+  - the new `revision-4/` evidence folder and this record.
+
+  No writer, comparison (`Compare/`), report text, shared-core, fixture, weather or tolerance change. The committed
+  `runs/`, `negatives/` and `summary-*.json` stay the acc3 pack.
 
 ## Tests and validation (local, Release x64)
 
 | Check | At | Result |
 |---|---|---|
+| S09 tests | `0c232875` (revision 4; harness `25a35b92…`, library `006668df…`) | **62/62**: the 58 revision-3 cases, unchanged, plus the 4 process-identity tests |
+| The 4 new tests with the reviewed head's id-only check restored | working tree, then restored and rebuilt | `AReusedProcessId_IsNotTheExportProcess` fails (exit 70); the 3 refusal cases pass under both |
+| Benchmark tests (not Simulation) | `0c232875` | 51/51 |
+| Acceptance and negatives, `C:\TasOut\s09\acc6` | revision-4 harness `25a35b92…` | as in "Fixture verdicts"; 16/16 negatives FAIL; originals unchanged; all 19 `report.txt` and the 3 IDFs byte-identical to acc3 |
+| Reused-id A/B, `C:\TasOut\s09\rev4-ab` | `e0a6ea19` source vs `0c232875` | see "Revision 4" |
+| `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | not re-run: revision 4 changes no writer or writer-test file | 388 passed, 2 skipped at revision 3 |
 | S09 tests (export in-process; read and compare in fresh processes) | `c1e53328` (revision 3) | **58/58**: the 50 revision-2 cases, unchanged in what they assert (the BLOCKED-technical test's "mutation applied" check now also covers the OSM), plus 8 new cases: 4 missing-counterpart FAILs (both cases × both fixtures), 1 fixture counterpart count, and 3 cases added to the BLOCKED-technical test (duplicated OS:ThermalZone, unlabelled OS:ThermalZone Name, relabelled OS:SubSurface Multiplier) |
 | The same 58 tests with the reviewed head's `OsComparison.cs` (`6f7e6b7d`) | working tree, then restored and rebuilt `--no-incremental` | **8 failed, 50 passed**: exactly the 8 new tests fail |
 | Acceptance and negatives, `C:\TasOut\s09\acc3` | revision-3 harness | 3 runs as in "Fixture verdicts"; 16/16 negatives FAIL; originals unchanged; acc3 IDFs byte-identical to acc2 |
@@ -653,7 +748,9 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
   - the Budapest EPW, decompressed from SAM `SAM/SAM/SAM.Tests/Resources/Weather/HUN_BU_Budapest.Met.Center.128400_TMYx.epw.gz`
     (sha256 `472ffb4e…`).
 - **Machine-local** (not needed elsewhere): `C:\TasOut\s09\acc1` (revision 1), `C:\TasOut\s09\acc2` and
-  `C:\TasOut\s09\rev2-ab` (revision 2), `C:\TasOut\s09\acc3` and `C:\TasOut\s09\rev3-ab` (revision 3).
+  `C:\TasOut\s09\rev2-ab` (revision 2), `C:\TasOut\s09\acc3` and `C:\TasOut\s09\rev3-ab` (revision 3),
+  `C:\TasOut\s09\acc6` and `C:\TasOut\s09\rev4-ab` (revision 4). `acc4-discarded-old-check-binary` is not evidence.
+- Build first and then run `dotnet test --no-build`: SDK 10.0.401 `dotnet test` rejects `--no-incremental`.
 - Building the reference writes ignored `bin/obj` output into the SAM_Tas core folder. The SAM_Tas working tree stays
   clean.
 - **Hosted CI** (Build (Windows) and SPDX on each PR head):
@@ -664,6 +761,9 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
     only.
   - At the revision-2 head `6f7e6b7d`: Build (Windows) run 39598434178 succeeded (SAM_Tas `c50e9169`, `sow/2026-Q4`;
     benchmark 51/51, S09 50/50); SPDX run 39598434210 succeeded.
+  - At the revision-3 head `e0a6ea19`: Build (Windows) run 39603021836 **failed** (S09 57/58; see "Revision 4"); SPDX
+    run 39603021804 succeeded.
+  - From revision 4, a failed Build uploads `SAM_OpenStudio-s09-diagnostics` (the S09 failure text only).
   - The final head and its checks are in the PR description.
 
 ## Unresolved, risks, limits
@@ -691,14 +791,21 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 - **OSM counterparts, one direction only (revision 3):** each IDF zone and subsurface must have its one OSM object. An
   OSM `OS:ThermalZone` or `OS:SubSurface` with no IDF object of its name is not looked for by `Multiplicity`. Closing
   that would be a separate, owner-scoped check, not part of this fix.
+- **The Build 39603021836 cause (revision 4):** likely id reuse, but unproven. The run kept no output, id reuse was not
+  measured on a GitHub runner, and an exception inside `compare` is not excluded by CI evidence. A recurrence now
+  uploads `SAM_OpenStudio-s09-diagnostics`, which names the branch.
+- **S08 has the same id-only check (observation, SAM_Tas not changed):** SAM_Tas
+  `SAM_Tas/SAM.Analytical.Tas.DirectT3D.Validation/ReadBack/ReadBackCompare.cs:159` (`c50e9169`). Whether id reuse can
+  reach it was not assessed; any change there is a separate SAM_Tas task.
 - **Duplicate `OS:Building` (observation, not changed):** `Orientation` reads it with `SingleOrDefault`. A copy of the
   box run with two `OS:Building` objects makes `compare` throw and exit 70 (infrastructure failure). It fails closed,
   but not as a named BLOCKED technical entry (`revision-3/README.md`).
 
 ## Next step
 
-Independent review of revision 3: GPT-6 or Claude Opus 5.5, effort High, a new session in read-only review mode, so the
-reviewer is independent of this session.
+Independent review of revision 4: GPT-6 or Claude Opus 5.5, effort High, a new session in read-only review mode, so the
+reviewer is independent of this session. Revision 4 changes only the process-identity checks and test diagnostics, so a
+focused review is enough.
 - The owner decides the pending items above. An optics writer fix or a 3a scope change would each be a separate task.
 - Then the owner's merge decision, the known-SHA `PROJECT_PROGRESS.md` closeout and guarded branch cleanup.
 - The roadmap S09 row changes only through a separate SAM PR.

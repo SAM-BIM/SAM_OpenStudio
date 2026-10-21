@@ -1,0 +1,25 @@
+﻿export                 exit   0  10692 ms  [openstudio.EpwFile] <0> Appears there are no design condition fields in the EPW file 'C:/TasOut/s09/rev4-ab/rev/source/weather.epw'
+negative control1      exit   0    309 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read control1          exit   0    436 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 20164
+compare control1       exit  10    939 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+control1 compare-approved written: True
+negative reused1       exit   0    270 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read reused1           exit   0    349 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 39116
+compare reused1        exit  10    664 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+reused1 compare-approved written: True
+negative control2      exit   0    236 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read control2          exit   0    286 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 10516
+compare control2       exit  10    609 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+control2 compare-approved written: True
+negative reused2       exit   0    213 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read reused2           exit   0    380 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 30732
+compare reused2        exit  10    695 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+reused2 compare-approved written: True
+negative control3      exit   0    229 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read control3          exit   0    489 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 41968
+compare control3       exit  10    657 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+control3 compare-approved written: True
+negative reused3       exit   0    301 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read reused3           exit   0    452 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 45548
+compare reused3        exit  10    781 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+reused3 compare-approved written: True

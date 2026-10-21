@@ -1,0 +1,25 @@
+﻿export                 exit   0   3480 ms  [openstudio.EpwFile] <0> Appears there are no design condition fields in the EPW file 'C:/TasOut/s09/rev4-ab/base/source/weather.epw'
+negative control1      exit   0    233 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read control1          exit   0    401 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 40380
+compare control1       exit  10    703 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+control1 compare-approved written: True
+negative reused1       exit   0    222 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read reused1           exit   0    435 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 41972
+compare reused1        exit  70    175 ms  os-input-readback.exe : infrastructure: the reader did not run in a fresh process after the export
+reused1 compare-approved written: False
+negative control2      exit   0    187 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read control2          exit   0    341 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 43676
+compare control2       exit  10    537 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+control2 compare-approved written: True
+negative reused2       exit   0    221 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read reused2           exit   0    360 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 7340
+compare reused2        exit  70    233 ms  os-input-readback.exe : infrastructure: the reader did not run in a fresh process after the export
+reused2 compare-approved written: False
+negative control3      exit   0    296 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read control3          exit   0    479 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 26144
+compare control3       exit  10    607 ms  S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (316 required, 316 results)
+control3 compare-approved written: True
+negative reused3       exit   0    189 ms  negative neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+read reused3           exit   0    317 ms  read: 47 IDF objects, 23 OSM objects, 15 IDF schedules (0 unreadable), 11 OSM schedules; pid 42868
+compare reused3        exit  70    193 ms  os-input-readback.exe : infrastructure: the reader did not run in a fresh process after the export
+reused3 compare-approved written: False
