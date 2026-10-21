@@ -51,6 +51,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
                 SourceModelPath = Path.GetFullPath(modelPath),
                 SourceEpwPath = Path.GetFullPath(epwPath),
                 ProcessId = Environment.ProcessId,
+                ProcessStartedUtc = ProcessIdentity.CurrentStartedUtc(),
                 StartedUtc = DateTime.UtcNow,
                 OpenStudioSdkVersion = global::OpenStudio.OpenStudioUtilitiesCore.openStudioLongVersion(),
                 WriterAssembly = typeof(Convert).Assembly.Location,

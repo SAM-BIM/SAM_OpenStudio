@@ -17,8 +17,11 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
     /// </summary>
     public sealed class NativeSnapshot
     {
-        public string Schema { get; set; } = "s09-native/1";
+        public string Schema { get; set; } = "s09-native/2";
         public int ProcessId { get; set; }
+
+        /// <summary>The reader process's OS creation time; with <see cref="ProcessId"/> it identifies the process (<see cref="ProcessIdentity"/>).</summary>
+        public DateTime ProcessStartedUtc { get; set; }
         public DateTime StartedUtc { get; set; }
         public DateTime FinishedUtc { get; set; }
         public string ReaderAssemblySha256 { get; set; }
@@ -99,6 +102,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             NativeSnapshot result = new NativeSnapshot
             {
                 ProcessId = Environment.ProcessId,
+                ProcessStartedUtc = ProcessIdentity.CurrentStartedUtc(),
                 StartedUtc = DateTime.UtcNow,
                 ReaderAssemblySha256 = Hashing.Sha256(typeof(NativeReader).Assembly.Location),
                 OsmSha256Before = Hashing.Sha256(osmPath),

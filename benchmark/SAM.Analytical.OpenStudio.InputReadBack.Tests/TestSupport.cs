@@ -4,9 +4,11 @@
 using NUnit.Framework;
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text;
 
 namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
 {
@@ -69,7 +71,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             return path;
         }
 
-        /// <summary>Runs os-input-readback in its own process; returns the exit code.</summary>
+        /// <summary>Runs os-input-readback in its own process; returns the exit code, with its labelled stdout and stderr in output.</summary>
         public static int Cli(out string output, params string[] arguments)
         {
             string exe = Path.Combine(TestContext.CurrentContext.TestDirectory, "os-input-readback.exe");
@@ -92,7 +94,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                 System.Threading.Tasks.Task<string> error = process.StandardError.ReadToEndAsync();
                 output = process.StandardOutput.ReadToEnd();
                 process.WaitForExit();
-                output += error.Result;
+                output = "[stdout]" + Environment.NewLine + output + "[stderr]" + Environment.NewLine + error.Result;
                 return process.ExitCode;
             }
         }
@@ -107,11 +109,63 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
 
         public static OsReport ReadAndCompare(string run, string fixtureId)
         {
-            Assert.That(Cli(out string read, "read", "--run", run), Is.EqualTo(0), read);
-            int exit = Cli(out string compare, "compare", "--run", run, "--fixture-id", fixtureId, "--rule-set", "approved", "--out", Path.Combine(run, "compare-approved"));
-            OsReport report = OsReport.Load(Path.Combine(run, "compare-approved", "report.json"));
-            Assert.That(exit, Is.EqualTo(report.ExitCode), compare);
+            int read = Cli(out string readOutput, "read", "--run", run);
+            Assert.That(read, Is.EqualTo(0), () => Evidence(run, "read", read, readOutput));
+            int exit = Compare(run, fixtureId, out string compare);
+            string reportPath = Path.Combine(run, "compare-approved", "report.json");
+            Assert.That(File.Exists(reportPath), Is.True, () => Evidence(run, "compare", exit, compare) + Environment.NewLine + "no report was written: " + reportPath);
+            OsReport report = OsReport.Load(reportPath);
+            Assert.That(exit, Is.EqualTo(report.ExitCode), () => Evidence(run, "compare", exit, compare));
             return report;
+        }
+
+        /// <summary>compare (approved rules) in a fresh process, writing to compare-approved; returns the exit code.</summary>
+        public static int Compare(string run, string fixtureId, out string output)
+        {
+            return Cli(out output, "compare", "--run", run, "--fixture-id", fixtureId, "--rule-set", "approved", "--out", Path.Combine(run, "compare-approved"));
+        }
+
+        /// <summary>
+        /// A failed CLI step: its exit code and output, the process identities and times of the run, and the run's files.
+        /// Also written to s09-diagnostics (bounded), which CI keeps when the step fails.
+        /// </summary>
+        public static string Evidence(string run, string step, int exit, string output)
+        {
+            const int limit = 16000;
+            StringBuilder text = new StringBuilder();
+            text.AppendLine(step + " exit " + exit + " (" + run + ")");
+            text.AppendLine("output:");
+            text.AppendLine(output == null || output.Length <= limit ? output : output.Substring(0, limit) + "... (" + output.Length + " characters)");
+            try
+            {
+                string manifestPath = Path.Combine(run, "export.json");
+                if (File.Exists(manifestPath))
+                {
+                    ExportManifest manifest = ExportManifest.Load(manifestPath);
+                    text.AppendLine(string.Format(CultureInfo.InvariantCulture, "export: schema {0}, pid {1}, process started {2:O}, started {3:O}, finished {4:O}, mutation {5}", manifest.Schema, manifest.ProcessId, manifest.ProcessStartedUtc, manifest.StartedUtc, manifest.FinishedUtc, manifest.Mutation));
+                }
+
+                string snapshotPath = Path.Combine(run, "native.json");
+                if (File.Exists(snapshotPath))
+                {
+                    NativeSnapshot snapshot = NativeSnapshot.Load(snapshotPath);
+                    text.AppendLine(string.Format(CultureInfo.InvariantCulture, "reader: schema {0}, pid {1}, process started {2:O}, started {3:O}, finished {4:O}", snapshot.Schema, snapshot.ProcessId, snapshot.ProcessStartedUtc, snapshot.StartedUtc, snapshot.FinishedUtc));
+                }
+
+                foreach (string file in Directory.Exists(run) ? Directory.GetFiles(run, "*", SearchOption.AllDirectories) : new string[0])
+                {
+                    text.AppendLine(string.Format(CultureInfo.InvariantCulture, "file {0} {1} bytes, written {2:O}", Path.GetRelativePath(run, file), new FileInfo(file).Length, File.GetLastWriteTimeUtc(file)));
+                }
+            }
+            catch (Exception exception)
+            {
+                text.AppendLine("run evidence unreadable: " + exception.Message);
+            }
+
+            string diagnostics = Path.Combine(TestContext.CurrentContext.WorkDirectory, "s09-diagnostics");
+            Directory.CreateDirectory(diagnostics);
+            File.WriteAllText(Path.Combine(diagnostics, Path.GetFileName(run) + "-" + step + ".txt"), text.ToString());
+            return text.ToString();
         }
 
         public static string Write(AnalyticalModel model, string name)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -12,7 +13,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
     /// <summary>What the export step converted and wrote (export.json). Writer-side facts only: hashes, versions, diagnostics.</summary>
     public sealed class ExportManifest
     {
-        public string Schema { get; set; } = "s09-export/1";
+        public string Schema { get; set; } = "s09-export/2";
         public string Label { get; set; }
 
         /// <summary>Set only on a disposable negative copy: the targeted mutation applied to the exported files.</summary>
@@ -27,6 +28,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         public string WriterAssembly { get; set; }
         public string WriterAssemblySha256 { get; set; }
         public int ProcessId { get; set; }
+
+        /// <summary>The export process's OS creation time; with <see cref="ProcessId"/> it identifies the process (<see cref="ProcessIdentity"/>).</summary>
+        public DateTime ProcessStartedUtc { get; set; }
         public DateTime StartedUtc { get; set; }
         public DateTime FinishedUtc { get; set; }
         public bool ConversionValid { get; set; }
@@ -41,6 +45,31 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         public static ExportManifest Load(string path)
         {
             return JsonSerializer.Deserialize<ExportManifest>(File.ReadAllText(path), Json.Options);
+        }
+    }
+
+    /// <summary>
+    /// A process is its id and its OS creation time. Windows reuses a process id once its process has exited, so a later
+    /// process can carry the id of an earlier one; an equal id alone does not prove the same process.
+    /// </summary>
+    public static class ProcessIdentity
+    {
+        public static DateTime CurrentStartedUtc()
+        {
+            using (Process process = Process.GetCurrentProcess())
+            {
+                return process.StartTime.ToUniversalTime();
+            }
+        }
+
+        public static bool IsRecorded(int processId, DateTime processStartedUtc)
+        {
+            return processId > 0 && processStartedUtc != default;
+        }
+
+        public static bool Same(int processId, DateTime processStartedUtc, int otherProcessId, DateTime otherProcessStartedUtc)
+        {
+            return processId == otherProcessId && processStartedUtc == otherProcessStartedUtc;
         }
     }
 

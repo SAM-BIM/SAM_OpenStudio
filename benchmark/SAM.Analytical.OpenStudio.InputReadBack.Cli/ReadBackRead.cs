@@ -4,6 +4,7 @@
 using SAM.Analytical.InputEquivalence;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
@@ -78,6 +79,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
                 ["exportPid"] = manifest.ProcessId.ToString(),
                 ["readerPid"] = snapshot.ProcessId.ToString(),
                 ["comparePid"] = Environment.ProcessId.ToString(),
+                ["exportProcessStartedUtc"] = manifest.ProcessStartedUtc.ToString("O", CultureInfo.InvariantCulture),
+                ["readerProcessStartedUtc"] = snapshot.ProcessStartedUtc.ToString("O", CultureInfo.InvariantCulture),
+                ["compareProcessStartedUtc"] = ProcessIdentity.CurrentStartedUtc().ToString("O", CultureInfo.InvariantCulture),
                 ["mutation"] = manifest.Mutation,
                 ["writerDiagnostics"] = string.Join(" | ", manifest.Diagnostics.Where(x => !x.StartsWith("Information SAM-OS-MAT-002 Vapour", StringComparison.Ordinal))),
                 ["translatorMessages"] = manifest.TranslatorMessages.Count.ToString()
@@ -96,17 +100,23 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
         private static List<string> Infrastructure(ExportManifest manifest, NativeSnapshot snapshot, string runDirectory, string modelPath, string epwPath)
         {
             List<string> result = new List<string>();
-            if (snapshot.Schema != "s09-native/1" || manifest.Schema != "s09-export/1")
+            if (snapshot.Schema != "s09-native/2" || manifest.Schema != "s09-export/2")
             {
                 result.Add("unknown export or snapshot schema");
             }
 
-            if (snapshot.ProcessId == manifest.ProcessId || snapshot.StartedUtc <= manifest.FinishedUtc)
+            // A process is its id and its creation time: Windows reuses the id of an exited process, so a fresh reader can
+            // carry the export's id, and a fresh comparison the reader's (ProcessIdentity).
+            if (!ProcessIdentity.IsRecorded(manifest.ProcessId, manifest.ProcessStartedUtc) || !ProcessIdentity.IsRecorded(snapshot.ProcessId, snapshot.ProcessStartedUtc))
+            {
+                result.Add("the export or reader process identity is not recorded: a fresh read is not proven");
+            }
+            else if (ProcessIdentity.Same(snapshot.ProcessId, snapshot.ProcessStartedUtc, manifest.ProcessId, manifest.ProcessStartedUtc) || snapshot.StartedUtc <= manifest.FinishedUtc)
             {
                 result.Add("the reader did not run in a fresh process after the export");
             }
 
-            if (snapshot.ProcessId == Environment.ProcessId)
+            if (ProcessIdentity.Same(snapshot.ProcessId, snapshot.ProcessStartedUtc, Environment.ProcessId, ProcessIdentity.CurrentStartedUtc()))
             {
                 result.Add("the comparison runs in the reader's process");
             }

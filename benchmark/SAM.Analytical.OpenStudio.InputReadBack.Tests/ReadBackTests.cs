@@ -283,6 +283,69 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             }
         }
 
+        /// <summary>A negative copy of the box run, read in a fresh process; the copy keeps the original export's identity.</summary>
+        private string ReadNegative(string caseId, out ExportManifest manifest, out NativeSnapshot snapshot)
+        {
+            string run = TestSupport.NewDirectory(caseId);
+            Assert.That(TestSupport.Cli(out string output, "negative", "--run", boxRun, "--case", caseId, "--out", run), Is.EqualTo(0), output);
+            Assert.That(TestSupport.Cli(out string read, "read", "--run", run), Is.EqualTo(0), read);
+            manifest = ExportManifest.Load(Path.Combine(run, "export.json"));
+            snapshot = NativeSnapshot.Load(Path.Combine(run, "native.json"));
+            Assert.That(ProcessIdentity.IsRecorded(manifest.ProcessId, manifest.ProcessStartedUtc) && ProcessIdentity.IsRecorded(snapshot.ProcessId, snapshot.ProcessStartedUtc), Is.True, "both identities are recorded");
+            return run;
+        }
+
+        /// <summary>
+        /// Build 39603021836 (head e0a6ea19): compare wrote no report for one negative. Windows reuses the id of an exited
+        /// process, and a negative copy keeps the id of an export that exited long before, so a fresh reader can carry it;
+        /// the reviewed head refused that (exit 70, no report). Reproduced by giving the copy's export the reader's id: the
+        /// reader is still a different process (another creation time, started after the export finished) and is judged.
+        /// </summary>
+        [Test]
+        public void AReusedProcessId_IsNotTheExportProcess()
+        {
+            string run = ReadNegative("neg-people-density", out ExportManifest manifest, out NativeSnapshot snapshot);
+            manifest.ProcessId = snapshot.ProcessId;
+            manifest.Save(Path.Combine(run, "export.json"));
+
+            int exit = TestSupport.Compare(run, TestSupport.Box, out string output);
+            Assert.That(exit, Is.EqualTo(ReadBackExit.Fail), () => TestSupport.Evidence(run, "compare", exit, output));
+            OsReport report = OsReport.Load(Path.Combine(run, "compare-approved", "report.json"));
+            Assert.That(report.Inputs["exportPid"], Is.EqualTo(report.Inputs["readerPid"]), "the id is shared");
+            Assert.That(report.Inputs["exportProcessStartedUtc"], Is.Not.EqualTo(report.Inputs["readerProcessStartedUtc"]), "the processes are not");
+            Assert.That(report.Inputs["mutation"], Does.StartWith("neg-people-density"));
+        }
+
+        /// <summary>A read not proven to be a fresh process after the export is still an infrastructure failure (exit 70, no report).</summary>
+        [TestCase("same-process")]
+        [TestCase("identity-not-recorded")]
+        [TestCase("read-before-the-export-finished")]
+        public void AReadNotProvenFresh_IsAnInfrastructureFailure(string what)
+        {
+            string run = ReadNegative("neg-people-density", out ExportManifest manifest, out NativeSnapshot snapshot);
+            string expected = "the reader did not run in a fresh process after the export";
+            switch (what)
+            {
+                case "same-process":
+                    manifest.ProcessId = snapshot.ProcessId;
+                    manifest.ProcessStartedUtc = snapshot.ProcessStartedUtc;
+                    break;
+                case "identity-not-recorded":
+                    manifest.ProcessStartedUtc = default;
+                    expected = "the export or reader process identity is not recorded";
+                    break;
+                case "read-before-the-export-finished":
+                    manifest.FinishedUtc = snapshot.StartedUtc;
+                    break;
+            }
+
+            manifest.Save(Path.Combine(run, "export.json"));
+            int exit = TestSupport.Compare(run, TestSupport.Box, out string output);
+            Assert.That(exit, Is.EqualTo(ReadBackExit.Infrastructure), what + ": " + output);
+            Assert.That(output, Does.Contain("infrastructure: " + expected), what);
+            Assert.That(Directory.Exists(Path.Combine(run, "compare-approved")), Is.False, "no report");
+        }
+
         [Test]
         public void TheOriginalRuns_AreUnchangedByTheNegatives()
         {

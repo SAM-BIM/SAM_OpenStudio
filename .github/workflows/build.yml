@@ -334,6 +334,17 @@ jobs:
             --logger 'console;verbosity=normal'
           if ($LASTEXITCODE -ne 0) { throw "S09 read-back tests failed" }
 
+      - name: Upload S09 failure diagnostics
+        # Only when a step failed: the bounded text evidence (exit code, stdout/stderr, process identities, file list) the
+        # S09 tests write for a failed CLI step. No native files.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.REPO_NAME }}-s09-diagnostics
+          path: ${{ env.REPO_NAME }}/benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/bin/**/s09-diagnostics/*.txt
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Upload build folders (optional)
         uses: actions/upload-artifact@v4
         with:
