@@ -6,13 +6,22 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 2):** `cfe097f470fe05ef4e5c7c372a70954d33b9ec13`.
+- **Tested content (revision 3):** `c1e53328d49feda1794ed9c7868e081f5fc0ee00`.
+- **Revision 2:** tested content `cfe097f4`, reviewed head `6f7e6b7dcce37a8db82c997bc718e0b17d5e28e0`.
 - **Revision 1:** tested content `ebd9c4e4`, reviewed head `d6d1cc5b6573ddb3453355e7468ccc83d3ee2419`.
 - The final head and its hosted checks are in the PR description.
 
 ## Status
 
-- **Revision 2 closes the two gaps the independent review of `d6d1cc5b` reproduced.**
+- **Revision 3 closes the finding the independent review of `6f7e6b7d` reproduced** (see "Revision 3").
+  - `OsComparison.Multiplicity` skipped the OSM/IDF multiplier check when the IDF zone or subsurface had no
+    `OS:ThermalZone` / `OS:SubSurface` of its name. Such a model kept BLOCKED owner, exit 12, with complete coverage.
+  - Consistency is now claimed only against one identified OSM counterpart. A proven missing counterpart FAILs
+    (exit 10); an ambiguous or unreadable identity, or an unknown Multiplier layout, is BLOCKED technical (exit 11).
+  - The new negatives FAIL on both fixtures; the reviewed head reported every one as BLOCKED owner, exit 12.
+  - Both unchanged fixtures keep complete coverage, their outcome counts and BLOCKED owner, exit 12.
+  - The assessment wording is corrected (see "Construction-performance calculation methods").
+- **Revision 2 closed the two gaps the independent review of `d6d1cc5b` reproduced.**
   - Native multiplicity (Zone, ZoneGroup and window multipliers) and building orientation (coordinate system, Building
     North Axis, zone relative north) are now checked against SAM intent.
   - A contradiction FAILs; an uninterpretable configuration is BLOCKED technical (see "Revision 2").
@@ -23,17 +32,17 @@ merged.**
   - V2: hourly delivery = the SAM requirement × the selected profile.
   - A selection that does not resolve is an invalid input.
   - Changing V2 back to V1 is covered by tests.
-- **Both fixtures: complete S07 coverage, BLOCKED (owner decision named), exit 12**, unchanged by revision 2:
+- **Both fixtures: complete S07 coverage, BLOCKED (owner decision named), exit 12**, unchanged by revisions 2 and 3:
   - `s08-fix-box`: 316/316 required comparisons.
   - `s08-fix-two`: 586/586 required comparisons.
   - Every other quantity matches within the S07 tolerance, or is a verified transformation or not applicable. Two named
     items remain; both are owner decisions, not defects (see "Fixture verdicts").
   - The box repeat gives the same verdict and a byte-identical IDF.
-- **All 14 targeted negatives FAIL** (exit 10): the original 8 and the 6 new ones.
+- **All 16 targeted negatives FAIL** (exit 10): the original 8, the 6 of revision 2 and the 2 of revision 3.
 - **The optics decision table for OS-MAT-SINGLE-SIDED is below.** It separates exposed-face differences (18 box rows /
   33 two-zone rows) from buried-layer metadata (51 / 105). The item stays proposed and owner-unaccepted.
 - **Construction-performance calculation methods are assessed below.** This is an assessment only; nothing is
-  implemented.
+  implemented. Revision 3 corrects its wording only.
 - On this evidence the S09 roadmap criterion ("as S08, for OpenStudio") is met **subject to** the owner deciding the
   named items and to independent review. PASS needs either a writer change for the optics item or the owner's
   acceptance, which gives "Not PASS — accepted limitation", never PASS.
@@ -67,6 +76,19 @@ merged.**
 - Excluded: a material-writer fix, fixture regeneration, tolerance changes, shared-core redesign, Tas execution,
   simulation, sizing, merge, issue closure and the broader issue #30.
 
+**Revision 3 (2026-10-21, in substance).**
+- Fix one finding: the OSM/IDF consistency checks in `OsComparison.Multiplicity` are skipped when the matching
+  `OS:ThermalZone` or `OS:SubSurface` is absent.
+- Claim consistency only against an unambiguous OSM counterpart. A proven missing counterpart is a consistency failure;
+  an unreadable identity or layout blocks technically. A missing object is never read as a present one with a default
+  field. Keep legitimate blank-field defaults.
+- Add fresh-process regressions on both fixtures; keep the fix local (no reader redesign) and every existing test.
+- Correct the assessment wording: scope the Tas-backed U/g/LT claims to the traced WPF workflows; keep the short-array
+  guard defect apart from the unproven cause of the Ug display issue; describe World coordinates as the code handles
+  them; update the stale hosted-CI wording.
+- Excluded: material-writer changes, calculator/UI work, shared-core changes, fixture, weather or tolerance changes,
+  Tas calculations, EnergyPlus execution, simulation, sizing, installation, owner decisions, merge and next-stage work.
+
 ## Work completed
 
 | Commit | Change |
@@ -77,7 +99,9 @@ merged.**
 | `ebd9c4e` | The OS-MAT-SINGLE-SIDED proposal named in each report; acceptance evidence |
 | `d6d1cc5` | Revision 1 record |
 | `cfe097f` | **Revision 2:** `OsComparison.Orientation` / `.Multiplicity`, the `Unsupported` (BLOCKED technical) list, report schema `/2`, reader classes, 6 negatives, 17 tests, acceptance script |
-| (record commit) | Revision 2 evidence (acc2, A/B, optics table program and output) and this record |
+| `6f7e6b7` | Revision 2 evidence (acc2, A/B, optics table program and output) and this record |
+| `c1e5332` | **Revision 3:** `OsComparison.OsmCounterpart`, `OsmMultiplier` read by position and label, the counterpart counts in the multiplicity Supporting line; 2 CLI negatives (and the acceptance script); 8 tests |
+| (record commit) | Revision 3 evidence (acc3, A/B), the assessment wording corrections and this record |
 
 ### Writer change (`SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/`)
 
@@ -126,7 +150,8 @@ comparator reports this as EXPORT-DEFECT, i.e. FAIL. `neg-v1-unscheduled` reprod
    - the DSOA rates and schedule;
    - every compared schedule, hour by hour;
    - the weather location;
-   - zone and subsurface multipliers, and the building north axis;
+   - zone and subsurface multipliers, each against the one OSM object of the IDF object's name (revision 3), and the
+     building north axis;
    - no dangling schedule references.
 
 ## Revision 2: multiplicity and orientation (independent review of `d6d1cc5b`)
@@ -157,6 +182,15 @@ shared core. It checks both against SAM intent and fails closed.
 - The local ladybug IDD is 25.2, not matched; it only corroborates that Coordinate System is required (Relative or
   World) and that the fenestration Multiplier defaults to 1, with non-integers truncated.
 
+**How the S09 code handles the two coordinate systems** (`NativeModel.Vertices`, `OsComparison.Orientation`):
+- **Relative:** the reader adds the zone origin to each vertex. A zone with a non-zero Direction of Relative North is
+  not read; the rotation check below FAILs a non-zero Building North Axis + Direction of Relative North.
+- **World** (or its synonym `Absolute`): **supported.** The reader takes the vertices as absolute, with no zone origin
+  and no rotation, and compares them like Relative ones. Only a non-zero Building North Axis or Zone Direction of
+  Relative North under World is refused (BLOCKED technical), because EnergyPlus would not apply it to the geometry.
+- Any other or missing coordinate system is BLOCKED technical. Both fixtures use Relative, so the World path is
+  exercised only by the refusal test (`world-with-north-axis`), not by a compared model.
+
 **Rules.** A blank field is read as its documented default, never assumed.
 
 | Native finding | Outcome |
@@ -164,7 +198,9 @@ shared core. It checks both against SAM intent and fails closed.
 | An effective multiplier ≠ 1 (Zone, ZoneGroup, FenestrationSurface:Detailed) | Consistency → **FAIL**: contradicts SAM |
 | Relative coordinates with Building North Axis + Zone relative north ≠ 0, where SAM states no rotation | Consistency → **FAIL** |
 | The OSM and IDF disagree (OS:ThermalZone / OS:SubSurface Multiplier, OS:Building North Axis) | Consistency → **FAIL** |
-| An unreadable or non-integer multiplier; an unreadable north axis; an unknown or missing coordinate system; World coordinates with a non-zero north axis; a non-identity OS:Space transformation; a non-zero SAM North Angle (S07 has no orientation tolerance) | `Unsupported` → **BLOCKED technical** (exit 11), never PASS |
+| (revision 3) An IDF Zone or FenestrationSurface:Detailed has no OS:ThermalZone / OS:SubSurface of its name, and every OSM object of that class has a readable Name | Consistency → **FAIL**: a proven missing counterpart |
+| An unreadable or non-integer multiplier; an unreadable north axis; an unknown or missing coordinate system; World coordinates with a non-zero Building North Axis or Zone Direction of Relative North; a non-identity OS:Space transformation; a non-zero SAM North Angle (S07 has no orientation tolerance) | `Unsupported` → **BLOCKED technical** (exit 11), never PASS |
+| (revision 3) An ambiguous OSM counterpart (two objects of the name), or an OSM object of the class whose Name is unreadable; an OSM Multiplier field that is missing or labelled otherwise | `Unsupported` → **BLOCKED technical** (exit 11) |
 | Simple-geometry `Window`, `Door`, `GlazedDoor` and their `:Interzone` forms (which carry multipliers) | read, and refused as native extras: **FAIL** |
 
 The report schema is now `s09-readback-report/2` (it adds `Unsupported`). Each fixture report carries one Supporting
@@ -189,6 +225,54 @@ multiplier is 1, as SAM states").
   them. Their reports contain only `multiplicity: …SAM states one … and no multiplier` or `orientation: Zone '…' is
   rotated by 90 deg …; SAM states no rotation`.
 - **The reviewer's copies** differ from the committed box IDF only in the mutated lines.
+
+## Revision 3: missing OSM counterparts (independent review of `6f7e6b7d`)
+
+**Finding.** `OsComparison.Multiplicity` looked up each IDF `Zone` and `FenestrationSurface:Detailed` in the OSM by
+name and compared the multipliers only when an object was found. When the `OS:ThermalZone` or `OS:SubSurface` was
+absent, the check was silently skipped. The review removed the object from a copy of the box `model.osm`, updated the
+manifest's OSM hash and ran a fresh read and compare. The report stayed at exit 12, 316/316, with unchanged outcome
+counts and no Consistency or Unsupported entry. A second, related gap: the OSM Multiplier was found by label search,
+and a missing label was read as the default 1.
+
+**Change (`Compare/OsComparison.cs`, local to `Multiplicity`; no reader or core change).**
+- `OsmCounterpart(type, …, name)` reads the Name of every OSM object of the class at its known position (field 1,
+  after the handle) under the file's own label:
+  - exactly one match, and every Name readable: the counterpart, whose multiplier is compared as before;
+  - no match, and every Name readable: proven missing → Consistency, `multiplicity: IDF Zone '…' has no OS:ThermalZone
+    in the OSM (none of its N OS:ThermalZone object(s) has that name); the OSM and IDF disagree` (the same for
+    subsurfaces) → **FAIL**;
+  - two or more matches, or any Name unreadable (blank, or a field labelled otherwise): the identity is not proven →
+    `Unsupported` → **BLOCKED technical**.
+- `OsmMultiplier` reads the OSM Multiplier at its known position (`OS:ThermalZone` field 2, `OS:SubSurface` field 8)
+  under its label, with the IDF reader's own `NativeModel.Number`. **Blank stays the documented default 1.** A missing
+  field, or one labelled otherwise, is an unknown layout → BLOCKED technical; before, it defaulted to 1.
+- The multiplicity Supporting line now states the matches: box `1 IDF zone(s) (1 with their OS:ThermalZone) …
+  2 IDF subsurface(s) (2 with their OS:SubSurface)`; two-zone `2 (2) … 1 (1)`. It claims "every effective multiplier
+  is 1, as SAM states" only when no multiplicity Consistency or Unsupported entry exists, as before.
+- The translator keeps the names (IDF `SAM_ThermalZone_FixBox_5080c000` = OSM `OS:ThermalZone` Name), so a name match
+  is the identity. Names compare case-insensitively, as EnergyPlus does.
+
+**Negatives** (`Cli/Negative.cs`, also in `Run-S09-ReadBack.ps1 -Phase acceptance-negative`; the IDF is unchanged):
+- `neg-osm-missing-thermal-zone`: the first IDF zone's `OS:ThermalZone` removed (box: the only zone; two-zone: zone A).
+- `neg-osm-missing-subsurfaces`: every IDF subsurface's `OS:SubSurface` removed (box 2, two-zone 1).
+
+**Before and after** (`documentation/S09-OpenStudio-InputReadBack-evidence/revision-3/`; the same inputs, each binary
+in fresh processes; the IDF unchanged in every input):
+
+| Input | Reviewed head `6f7e6b7d` | Revision 3 `c1e53328` |
+|---|---|---|
+| s08-fix-box, unchanged | BLOCKED owner, exit 12, 316/316 | the same; outcome counts and `report-approved.txt` identical |
+| s08-fix-two, unchanged | BLOCKED owner, exit 12, 586/586 | the same; outcome counts and `report-approved.txt` identical |
+| box, every `OS:ThermalZone` removed (the reviewer's method) | exit 12, 316/316, no Consistency or Unsupported | **FAIL, exit 10**, 316/316, 1 Consistency |
+| box, every `OS:SubSurface` removed (reviewer's method) | exit 12, the same | **FAIL, exit 10**, 2 Consistency |
+| two-zone, every `OS:ThermalZone` removed | exit 12, 586/586, the same | **FAIL, exit 10**, 2 Consistency |
+| two-zone, every `OS:SubSurface` removed | exit 12, the same | **FAIL, exit 10**, 1 Consistency |
+| `neg-osm-missing-subsurfaces` (box) | exit 12 | **FAIL, exit 10**, 2 Consistency |
+| `neg-osm-missing-thermal-zone` (two-zone, zone A) | exit 12 | **FAIL, exit 10**, 1 Consistency |
+
+In every FAIL the outcome counts and coverage are those of the unchanged fixture, there is no Unsupported entry, and
+every Consistency entry is a missing-counterpart entry.
 
 ## Decisions and assumptions (for review)
 
@@ -231,11 +315,15 @@ multiplier is 1, as SAM states").
    - Contradictions use the existing fail-closed Consistency channel. The new `Unsupported` list floors the status at
      BLOCKED technical, never PASS.
    - Neither adds a quantity, a tolerance or a core change.
+10. **OSM counterpart identity (revision 3):** the IDF object's name is its OSM identity, because the translator keeps
+    names. Consistency is claimed only against exactly one OSM object of that name, read under the file's labels. "No
+    such object among readable names" is proven missing (FAIL); anything less certain blocks. Only the IDF → OSM
+    direction is checked: an OSM zone or subsurface with no IDF object is not looked for (see "Unresolved").
 
 ## Fixture verdicts (approved rules)
 
-Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/`, revision-2 acceptance `acc2`. Harness
-`os-input-readback.dll` `32090bbf…`; library `5f279f12…`.
+Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/`, revision-3 acceptance `acc3`. Harness
+`os-input-readback.dll` `b7cf9f26…`; library `ce8270dd…` (revision 2 `acc2`: `32090bbf…` / `5f279f12…`).
 
 | Run | Status (exit) | Coverage | Outcomes | Non-PASS (all owner decisions) |
 |---|---|---|---|---|
@@ -243,8 +331,10 @@ Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/`, revision-2 acc
 | `s08-fix-two` (V1, V1) | BLOCKED owner (12) | 586/586 | Match 393, WithinTolerance 46, AcceptedTransformation 6, NotApplicable 1, MappingDifference 138, DocumentedDefault 2 | OS-MAT-SINGLE-SIDED (138 rows), lighting visible fraction (2 zones) |
 | `box-repeat` | BLOCKED owner (12) | 316/316 | identical report | IDF byte-identical |
 
-- Every `report-approved.txt` is byte-identical to revision 1's. Only the JSON changed: schema `/2`, the orientation
-  and multiplicity Supporting lines, and fresh hashes and times.
+- Every `report-approved.txt` is byte-identical to revision 1's and revision 2's. Revision 2 changed only the JSON
+  (schema `/2`, the orientation and multiplicity Supporting lines). Revision 3 changes only the multiplicity Supporting
+  line (the counterpart counts), plus fresh OSM hashes, DLL hashes, PIDs and times. The acc3 IDFs are byte-identical to
+  acc2's; the OSM bytes differ between exports (random handles), as before.
 - **Ventilation:**
   - Box V2: 8b passes for all 8760 hours, and the 6.hourly ventilation schedule matches.
   - Two-zone: both zones are V1, with the requirement read back and matched (8a). 8b and the ventilation schedule pass as
@@ -253,9 +343,11 @@ Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/`, revision-2 acc
   The calendar is RunPeriod 2006 (non-leap), 1/1-12/31, with an 8760-row EPW.
 - **Placement:** both fixtures unrotated (Relative coordinates, Building North Axis blank, no zone rotation, SAM North
   Angle unstated). All multipliers are 1: box 1 zone and 2 subsurfaces, two-zone 2 zones and 1 subsurface, no ZoneGroup.
+  Each IDF zone and subsurface has exactly one OSM object of its name, whose blank Multiplier is the documented
+  default 1.
 - **Provisional rules:** the same exit codes (baseline).
 
-**Negatives** (`neg-*`; each a disposable copy, read and compared fresh). All 14 FAIL (exit 10), and the originals are
+**Negatives** (`neg-*`; each a disposable copy, read and compared fresh). All 16 FAIL (exit 10), and the originals are
 unchanged:
 
 | Case | Mutation | Result |
@@ -274,6 +366,8 @@ unchanged:
 | zone-multiplier-both | as zone-multiplier, plus OS:ThermalZone Multiplier → 2 | FAIL (multiplicity vs SAM only) |
 | window-multiplier-both | as window-multiplier, plus OS:SubSurface Multipliers → 2 | FAIL (multiplicity vs SAM only) |
 | north-axis-both | as north-axis, plus OS:Building North Axis → 90 | FAIL (orientation vs SAM only) |
+| osm-missing-thermal-zone (two-zone in acceptance; both fixtures in the tests) | OSM-only: the first IDF zone's OS:ThermalZone removed | FAIL (missing OSM counterpart only) |
+| osm-missing-subsurfaces (box in acceptance; both fixtures in the tests) | OSM-only: every IDF subsurface's OS:SubSurface removed | FAIL (missing OSM counterpart only) |
 
 ## OS-MAT-SINGLE-SIDED: optics decision table (proposed, owner-unaccepted)
 
@@ -366,7 +460,18 @@ calculation, EnergyPlus simulation or sizing was run.
 
 ### What exists
 
-1. **Tas-backed evaluators (SAM_UI)** are the source of every U, g and LT that SAM shows or stores.
+1. **Tas-backed evaluators (SAM_UI WPF).** In the four WPF workflows traced here, the U, g and LT that SAM_UI shows
+   or stores come from Tas:
+   - the U-value window (`UI/Windows/SetUValueWindow.xaml.cs` → `TasUValueEvaluator`);
+   - the glazing window (`UI/Windows/SetGlazingWindow.xaml.cs` → `TasGlazingEvaluator`);
+   - the thermal edit services (`UI/Classes/Thermal/ThermalEditSession.cs`, `ThermalEditServices`), whose default
+     factories create all four evaluators; construction alternatives (`ConstructionAlternatives.cs`) evaluate through
+     `TasConstructionUValueEvaluator`;
+   - the Glazing Builder (`UI/Classes/GlazingBuilder/GlazingBuilderViewModel.cs` → `DraftGlazingEvaluator`).
+
+   Other routes were not traced, so nothing is claimed for them: Grasshopper components (which use
+   `SAM.Analytical.Glazing`, item 2, for g and τv), values imported from Tas files, library or user-entered values, and
+   any other SAM or SAM_UI command.
    - **How they call Tas:** `ST/Classes/ThermalTransmittanceCalculator.cs` writes the SAM layers into a temporary TCD
      document (`ST/Modify/Run.cs`, `ST/Convert/ToTCD/Construction.cs`, `ST/Modify/UpdateMaterial.cs`). It then reads
      Tas `GetUValue()` and `GetGlazingValues()`.
@@ -438,10 +543,15 @@ calculation, EnergyPlus simulation or sizing was run.
   worked example, and no WINDOW or EnergyPlus comparison, in SAM, SAM_UI, SAM_Tas or SAM_OpenStudio. The SAM_UI tests
   use fakes; the InputEquivalence tests restate the formula.
 - **Recorded issues (verified by reading the code; not reproduced, which would need Tas):**
-  - **The reported Ug display problem.** `ThermalTransmittanceCalculator.cs:466-468` (and `:508-510`) guards
-    `values.Length >= 6` and then reads `values[6]`. `ST/Modify/Run.cs` swallows every exception, and the UI shows
-    Ug ≤ 0 as "Not calculated". This is recorded in SAM_UI `documentation/Thermal-StageE0-1.md:123`. Tas normally
-    returns 7 values, so the guard misfires only on a short array; the swallowed exception is the wider risk.
+  - **Short-array guard defect (a code defect, proven by reading).** `ST/Classes/ThermalTransmittanceCalculator.cs:466-468`
+    (and `:508-510`) guards `values.Length >= 6` and then reads `values[6]`. A 6-element array therefore throws
+    `IndexOutOfRangeException` instead of being refused; the guard needs `>= 7`. `ST/Modify/Run.cs` catches every
+    exception, so the evaluation ends without a Ug, and the UI shows Ug ≤ 0 as "Not calculated".
+  - **The reported Ug display issue (cause not established).** SAM_UI `documentation/Thermal-StageE0-1.md:123` records
+    Ug left at 0. Tas `GetUValue()` normally returns 7 values, and the guard defect above can produce this only if Tas
+    returns exactly 6. Whether it ever does, or whether another exception swallowed by `Run.cs` is the cause, is
+    unknown. Establishing the cause needs a licensed Tas reproduction, which S09 does not authorise. Fixing the guard is
+    worthwhile on its own but is not shown to fix the display issue.
   - **Swapped interpolation in `SA/Query/NusseltNumber.cs:54-81`.** The 0–45° branch interpolates from the 90° (wall)
     coefficients and the 45–90° branch reaches the 0° (horizontal) coefficients at 90°. The coefficient therefore jumps
     at the exact angles. Found by reading; not run.
@@ -496,16 +606,31 @@ calculation, EnergyPlus simulation or sizing was run.
   - the evidence `runs/`, `negatives/` and `summary-*.json` (repacked from acc2), and the new `revision-2/` folder.
 
   No writer, shared-core, fixture, weather or tolerance change.
+- Revision 3 changed:
+  - `Compare/OsComparison.cs` (`Multiplicity`, the new `OsmCounterpart`, `OsmMultiplier`), `Run-S09-ReadBack.ps1`
+    (2 negative cases);
+  - `Cli/Negative.cs` (2 cases, `RemoveObject`), `Tests/ReadBackTests.cs` (8 tests);
+  - the evidence `runs/` JSON, `summary-*.json` and 2 new `negatives/` folders (repacked from acc3; every existing
+    `report-*.txt` is unchanged), and the new `revision-3/` folder;
+  - this record.
+
+  No writer, reader (`Native/`), report schema, shared-core, fixture, weather or tolerance change.
 
 ## Tests and validation (local, Release x64)
 
 | Check | At | Result |
 |---|---|---|
-| S09 tests (export in-process; read and compare in fresh processes) | `cfe097f4` | **50/50**: the 33 revision-1 tests unchanged, plus 17 new: 9 negatives (6 box, 3 two-zone), 3 SAM-intent-only, 4 BLOCKED-technical, 1 fixture placement |
-| The same 50 tests with `Orientation()` and `Multiplicity()` disabled (the reviewed head's behaviour) | working tree, then restored | **17 failed, 33 passed**: exactly the new tests fail |
-| `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | revision-2 working tree (no writer or test change) | 388 passed, 2 skipped (390 = the `[Test]`/`[TestCase]` count at the base `7f216657` and here; revision 1 recorded 363/2, which is superseded) |
+| S09 tests (export in-process; read and compare in fresh processes) | `c1e53328` (revision 3) | **58/58**: the 50 revision-2 cases, unchanged in what they assert (the BLOCKED-technical test's "mutation applied" check now also covers the OSM), plus 8 new cases: 4 missing-counterpart FAILs (both cases × both fixtures), 1 fixture counterpart count, and 3 cases added to the BLOCKED-technical test (duplicated OS:ThermalZone, unlabelled OS:ThermalZone Name, relabelled OS:SubSurface Multiplier) |
+| The same 58 tests with the reviewed head's `OsComparison.cs` (`6f7e6b7d`) | working tree, then restored and rebuilt `--no-incremental` | **8 failed, 50 passed**: exactly the 8 new tests fail |
+| Acceptance and negatives, `C:\TasOut\s09\acc3` | revision-3 harness | 3 runs as in "Fixture verdicts"; 16/16 negatives FAIL; originals unchanged; acc3 IDFs byte-identical to acc2 |
+| Before/after on the same inputs, `C:\TasOut\s09\rev3-ab` | `6f7e6b7d` vs `c1e53328` | see "Revision 3" |
+| `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | revision-3 working tree (= `c1e53328`; no writer or test change) | 388 passed, 2 skipped (390), as at revision 2 |
 | `benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests` (not Simulation) | same | 51/51 |
-| Acceptance and negatives, `C:\TasOut\s09\acc2` | revision-2 harness | 3 runs as in "Fixture verdicts"; 14/14 negatives FAIL; originals unchanged |
+| S09 tests (revision 2) | `cfe097f4` | **50/50**: the 33 revision-1 tests unchanged, plus 17 new: 9 negatives (6 box, 3 two-zone), 3 SAM-intent-only, 4 BLOCKED-technical, 1 fixture placement |
+| (revision 2) The same 50 tests with `Orientation()` and `Multiplicity()` disabled (the reviewed head's behaviour) | working tree, then restored | **17 failed, 33 passed**: exactly the new tests fail |
+| (revision 2) `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | revision-2 working tree (no writer or test change) | 388 passed, 2 skipped (390 = the `[Test]`/`[TestCase]` count at the base `7f216657` and here; revision 1 recorded 363/2, which is superseded) |
+| (revision 2) `benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests` (not Simulation) | same | 51/51 |
+| (revision 2) Acceptance and negatives, `C:\TasOut\s09\acc2` | revision-2 harness | 3 runs as in "Fixture verdicts"; 14/14 negatives FAIL; originals unchanged |
 | Before/after on the same inputs, `C:\TasOut\s09\rev2-ab` | `d6d1cc5b` vs revision 2 | see "Revision 2" |
 | Revision 1 mutations M1 (V1 delivers fraction 1), M2 (override unscheduled) | `ebd9c4e4` | 5 and 3 tests fail (not repeated) |
 
@@ -518,20 +643,28 @@ benchmark/SAM.Analytical.OpenStudio.InputReadBack/Run-S09-ReadBack.ps1 -Phase ac
 benchmark/SAM.Analytical.OpenStudio.InputReadBack/Pack-S09-Evidence.ps1 -Root <same dir>
 ```
 
-The before/after and optics commands are in `documentation/S09-OpenStudio-InputReadBack-evidence/revision-2/README.md`.
+The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evidence/revision-3/README.md`
+(revision 3) and `revision-2/README.md` (revision 2, with the optics commands). Under Windows PowerShell 5.1, pass
+`-Exe <path to os-input-readback.exe>` to `Run-S09-ReadBack.ps1`: its `$PSScriptRoot`-based default is empty there
+(it was run with an explicit `-Exe` for acc3).
 
 - **Prerequisites:**
   - sibling checkouts `SAM` (built into `SAM/build`) and `SAM_Tas` at `sow/2026-Q4`;
   - the Budapest EPW, decompressed from SAM `SAM/SAM/SAM.Tests/Resources/Weather/HUN_BU_Budapest.Met.Center.128400_TMYx.epw.gz`
     (sha256 `472ffb4e…`).
 - **Machine-local** (not needed elsewhere): `C:\TasOut\s09\acc1` (revision 1), `C:\TasOut\s09\acc2` and
-  `C:\TasOut\s09\rev2-ab` (revision 2).
+  `C:\TasOut\s09\rev2-ab` (revision 2), `C:\TasOut\s09\acc3` and `C:\TasOut\s09\rev3-ab` (revision 3).
 - Building the reference writes ignored `bin/obj` output into the SAM_Tas core folder. The SAM_Tas working tree stays
   clean.
-- **Hosted CI:**
-  - The Build workflow clones SAM_Tas sparsely: the core and `ReadBack/`, branch candidates as for the other
-    dependencies, which resolve to `sow/2026-Q4`. It logs the SHA, builds, and runs the S09 tests.
-  - Final head and check results: see the PR description.
+- **Hosted CI** (Build (Windows) and SPDX on each PR head):
+  - The Build workflow clones SAM, SAM_SQLite and SAM_Validation, then SAM_Tas sparsely (the core and `ReadBack/`),
+    trying the PR head branch name first and then `sow/2026-Q4`. None of them has this branch, so all resolve to
+    `sow/2026-Q4`. It logs the SAM_Tas SHA, builds, and runs two test projects: the benchmark producer tests (51) and
+    the S09 tests. **It does not run `tests/SAM.Analytical.OpenStudio.Tests`**; the writer regressions above are local
+    only.
+  - At the revision-2 head `6f7e6b7d`: Build (Windows) run 39598434178 succeeded (SAM_Tas `c50e9169`, `sow/2026-Q4`;
+    benchmark 51/51, S09 50/50); SPDX run 39598434210 succeeded.
+  - The final head and its checks are in the PR description.
 
 ## Unresolved, risks, limits
 
@@ -544,7 +677,9 @@ The before/after and optics commands are in `documentation/S09-OpenStudio-InputR
   SDK-matching CLI. The CLI translation was not exercised.
 - **Not exercised by the fixtures:** internal floors and ceilings, internal apertures, gas glazing, `Material:AirGap`,
   shading, design days (T-DD), leap years, weekday sub-profiles, multi-space zones, an override in a real model.
-  - Rotated models (a stated SAM North Angle) and World coordinates are refused as unsupported, not compared.
+  - Rotated models (a stated SAM North Angle) are refused as unsupported, not compared. World coordinates are
+    supported (absolute vertices, no zone origin or rotation), and only World with a non-zero north axis or zone
+    relative north is refused. No compared model uses World; only that refusal is tested.
   - Single-layer opaque constructions are absent, so the single-layer optics constraint is untested.
   - The reader reports each of these as unreadable, unsupported or not applicable, never as a match.
 - **S08 record discrepancy (record only; SAM_Tas not changed):** SAM_Tas
@@ -553,10 +688,16 @@ The before/after and optics commands are in `documentation/S09-OpenStudio-InputR
   OSM/IDF do. The fixture bytes are unchanged; the S08 record text needs a separate correction.
 - **Space-type reuse:** OpenStudio space types are shared per content hash, so the V1 note and the invalid-selection
   error appear once per SpaceType and once per override.
+- **OSM counterparts, one direction only (revision 3):** each IDF zone and subsurface must have its one OSM object. An
+  OSM `OS:ThermalZone` or `OS:SubSurface` with no IDF object of its name is not looked for by `Multiplicity`. Closing
+  that would be a separate, owner-scoped check, not part of this fix.
+- **Duplicate `OS:Building` (observation, not changed):** `Orientation` reads it with `SingleOrDefault`. A copy of the
+  box run with two `OS:Building` objects makes `compare` throw and exit 70 (infrastructure failure). It fails closed,
+  but not as a named BLOCKED technical entry (`revision-3/README.md`).
 
 ## Next step
 
-Independent review of revision 2: GPT-6 or Claude Opus 5.5, effort High, a new session in read-only review mode, so the
+Independent review of revision 3: GPT-6 or Claude Opus 5.5, effort High, a new session in read-only review mode, so the
 reviewer is independent of this session.
 - The owner decides the pending items above. An optics writer fix or a 3a scope change would each be a separate task.
 - Then the owner's merge decision, the known-SHA `PROJECT_PROGRESS.md` closeout and guarded branch cleanup.

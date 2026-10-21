@@ -1,7 +1,7 @@
 {
     "phase":  "acceptance",
-    "started":  "2026-10-21T12:07:44.4795476Z",
-    "harnessDll":  "32090bbf4d7242fb5c9a1d4b176c7880aec1f214215529f66f76c8e114189a5a",
+    "started":  "2026-10-21T12:43:36.2111835Z",
+    "harnessDll":  "b7cf9f2684f09ade91d2fdbbae3de1a9b069dde35359893d0b42f1295f3aa11d",
     "runs":  [
                  {
                      "label":  "box",
@@ -37,7 +37,7 @@
     "fixture:s08-fix-box.json":  "45524172b32f85df89511dd344141023de999faa9552a199e6b49062612acd08",
     "fixture:s08-fix-two.json":  "20da9b586345e9fc67dc6308e6da1578b9bc41b3c694dbdab37e9c677959baa0",
     "epw":  "472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3",
-    "repeat:model.osm":  "DIFFERENT 98bcd7ce968aeb0b9c4accfadc7c24d2475b3cb485a68fdbd58222af4a2d5c6f 1d43cff8ca5a9e3892583fc5a182aeb91b4300c996db48689562657a76277e21",
+    "repeat:model.osm":  "DIFFERENT d5270415b4ae98f6ba894b6bdaf903b1dac29de5e6d8be63ca378c2416e567b7 81df1925f8926476e101908b68eba4eaa63bb04a584c70f47d05561e8de36853",
     "repeat:in.idf":  "identical",
-    "finished":  "2026-10-21T12:08:00.1644904Z"
+    "finished":  "2026-10-21T12:43:55.3843860Z"
 }

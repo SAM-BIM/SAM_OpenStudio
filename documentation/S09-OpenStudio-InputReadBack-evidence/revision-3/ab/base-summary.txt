@@ -1,0 +1,8 @@
+box: read 0; compare exit 12; BlockedOwnerDecision; Complete 316/316; Consistency 0; Unsupported 0; DocumentedDefault 1, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 25
+box-neg-osm-missing-subsurfaces: read 0; compare exit 12; BlockedOwnerDecision; Complete 316/316; Consistency 0; Unsupported 0; DocumentedDefault 1, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 25
+box-no-subsurfaces: read 0; compare exit 12; BlockedOwnerDecision; Complete 316/316; Consistency 0; Unsupported 0; DocumentedDefault 1, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 25
+box-no-thermalzone: read 0; compare exit 12; BlockedOwnerDecision; Complete 316/316; Consistency 0; Unsupported 0; DocumentedDefault 1, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 25
+two: read 0; compare exit 12; BlockedOwnerDecision; Complete 586/586; Consistency 0; Unsupported 0; AcceptedTransformation 6, DocumentedDefault 2, MappingDifference 138, Match 393, NotApplicable 1, WithinTolerance 46
+two-neg-osm-missing-thermal-zone: read 0; compare exit 12; BlockedOwnerDecision; Complete 586/586; Consistency 0; Unsupported 0; AcceptedTransformation 6, DocumentedDefault 2, MappingDifference 138, Match 393, NotApplicable 1, WithinTolerance 46
+two-no-subsurfaces: read 0; compare exit 12; BlockedOwnerDecision; Complete 586/586; Consistency 0; Unsupported 0; AcceptedTransformation 6, DocumentedDefault 2, MappingDifference 138, Match 393, NotApplicable 1, WithinTolerance 46
+two-no-thermalzone: read 0; compare exit 12; BlockedOwnerDecision; Complete 586/586; Consistency 0; Unsupported 0; AcceptedTransformation 6, DocumentedDefault 2, MappingDifference 138, Match 393, NotApplicable 1, WithinTolerance 46

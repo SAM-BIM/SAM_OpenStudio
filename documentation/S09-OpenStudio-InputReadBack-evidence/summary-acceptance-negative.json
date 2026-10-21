@@ -1,7 +1,7 @@
 {
     "phase":  "acceptance-negative",
-    "started":  "2026-10-21T12:08:00.1764940Z",
-    "harnessDll":  "32090bbf4d7242fb5c9a1d4b176c7880aec1f214215529f66f76c8e114189a5a",
+    "started":  "2026-10-21T12:43:55.9563804Z",
+    "harnessDll":  "b7cf9f2684f09ade91d2fdbbae3de1a9b069dde35359893d0b42f1295f3aa11d",
     "runs":  [
                  {
                      "label":  "neg-identity-swap-names",
@@ -114,9 +114,25 @@
                      "status":  "Fail",
                      "mutation":  "neg-north-axis-both: IDF Building \u0027Building 1\u0027 North Axis blank -\u003e 90 and OSM OS:Building North Axis blank -\u003e 90",
                      "required":  10
+                 },
+                 {
+                     "label":  "neg-osm-missing-thermal-zone",
+                     "fixture":  "s08-fix-two",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-osm-missing-thermal-zone: OSM OS:ThermalZone \u0027SAM_ThermalZone_FixA_5080c000\u0027 removed (IDF unchanged)",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-osm-missing-subsurfaces",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-osm-missing-subsurfaces: OSM OS:SubSurface removed for 2 subsurface(s) (IDF unchanged)",
+                     "required":  10
                  }
              ],
     "original-unchanged:box":  true,
     "original-unchanged:two":  true,
-    "finished":  "2026-10-21T12:08:16.3275455Z"
+    "finished":  "2026-10-21T12:44:18.4668749Z"
 }
