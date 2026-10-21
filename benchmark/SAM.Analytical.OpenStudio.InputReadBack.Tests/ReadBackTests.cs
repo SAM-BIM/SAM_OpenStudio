@@ -165,11 +165,50 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             Assert.That(report.Required, Is.EqualTo(box.Required), "coverage is unchanged; the verdict changes");
         }
 
-        /// <summary>Multiplicity or orientation the reader cannot interpret blocks the fixture (BLOCKED technical, exit 11), never PASS and never assumed.</summary>
+        /// <summary>
+        /// The reviewed head (6f7e6b7d) skipped the OSM/IDF multiplier check when the IDF object had no OSM object of its
+        /// name, and kept BLOCKED owner, exit 12, with complete coverage. A proven missing counterpart is now an OSM/IDF
+        /// disagreement (FAIL), on both fixtures; coverage is unchanged and nothing else is reported.
+        /// </summary>
+        [TestCase("neg-osm-missing-thermal-zone", TestSupport.Box, "multiplicity: IDF Zone '", "has no OS:ThermalZone in the OSM")]
+        [TestCase("neg-osm-missing-thermal-zone", TestSupport.Two, "multiplicity: IDF Zone '", "has no OS:ThermalZone in the OSM")]
+        [TestCase("neg-osm-missing-subsurfaces", TestSupport.Box, "multiplicity: IDF FenestrationSurface:Detailed '", "has no OS:SubSurface in the OSM")]
+        [TestCase("neg-osm-missing-subsurfaces", TestSupport.Two, "multiplicity: IDF FenestrationSurface:Detailed '", "has no OS:SubSurface in the OSM")]
+        public void AMissingOsmCounterpart_FailsAsAnOsmIdfDisagreement(string caseId, string fixture, string prefix, string fragment)
+        {
+            OsReport original = fixture == TestSupport.Box ? box : two;
+            string run = TestSupport.NewDirectory(caseId);
+            Assert.That(TestSupport.Cli(out string output, "negative", "--run", fixture == TestSupport.Box ? boxRun : twoRun, "--case", caseId, "--out", run), Is.EqualTo(0), output);
+            OsReport report = TestSupport.ReadAndCompare(run, fixture);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), report.Status + " " + string.Join(" | ", report.Consistency.Concat(report.Unsupported)));
+            Assert.That(report.Consistency, Is.Not.Empty);
+            Assert.That(report.Consistency.All(x => x.StartsWith(prefix, StringComparison.Ordinal) && x.Contains(fragment)), Is.True, string.Join(" | ", report.Consistency));
+            Assert.That(report.Unsupported, Is.Empty, string.Join(" | ", report.Unsupported));
+            Assert.That(report.Coverage, Is.EqualTo("Complete"));
+            Assert.That(report.Required, Is.EqualTo(original.Required), "coverage is unchanged; the verdict changes");
+            Assert.That(report.Supporting.Single(x => x.StartsWith("multiplicity:", StringComparison.Ordinal)), Does.Not.Contain("as SAM states"));
+        }
+
+        /// <summary>Both fixtures: every IDF zone and subsurface has exactly one OSM object of its name, whose blank Multiplier is the documented default 1.</summary>
+        [Test]
+        public void BothFixtures_MatchEachIdfZoneAndSubsurfaceToOneOsmObject()
+        {
+            Assert.That(box.Supporting.Single(x => x.StartsWith("multiplicity:", StringComparison.Ordinal)), Does.StartWith("multiplicity: 1 IDF zone(s) (1 with their OS:ThermalZone), 0 ZoneGroup(s), 2 IDF subsurface(s) (2 with their OS:SubSurface) read"));
+            Assert.That(two.Supporting.Single(x => x.StartsWith("multiplicity:", StringComparison.Ordinal)), Does.StartWith("multiplicity: 2 IDF zone(s) (2 with their OS:ThermalZone), 0 ZoneGroup(s), 1 IDF subsurface(s) (1 with their OS:SubSurface) read"));
+        }
+
+        /// <summary>
+        /// Multiplicity or orientation the reader cannot interpret blocks the fixture (BLOCKED technical, exit 11), never
+        /// PASS and never assumed. This includes an OSM counterpart whose identity is ambiguous or unreadable, and an OSM
+        /// Multiplier field the file labels otherwise (an unknown layout, never read as the default).
+        /// </summary>
         [TestCase("zone-multiplier-1.5")]
         [TestCase("north-axis-text")]
         [TestCase("coordinate-system-unknown")]
         [TestCase("world-with-north-axis")]
+        [TestCase("osm-thermal-zone-duplicated")]
+        [TestCase("osm-thermal-zone-name-unlabelled")]
+        [TestCase("osm-subsurface-multiplier-relabelled")]
         public void UninterpretableMultiplicityOrOrientation_BlocksTechnical(string what)
         {
             string run = TestSupport.NewDirectory("unsupported-" + what);
@@ -201,9 +240,24 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                     idf = Cli.Negative.SetField(idf, "Building", building, "North Axis", "90");
                     osm = Cli.Negative.SetField(osm, "OS:Building", IdfText.Parse(osm).First(x => x.Type == "OS:Building").Value(1), "North Axis", "90", true);
                     break;
+                case "osm-thermal-zone-duplicated":
+                {
+                    // A second OS:ThermalZone of the same name (a new handle): the counterpart is ambiguous.
+                    int start = osm.IndexOf("OS:ThermalZone,", StringComparison.Ordinal);
+                    int end = osm.IndexOf('\n', osm.IndexOf(';', start)) + 1;
+                    string copy = new Regex(@"\{[0-9a-f-]{36}\}").Replace(osm.Substring(start, end - start), "{00000000-0000-0000-0000-0000000000a1}", 1);
+                    osm = osm.Insert(start, copy + (osm.Contains("\r\n") ? "\r\n" : "\n"));
+                    break;
+                }
+                case "osm-thermal-zone-name-unlabelled":
+                    osm = new Regex(@"(OS:ThermalZone,\r?\n[^\r\n]*\r?\n[^!\r\n]*)!- Name").Replace(osm, "$1!- Zone Label", 1);
+                    break;
+                case "osm-subsurface-multiplier-relabelled":
+                    osm = new Regex(@"(OS:SubSurface,[^;]*?)!- Multiplier").Replace(osm, "$1!- Copies", 1);
+                    break;
             }
 
-            Assert.That(idf, Is.Not.EqualTo(File.ReadAllText(idfPath)), "the mutation applied");
+            Assert.That(idf + osm, Is.Not.EqualTo(File.ReadAllText(idfPath) + File.ReadAllText(osmPath)), "the mutation applied");
             File.WriteAllText(idfPath, idf);
             File.WriteAllText(osmPath, osm);
             ExportManifest manifest = ExportManifest.Load(Path.Combine(run, "export.json"));

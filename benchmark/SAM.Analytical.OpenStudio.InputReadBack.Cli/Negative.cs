@@ -32,7 +32,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
             "neg-north-axis",
             "neg-zone-multiplier-both",
             "neg-window-multiplier-both",
-            "neg-north-axis-both"
+            "neg-north-axis-both",
+            "neg-osm-missing-thermal-zone",
+            "neg-osm-missing-subsurfaces"
         };
 
         public static int Run(string runDirectory, string caseId, string outputDirectory)
@@ -192,9 +194,75 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
 
                     return "IDF Building '" + building.Name + "' North Axis blank -> 90" + (caseId.EndsWith("-both", StringComparison.Ordinal) ? " and OSM OS:Building North Axis blank -> 90" : " (OSM unchanged)");
                 }
+
+                // Missing OSM counterparts (independent review of 6f7e6b7d): the IDF is unchanged, so the IDF object has no
+                // OSM object to be consistent with. The reviewed head skipped the check and kept its verdict.
+                case "neg-osm-missing-thermal-zone":
+                {
+                    string zone = idfObjects.First(x => x.Type == "Zone").Name;
+                    osm = RemoveObject(osm, "OS:ThermalZone", zone, true);
+                    return "OSM OS:ThermalZone '" + zone + "' removed (IDF unchanged)";
+                }
+
+                case "neg-osm-missing-subsurfaces":
+                {
+                    List<string> names = idfObjects.Where(x => x.Type == "FenestrationSurface:Detailed").Select(x => x.Name).ToList();
+                    foreach (string name in names)
+                    {
+                        osm = RemoveObject(osm, "OS:SubSurface", name, true);
+                    }
+
+                    return "OSM OS:SubSurface removed for " + names.Count + " subsurface(s) (IDF unchanged)";
+                }
             }
 
             throw new ArgumentException(caseId);
+        }
+
+        /// <summary>
+        /// Removes the object of <paramref name="type"/> named <paramref name="name"/> (located as in <see cref="SetField"/>),
+        /// from its class line through the line that ends it, with the blank line after it. Line-based: the rest of the
+        /// file is kept byte for byte.
+        /// </summary>
+        internal static string RemoveObject(string text, string type, string name, bool osm = false)
+        {
+            string newline = text.Contains("\r\n") ? "\r\n" : "\n";
+            List<string> lines = text.Split(new[] { newline }, StringSplitOptions.None).ToList();
+            for (int i = 0; i < lines.Count; i++)
+            {
+                int nameLine = i + (osm ? 2 : 1);
+                if (!string.Equals(lines[i].Trim(), type + ",", StringComparison.OrdinalIgnoreCase) || nameLine >= lines.Count || !string.Equals(Data(lines[nameLine]), name, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                int end = i + 1;
+                while (end < lines.Count && !Code(lines[end]).TrimEnd().EndsWith(";", StringComparison.Ordinal))
+                {
+                    end++;
+                }
+
+                if (end >= lines.Count)
+                {
+                    break;
+                }
+
+                if (end + 1 < lines.Count && lines[end + 1].Trim().Length == 0)
+                {
+                    end++;
+                }
+
+                lines.RemoveRange(i, end - i + 1);
+                return string.Join(newline, lines);
+            }
+
+            throw new InvalidOperationException(type + " '" + name + "' not found");
+        }
+
+        private static string Code(string line)
+        {
+            int bang = line.IndexOf('!');
+            return bang >= 0 ? line.Substring(0, bang) : line;
         }
 
         /// <summary>

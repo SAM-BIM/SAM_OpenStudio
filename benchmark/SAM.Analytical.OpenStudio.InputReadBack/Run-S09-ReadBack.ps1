@@ -92,7 +92,9 @@ else {
         @('neg-north-axis', 'box', 's08-fix-box'),
         @('neg-zone-multiplier-both', 'box', 's08-fix-box'),
         @('neg-window-multiplier-both', 'box', 's08-fix-box'),
-        @('neg-north-axis-both', 'box', 's08-fix-box')
+        @('neg-north-axis-both', 'box', 's08-fix-box'),
+        @('neg-osm-missing-thermal-zone', 'two', 's08-fix-two'),
+        @('neg-osm-missing-subsurfaces', 'box', 's08-fix-box')
     )
     $before = @{}
     foreach ($source in @('box', 'two')) { $before[$source] = Get-Sha256 (Join-Path $Root "$source\in.idf") }

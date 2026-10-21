@@ -893,11 +893,12 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         /// multiplies the zone's floor area, loads and internal-gain energy (default 1); a ZoneGroup multiplies a zone list
         /// on top of it; a subsurface Multiplier multiplies the window area, frame and divider included (default 1,
         /// non-integers truncated). Blank is read as that documented default, never assumed. Any effective multiplier other
-        /// than 1 contradicts SAM and FAILs; a field the reader cannot interpret blocks (BLOCKED technical).
+        /// than 1 contradicts SAM and FAILs; a field the reader cannot interpret blocks (BLOCKED technical). The OSM and IDF
+        /// multipliers are compared only through each IDF object's one OSM counterpart (<see cref="OsmCounterpart"/>).
         /// </summary>
         private void Multiplicity()
         {
-            int zones = 0, subSurfaces = 0;
+            int zones = 0, subSurfaces = 0, matchedZones = 0, matchedSubSurfaces = 0;
             foreach (IdfObject zone in native.Idf("Zone"))
             {
                 zones++;
@@ -907,12 +908,14 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                     Consistency.Add("multiplicity: IDF Zone '" + zone.Name + "' Multiplier " + multiplier.ToString("R", ci) + ": EnergyPlus multiplies the zone's floor area, loads and internal gains; SAM states one space and no multiplier");
                 }
 
-                IdfObject osmZone = native.OsmByName("OS:ThermalZone", zone.Name);
-                double osmMultiplier = osmZone == null ? double.NaN : OsmMultiplier(osmZone, "OSM OS:ThermalZone '" + zone.Name + "' Multiplier");
+                IdfObject osmZone = OsmCounterpart("OS:ThermalZone", "IDF Zone", zone.Name);
+                double osmMultiplier = osmZone == null ? double.NaN : OsmMultiplier(osmZone, 2, "OSM OS:ThermalZone '" + zone.Name + "' Multiplier");
                 if (osmZone != null && !double.IsNaN(osmMultiplier) && !double.IsNaN(multiplier) && osmMultiplier != multiplier)
                 {
                     Consistency.Add("multiplicity: zone '" + zone.Name + "' Multiplier " + osmMultiplier.ToString("R", ci) + " in the OSM, " + multiplier.ToString("R", ci) + " in the IDF");
                 }
+
+                matchedZones += osmZone == null ? 0 : 1;
             }
 
             foreach (IdfObject group in native.Idf("ZoneGroup"))
@@ -933,15 +936,65 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                     Consistency.Add("multiplicity: IDF FenestrationSurface:Detailed '" + sub.Name + "' Multiplier " + multiplier.ToString("R", ci) + ": EnergyPlus multiplies its area (frame and divider included); SAM states one aperture and no multiplier");
                 }
 
-                IdfObject osmSub = native.OsmByName("OS:SubSurface", sub.Name);
-                double osmMultiplier = osmSub == null ? double.NaN : OsmMultiplier(osmSub, "OSM OS:SubSurface '" + sub.Name + "' Multiplier");
+                IdfObject osmSub = OsmCounterpart("OS:SubSurface", "IDF FenestrationSurface:Detailed", sub.Name);
+                double osmMultiplier = osmSub == null ? double.NaN : OsmMultiplier(osmSub, 8, "OSM OS:SubSurface '" + sub.Name + "' Multiplier");
                 if (osmSub != null && !double.IsNaN(osmMultiplier) && !double.IsNaN(multiplier) && osmMultiplier != multiplier)
                 {
                     Consistency.Add("multiplicity: subsurface '" + sub.Name + "' Multiplier " + osmMultiplier.ToString("R", ci) + " in the OSM, " + multiplier.ToString("R", ci) + " in the IDF");
                 }
+
+                matchedSubSurfaces += osmSub == null ? 0 : 1;
             }
 
-            Supporting.Add("multiplicity: " + zones + " IDF zone(s), " + native.Idf("ZoneGroup").Count() + " ZoneGroup(s), " + subSurfaces + " IDF subsurface(s) read; blank multipliers are the EnergyPlus default 1" + (Consistency.Any(x => x.StartsWith("multiplicity", StringComparison.Ordinal)) || Unsupported.Any(x => x.StartsWith("multiplicity", StringComparison.Ordinal)) ? string.Empty : "; every effective multiplier is 1, as SAM states"));
+            Supporting.Add("multiplicity: " + zones + " IDF zone(s) (" + matchedZones + " with their OS:ThermalZone), " + native.Idf("ZoneGroup").Count() + " ZoneGroup(s), " + subSurfaces + " IDF subsurface(s) (" + matchedSubSurfaces + " with their OS:SubSurface) read; blank multipliers are the EnergyPlus default 1" + (Consistency.Any(x => x.StartsWith("multiplicity", StringComparison.Ordinal)) || Unsupported.Any(x => x.StartsWith("multiplicity", StringComparison.Ordinal)) ? string.Empty : "; every effective multiplier is 1, as SAM states"));
+        }
+
+        /// <summary>
+        /// The one OSM object of <paramref name="type"/> the IDF object <paramref name="name"/> was translated from (the
+        /// translator keeps the name). Consistency is claimed only against that unambiguous counterpart; a missing object is
+        /// never read as a present one with default fields. When every OSM object of the type has a readable Name and none
+        /// is <paramref name="name"/>, the counterpart is proven missing: Consistency (FAIL). A duplicate name, or an
+        /// object whose Name the reader cannot read, leaves the identity unproven: Unsupported (BLOCKED technical). Null
+        /// unless exactly one counterpart is identified.
+        /// </summary>
+        private IdfObject OsmCounterpart(string type, string idfWhat, string name)
+        {
+            List<IdfObject> matches = new List<IdfObject>();
+            List<string> unreadable = new List<string>();
+            int count = 0;
+            foreach (IdfObject o in native.Snapshot.OsmOf(type))
+            {
+                count++;
+                string osmName = o.Value(1, "Name", out string problem);
+                if (problem != null || string.IsNullOrWhiteSpace(osmName))
+                {
+                    unreadable.Add(problem ?? type + " " + o.Value(0) + " has no Name");
+                }
+                else if (string.Equals(osmName, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    matches.Add(o);
+                }
+            }
+
+            if (unreadable.Count > 0)
+            {
+                Unsupported.Add("multiplicity: the OSM counterpart of " + idfWhat + " '" + name + "' cannot be identified: " + string.Join("; ", unreadable));
+                return null;
+            }
+
+            if (matches.Count > 1)
+            {
+                Unsupported.Add("multiplicity: the OSM counterpart of " + idfWhat + " '" + name + "' is ambiguous: " + matches.Count + " " + type + " objects carry that name");
+                return null;
+            }
+
+            if (matches.Count == 0)
+            {
+                Consistency.Add("multiplicity: " + idfWhat + " '" + name + "' has no " + type + " in the OSM (none of its " + count + " " + type + " object(s) has that name); the OSM and IDF disagree");
+                return null;
+            }
+
+            return matches[0];
         }
 
         /// <summary>A multiplier field: blank is the documented default 1; a non-integer, non-positive or unreadable value blocks the fixture.</summary>
@@ -961,15 +1014,20 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             return field.Value;
         }
 
-        private double OsmMultiplier(IdfObject o, string what)
+        /// <summary>
+        /// The Multiplier of an OSM counterpart, read at its known position (<paramref name="index"/>, after the handle)
+        /// under the file's own label. Blank is the documented default 1; a field the object does not have, or one labelled
+        /// otherwise, is an unknown layout and blocks the fixture (never read as the default).
+        /// </summary>
+        private double OsmMultiplier(IdfObject o, int index, string what)
         {
-            string text = o.ValueByLabel("Multiplier", out bool found);
-            if (!found || string.IsNullOrWhiteSpace(text))
+            if (index >= o.Fields.Count)
             {
-                return 1;
+                Unsupported.Add("multiplicity: " + what + " is missing: " + o.Type + " '" + o.Value(1) + "' has " + o.Fields.Count + " fields, so the layout is not the one S09 reads");
+                return double.NaN;
             }
 
-            return double.TryParse(text, NumberStyles.Float, ci, out double value) ? Multiplier(ReaderResult.FromValue(value), what) : Multiplier(ReaderResult.Unreadable("'" + text + "' is not a number"), what);
+            return Multiplier(NativeModel.Number(o, index, "Multiplier"), what);
         }
 
         // ---- internal condition -----------------------------------------------------------------------------------------
