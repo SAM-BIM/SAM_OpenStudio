@@ -44,6 +44,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
                         return Export.Run(Required(options, "model"), Required(options, "epw"), Required(options, "out"), Optional(options, "label"));
                     case "read":
                         return ReadBackRead.Run(Required(options, "run"));
+                    case "negative":
+                        return Negative.Run(Required(options, "run"), Required(options, "case"), Required(options, "out"));
                     case "compare":
                         return ReadBackCompare.Run(Required(options, "run"), Required(options, "fixture-id"), Optional(options, "rule-set") ?? "approved", Optional(options, "out"));
                     default:
@@ -82,6 +84,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
             Console.Error.WriteLine("usage: os-input-readback export --model <frozen.json> --epw <file.epw> --out <new dir> [--label x]");
             Console.Error.WriteLine("       os-input-readback read --run <export dir>");
             Console.Error.WriteLine("       os-input-readback compare --run <export dir> --fixture-id <id> [--rule-set interim|provisional|approved] [--out dir]");
+            Console.Error.WriteLine("       os-input-readback negative --run <export dir> --case <" + string.Join("|", Negative.Cases) + "> --out <new dir>");
             return ReadBackExit.Usage;
         }
 

@@ -1087,6 +1087,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             NativeSchedule osm = native.OsmSchedule(name);
             if (idf == null)
             {
+                // A reference to an undefined object is a broken export (EnergyPlus would stop), not an unreadable field.
+                Consistency.Add(key + ": names schedule '" + name + "', which the IDF does not define");
                 return new NativeSchedule { Name = name, Problem = "the IDF does not define schedule '" + name + "'" };
             }
 

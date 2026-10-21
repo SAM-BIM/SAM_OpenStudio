@@ -201,9 +201,12 @@ namespace SAM.Analytical.OpenStudio.Tests
 
             using (OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox(internalConditionOverride: internalCondition).ToOpenStudio())
             {
-                List<Core.OpenStudio.OpenStudioDiagnostic> information = Information(result).Where(x => x.Code == HVAC).ToList();
+                // S09: the fixture's condition selects no Ventilation profile, so the same code also reports that its
+                // outdoor-air requirement is kept but not delivered; only the two deferrals are counted here.
+                List<Core.OpenStudio.OpenStudioDiagnostic> information = Information(result).Where(x => x.Code == HVAC && x.Message.Contains("deferred")).ToList();
                 Assert.That(information.Count, Is.EqualTo(2));
                 Assert.That(information.All(x => x.GetDiagnosticDetail() == S), Is.True);
+                Assert.That(Information(result).Where(x => x.Code == HVAC).All(x => x.GetDiagnosticDetail() == S), Is.True);
             }
         }
 

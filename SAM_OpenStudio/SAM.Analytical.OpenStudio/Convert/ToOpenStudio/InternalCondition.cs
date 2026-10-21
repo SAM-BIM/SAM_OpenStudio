@@ -401,7 +401,7 @@ namespace SAM.Analytical.OpenStudio
             string selection = internalCondition?.GetProfileName(ProfileType.Ventilation);
             if (string.IsNullOrWhiteSpace(selection))
             {
-                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "No Ventilation profile is selected: the outdoor-air requirement is kept and no outdoor air is delivered (S07 D-F2 V1)", internalCondition, openStudioObjectName);
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "No Ventilation profile is selected: the outdoor-air requirement is kept and no outdoor air is delivered (S07 D-F2 V1)", internalCondition, openStudioObjectName);
                 return openStudioConversionContext.ToOpenStudio_ConstantSchedule(VentilationNotDeliveredScheduleName, 0, "Fractional");
             }
 
