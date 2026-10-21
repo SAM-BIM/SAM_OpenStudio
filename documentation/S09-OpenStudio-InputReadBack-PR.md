@@ -6,7 +6,9 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 4):** `0c232875c8b872e393cd1ddb883e61f63eed30a6`.
+- **Tested content (revision 5, the S07 §5.1 lighting split):** `20f8fb6` (full SHA in "Revision 5").
+- **Revision 4:** tested content `0c232875c8b872e393cd1ddb883e61f63eed30a6`; record head `6a36afb0` (Build 39622605892
+  succeeded).
 - **Revision 3:** tested content `c1e53328`, reviewed head `e0a6ea1950455e04dbf086d164500fd8829867ec` (its hosted
   Build failed; see "Revision 4").
 - **Revision 2:** tested content `cfe097f4`, reviewed head `6f7e6b7dcce37a8db82c997bc718e0b17d5e28e0`.
@@ -15,8 +17,19 @@ merged.**
 
 ## Status
 
-- **S09 is BLOCKED on three owner decisions** (optics, lighting default, T-VENT-INACTIVE; see "Unresolved, risks,
-  limits"). The independent review of `59036783` accepted the revision-4 code technically.
+- **S09 is BLOCKED on two owner decisions** (optics, T-VENT-INACTIVE; see "Unresolved, risks, limits"). The lighting
+  visible-fraction item is withdrawn by S07 amendment L1 (SAM#217), which revision 5 implements. OD-L1 stays open.
+- **Revision 5 implements S07 §5.1 (amendment L1, SAM#217 `113873a0`)** (see "Revision 5").
+  - Writer: Fraction Radiant = p·(1 − s), Fraction Visible = p·s, s = 0.2415 / 0.576, Return Air Fraction unset (0);
+    the view coefficient is never read. An authored p, including 0, is preserved. An absent or NaN p takes p₀ = 0.576.
+    Both cases are stated at Summary (new `SAM-OS-IC-002`).
+  - Importer: p = Fraction Radiant + Fraction Visible; the view coefficient is not set.
+  - S09: five T-LIGHT-SPLIT rows per space from the raw SAM p and the §5.1 constants. The view-coefficient comparison
+    and its DOCUMENTED-DEFAULT exception are removed. An unstated p stays S-UNSPEC (DOCUMENTED-DEFAULT, never PASS).
+  - Both fixtures: complete coverage (319/319, 592/592), BLOCKED owner, exit 12, on the optics rows only. 80/80 S09
+    tests, 5 new negatives FAIL on both fixtures.
+  - Not run under this scope: the acceptance scripts, so the committed `acc3` pack predates L1.
+- The independent review of `59036783` accepted the revision-4 code technically; revision 5 is not yet reviewed.
 - **Record correction after that review (documentation only):** the writer-test reproduction command now excludes
   `TestCategory=Simulation`, and the historical 388 passed / 2 skipped results are separated from the reviewer's filtered
   363 passed / 2 skipped (see "Writer-test scope correction").
@@ -47,13 +60,15 @@ merged.**
   - V2: hourly delivery = the SAM requirement × the selected profile.
   - A selection that does not resolve is an invalid input.
   - Changing V2 back to V1 is covered by tests.
-- **Both fixtures: complete S07 coverage, BLOCKED (owner decision named), exit 12**, unchanged by revisions 2 and 3:
+- **Revisions 1–4 (before L1; revision 5 above supersedes the counts): both fixtures: complete S07 coverage, BLOCKED
+  (owner decision named), exit 12**, unchanged by revisions 2 and 3:
   - `s08-fix-box`: 316/316 required comparisons.
   - `s08-fix-two`: 586/586 required comparisons.
   - Every other quantity matches within the S07 tolerance, or is a verified transformation or not applicable. Two named
     items remain; both are owner decisions, not defects (see "Fixture verdicts").
   - The box repeat gives the same verdict and a byte-identical IDF.
-- **All 16 targeted negatives FAIL** (exit 10): the original 8, the 6 of revision 2 and the 2 of revision 3.
+- **All 16 targeted negatives FAIL** (exit 10): the original 8, the 6 of revision 2 and the 2 of revision 3. Revision 5
+  adds 5 lighting negatives, which FAIL on both fixtures in the S09 tests.
 - **The optics decision table for OS-MAT-SINGLE-SIDED is below.** It separates exposed-face differences (18 box rows /
   33 two-zone rows) from buried-layer metadata (51 / 105). The item stays proposed and owner-unaccepted.
 - **Construction-performance calculation methods are assessed below.** This is an assessment only; nothing is
@@ -113,6 +128,21 @@ merged.**
   negative. No retries or relaxed assertions.
 - Excluded as in revision 3.
 
+**Revision 5 (2026-10-21, in substance).**
+- Source of truth: SAM S07 §5.1, merged by SAM#217 as `113873a0`. Check its post-merge Test first.
+- Preserve the authored total radiant proportion p, including 0. s = 0.2415 / 0.576 at full precision; visible p·s,
+  long-wave p·(1 − s), convective 1 − p, return air 0. Never use the view coefficient as an energy fraction.
+- Importer: p from radiant + visible, without the comfort coefficient, with the §5.1 diagnostics.
+- Update mapping and coverage documents, the S09 read-back rows, independent expectations and targeted negatives. Test
+  an authored 0, independence from the comfort coefficient, incorrect partitions and a nonzero return air.
+- A missing or NaN p keeps its unspecified provenance; DOCUMENTED-DEFAULT never becomes PASS.
+- OD-L1 stays open: do not settle fallback applicability or claim suitability for excluded cases. If OD-L1 blocks a
+  production fallback change, continue the authored-input corrections and report the decision. Do not keep the old
+  mapping and present it as corrected.
+- Run S09, non-Simulation benchmark and writer tests; no acceptance scripts that export or execute engines.
+- Excluded: opaque optics, reversed glazing, Ladybug mapping, duplicate SAM defaults, SAM_Tas edits, broad refactoring,
+  simulation, sizing, Tas/EnergyPlus execution, S10, merge. Keep the PR draft.
+
 ## Work completed
 
 | Commit | Change |
@@ -127,7 +157,9 @@ merged.**
 | `c1e5332` | **Revision 3:** `OsComparison.OsmCounterpart`, `OsmMultiplier` read by position and label, the counterpart counts in the multiplicity Supporting line; 2 CLI negatives (and the acceptance script); 8 tests |
 | `e0a6ea1` | Revision 3 evidence (acc3, A/B), the assessment wording corrections and this record |
 | `0c23287` | **Revision 4:** `ProcessIdentity` (id + creation time) in the export/reader/compare checks, schemas `s09-export/2` and `s09-native/2`; `TestSupport` failure evidence and `s09-diagnostics`; 4 tests; CI diagnostics upload on failure |
-| (record commit) | Revision 4 evidence (`revision-4/`: CI excerpt, A/B, id-reuse measurement) and this record |
+| `5903678`, `6a36afb` | Revision 4 evidence (`revision-4/`: CI excerpt, A/B, id-reuse measurement), this record and its writer-test scope correction |
+| `20f8fb6` | **Revision 5:** the S07 §5.1 lighting split in the writer (`LightingSplit`, `SAM-OS-IC-002`) and the importer; the S09 T-LIGHT-SPLIT rows; 5 negatives; 18 S09 and 16 writer/importer tests; manifests and mapping documents |
+| (record commit) | Revision 5 evidence (`revision-5/`) and this record |
 
 ### Writer change (`SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/`)
 
@@ -356,6 +388,96 @@ caused this run is likely but unproven. An exception inside `compare` is not exc
 - Not changed: the hash checks, fixtures, weather, tolerances, the shared core, the writer, and every existing negative
   and assertion. No retry was added.
 
+## Revision 5: the S07 §5.1 lighting split (amendment L1)
+
+Tested content `20f8fb659a26b69173ebc98c75adf2a037ae7661` (tree `1f4f1844`). Contract: SAM S07 §5.1 and T-LIGHT-SPLIT,
+merged by SAM#217 as `113873a0`. Checked first: post-merge Test run 39667707673 (`test (Release)`) and Build (Windows)
+run 39667707679 succeeded on `113873a0`; SAM `sow/2026-Q4` is `ba686d24` (the L1 closeout).
+
+**Writer** (`OS/Convert/ToOpenStudio/InternalCondition.cs`, new `OS/Classes/LightingSplit.cs`):
+- p = `LightingRadiantProportion`, the total radiant share. `Fraction Radiant` = p·(1 − s), `Fraction Visible` = p·s,
+  s = 0.2415 / 0.576 (a C# constant expression, never rounded); `Return Air Fraction` is not set (0). Convective 1 − p.
+- **`LightingViewCoefficient` is never read for `Lights`.** When authored it is reported as `SAM-OS-IC-001` information
+  ("a TAS comfort ... coefficient, not an energy fraction"), next to the occupancy and equipment lines.
+- An authored p, including 0, is preserved. SAM rejects values outside [0, 1] at `SetValue` (`DoubleParameterValue(0, 1)`),
+  so no out-of-range p reaches the writer; no extra branch was kept.
+- An absent or NaN p takes p₀ = 0.576 (Fraction Radiant 0.3345, Fraction Visible 0.2415). This replaces the previous
+  silent defaults 0.32 / 0.25 (the view-coefficient default). See "OD-L1" below.
+- **New code `SAM-OS-IC-002`** (`InternalConditionAssumption`), Information at Summary (`GetDiagnosticDetail` Summary
+  list; pinned in `DiagnosticsAdapterTests` and `DiagnosticDetailTableTests`). One line per SpaceType:
+  - authored: p, the values written, s and the reference category with its "not applicable to" list;
+  - unstated: the same, plus that p₀ was applied, that it is not a regulatory, NCM, TM59 or dwelling value, that its
+    suitability outside the category is owner decision OD-L1, and to author p where a method prescribes it.
+  - A separate code keeps the clean-fixture check "no `SAM-OS-IC-001`" meaningful: the note is an assumption, not an
+    unsupported input.
+- The occupancy and equipment view-coefficient reasons no longer claim a missing "visible-fraction field" (§5.1). The
+  message prefixes, and so their Detailed level, are unchanged. The lighting view-coefficient line stays at Summary
+  (it is not added to the inert table), because until now it reached EnergyPlus as Fraction Visible.
+
+**Importer** (`OS/Convert/ToSAM/InternalCondition.cs`), §5.1 default-resolution item 5:
+- p = Fraction Radiant + Fraction Visible; `LightingViewCoefficient` is never set.
+- Warning `SAM-OSI-APX-001` when Return Air Fraction > 0 (that share becomes convective room gain); information
+  `SAM-OSI-APX-001` when F_V / (F_R + F_V) differs from s by more than 1e-6 (not when p = 0).
+- Fractions summing above 1 (an EnergyPlus input error): warning, and no p is imported.
+- SAM files imported under the previous mapping (F_R in p, F_V in the view coefficient) cannot be identified and are not
+  migrated (§5.1).
+
+**S09 read-back** (`Compare/OsComparison.LightingSplit`, `OsQuantities`):
+- Five rows per space, from the raw SAM p (`ReadBackExpected` parameters) and the §5.1 constants in `OsQuantities`
+  only (no writer reference):
+
+  | Key | Native | Expected | Tolerance |
+  |---|---|---|---|
+  | `lighting.returnAir` (`4c.os.returnAir`) | Return Air Fraction | 0 | exact |
+  | `lighting.radiantTotal` (4c) | F_R + F_V | p | 0.001 |
+  | `lighting.visible` (4c) | F_V | p·s | 0.001 |
+  | `lighting.radiant` (4c) | F_R | p·(1 − s) | 0.001 |
+  | `lighting.convective` (4c) | 1 − F_RA − F_R − F_V | 1 − p | 0.001 |
+
+- A blank field of a present `Lights` object reads as its IDD default 0 (S07: "blank reads as 0"), so a blank cannot
+  pass as native absence for an unstated p.
+- An authored p is verified T-LIGHT-SPLIT: ACCEPTED-TRANSFORMATION, or MATCH where SAM and native are both 0 (the core
+  rates S-ZERO with a zero native MATCH; both are PASS).
+- An absent or NaN p is S-UNSPEC on every row, with the p₀ split only as the listed default: DOCUMENTED-DEFAULT (rank 3,
+  BLOCKED owner), never PASS. Return Air reaches it through the approved G1 rule (zero is its listed default).
+- A p outside [0, 1] would be S-INVALID (defensive; SAM's validation prevents it).
+- Removed: the `lighting.visible` comparison against `LightingViewCoefficient` (listed default 0.25) and the test
+  exception for its DOCUMENTED-DEFAULT.
+
+**Fixture results (S09 test runs at `20f8fb6`; `revision-5/`):**
+
+| Fixture | Status (exit) | Coverage | Outcomes | Non-PASS |
+|---|---|---|---|---|
+| `s08-fix-box` (p 0.37) | BLOCKED owner (12) | 319/319 | Match 220, WithinTolerance 25, AcceptedTransformation 4, NotApplicable 1, MappingDifference 69 | OS-MAT-SINGLE-SIDED (69) only |
+| `s08-fix-two` (p 0.34, 0.41) | BLOCKED owner (12) | 592/592 | Match 393, WithinTolerance 46, AcceptedTransformation 14, NotApplicable 1, MappingDifference 138 | OS-MAT-SINGLE-SIDED (138) only |
+
+- The IDFs differ from the revision-4 acceptance `acc6` only in the `Lights` Fraction Radiant and Fraction Visible
+  lines (`revision-5/idf-diff-acc6.txt`). Native F_V / F_R: box 0.155130 / 0.214870; A 0.142552 / 0.197448; B
+  0.171901 / 0.238099, the §5.1 expected vectors.
+
+**New S09 tests (18):**
+- the authored p of each fixture space against the §5.1 vectors (3);
+- an authored 0: four rows MATCH at 0, convective 1 (1);
+- an authored view coefficient (0.49, 0): every lighting row, the coverage and the outcome counts unchanged (2);
+- an absent and a NaN p: exactly the five lighting rows are DOCUMENTED-DEFAULT, BLOCKED owner, S-UNSPEC (2);
+- 5 negatives × 2 fixtures, each FAIL (exit 10) with only lighting rows failing and no OSM/IDF disagreement (10):
+  `neg-lighting-previous-mapping` (F_R = p, F_V = 0.25), `neg-lighting-visible-zero` (F_V = 0 with p > 0),
+  `neg-lighting-radiant-is-p` (F_R = p with F_V > 0), `neg-lighting-return-air` (0.1), `neg-lighting-swapped`.
+- Updated: the two-zone ACCEPTED-TRANSFORMATION count 6 → 14.
+
+**New writer and importer tests** (`tests/.../C2/LightingSplitTests.cs`, 16): the §5.1 vectors; an authored 0; absent
+and NaN p → p₀ with the Summary note naming OD-L1; the view coefficient (0.49, 0.25, 0, 1) never changes the fractions
+for p 0.37, 0 and absent; import of p₀, of 0, of another short-wave share, of a nonzero return air, of a sum above 1;
+round trips of 0.37 and 0 with a view coefficient. Updated: `RadiantProportions_ComeFromSamParameters` (the split), the
+D1 detail table, the released-code table and the real-converter detail test.
+
+**A/B:** the previous writer and importer restored over `20f8fb6`: 18 writer tests and 21 S09 tests fail
+(`revision-5/test-summaries.txt`).
+
+**Not changed:** fixtures, weather, tolerances, the shared core, ventilation, opaque optics, glazing, the occupancy and
+equipment radiant defaults (0.3, 0), SAM_Tas, SAM_LadybugTools. One wording change: the note says "the entire fitting"
+because `FenestrationTests.Holes_...` takes the first diagnostic containing "hole" ("whole" matched it).
+
 ## Decisions and assumptions (for review)
 
 1. **T-VENT-INACTIVE for OpenStudio.**
@@ -380,8 +502,15 @@ caused this run is likely but unproven. An exception inside `compare` is not exc
    - Each internal-side row whose SAM value differs is listed MAPPING-DIFFERENCE by S09, from the writer's documented
      behaviour, not by S07. Rank 3.
    - **Proposed, owner-unaccepted.** The decision table and options are below.
-5. **Lighting visible fraction:** the fixtures do not author `LightingViewCoefficient`; the writer writes the S07-listed
-   default 0.25 (DOCUMENTED-DEFAULT, rank 3). **Pending owner acceptance.**
+5. **Lighting split (revision 5; supersedes the "lighting visible fraction" item of revisions 1–4):** S07 amendment L1
+   withdrew the view coefficient ↔ Fraction Visible identity, so that item is no longer an owner decision. The fixtures
+   author p and pass T-LIGHT-SPLIT.
+   - **OD-L1 interpretation (for the owner to confirm):** §5.1 and §8 gate only the **SAM_Tas** fallback on OD-L1, and
+     list "absent p → p₀ with the diagnostic" among the required SAM_OpenStudio#33 changes under the approved D-LIGHT.
+     The OpenStudio writer has no template value to replace; it had silent defaults 0.32 / 0.25. Revision 5 therefore
+     applies p₀ for an unstated p, states it at Summary with the category, its limits and OD-L1, and claims no
+     suitability outside the category. If the owner reads OD-L1 as also gating this fallback, the change is the
+     `!lightingRadiantProportionStated` branch of the writer only; the authored-input corrections stand alone.
 6. **Native floor area and volume** are computed from the IDF surface polygons, because the Zone fields are blank
    (autocalculated); a stated Zone value would FAIL. Opaque reflectance = 1 − absorptance.
 7. **The OS weather row (9) and T-FRAME:**
@@ -403,6 +532,9 @@ caused this run is likely but unproven. An exception inside `compare` is not exc
     direction is checked: an OSM zone or subsurface with no IDF object is not looked for (see "Unresolved").
 
 ## Fixture verdicts (approved rules)
+
+**Revision 5 supersedes the counts and the lighting item below** (319/319 and 592/592, optics only; see "Revision 5").
+This section is the revisions 1–4 acceptance (`acc3`/`acc6`), which predates amendment L1 and was not re-run.
 
 Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/`, revision-3 acceptance `acc3`. Harness
 `os-input-readback.dll` `b7cf9f26…`; library `ce8270dd…` (revision 2 `acc2`: `32090bbf…` / `5f279f12…`). The
@@ -709,11 +841,31 @@ calculation, EnergyPlus simulation or sizing was run.
 
   No writer, comparison (`Compare/`), report text, shared-core, fixture, weather or tolerance change. The committed
   `runs/`, `negatives/` and `summary-*.json` stay the acc3 pack.
+- Revision 5 changed:
+  - writer: `OS/Classes/LightingSplit.cs` (new), `OS/Convert/ToOpenStudio/InternalCondition.cs`; importer:
+    `OS/Convert/ToSAM/InternalCondition.cs`; `SAM.Core.OpenStudio` `OpenStudioDiagnosticCodes.cs` (`SAM-OS-IC-002`),
+    `Query/GetDiagnosticDetail.cs`;
+  - S09: `Compare/OsComparison.cs`, `Compare/OsQuantities.cs`, `Cli/Negative.cs` (5 cases), `Run-S09-ReadBack.ps1`
+    (the 5 cases listed; not run), `Tests/ReadBackTests.cs`;
+  - writer tests: `C2/LightingSplitTests.cs` (new), `C2/InternalConditionCompletenessTests.cs`,
+    `D1/DiagnosticDetailTableTests.cs`, `D1/DiagnosticsAdapterTests.cs`;
+  - `docs/SAM_OPENSTUDIO_INTERNAL_CONDITION_MAPPING.md`, `docs/SAM_OPENSTUDIO_ANALYTICAL_COVERAGE.md`,
+    `docs/SAM_OPENSTUDIO_TO_SAM_COVERAGE.md` (totals Native 56, Derived 12), `tests/resources/openstudio-analytical-coverage.json`,
+    `tests/resources/openstudio-to-sam-coverage.json`;
+  - the new `revision-5/` evidence folder and this record.
+
+  No fixture, weather, tolerance, shared-core, ventilation or optics change. The committed `runs/`, `negatives/` and
+  `summary-*.json` stay the acc3 pack (pre-L1).
 
 ## Tests and validation (local, Release x64)
 
 | Check | At | Result |
 |---|---|---|
+| S09 tests | `20f8fb65` (revision 5; harness `3549e421…`, library `b4e03d5f…`) | **80/80**: the 62 revision-4 cases (2 adjusted: no lighting exception, two-zone ACCEPTED-TRANSFORMATION 14) plus 18 lighting cases. Run twice; the second run produced `revision-5/` |
+| `tests/SAM.Analytical.OpenStudio.Tests` with `--filter 'TestCategory!=Simulation'` | `20f8fb65` | **379 passed, 2 skipped** (381 = the reviewer's 365 + 16 new). An earlier working-tree run had 1 failure, the "hole" substring collision, fixed before the commit |
+| Benchmark tests (not Simulation) | `20f8fb65` | 51/51 |
+| A/B: the `6a36afb` writer and importer restored over `20f8fb65` | working tree, then restored and rebuilt | writer 18 failed / 361 passed; S09 21 failed / 59 passed |
+| Acceptance scripts | not run (out of revision-5 scope) | the committed pack stays acc3 |
 | S09 tests | `0c232875` (revision 4; harness `25a35b92…`, library `006668df…`) | **62/62**: the 58 revision-3 cases, unchanged, plus the 4 process-identity tests |
 | The 4 new tests with the reviewed head's id-only check restored | working tree, then restored and rebuilt | `AReusedProcessId_IsNotTheExportProcess` fails (exit 70); the 3 refusal cases pass under both |
 | Benchmark tests (not Simulation) | `0c232875` | 51/51 |
@@ -796,8 +948,26 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 - **Owner decisions (pending; none taken here):**
   - OS-MAT-SINGLE-SIDED: accept, or a separate writer task, and/or a 3a scope decision (see the decision table);
-  - the lighting visible-fraction default;
-  - the T-VENT-INACTIVE extension to OpenStudio.
+  - the T-VENT-INACTIVE extension to OpenStudio;
+  - **OD-L1 (S07 §8, open):** suitability of p₀ outside suspended LED office lighting, and whether a writer may replace
+    a template-prescribed value with it. Revision 5 applies p₀ to an unstated p in OpenStudio as §5.1 lists for this PR,
+    states it and claims nothing beyond the category; the owner should confirm that reading (Decision 5). No current
+    fixture uses the fallback.
+  - The lighting visible-fraction default of revisions 1–4 is withdrawn by L1; it needs no decision.
+- **Compatibility risks (revision 5):**
+  - Every OpenStudio export changes its `Lights` fractions. An authored p keeps its total radiant share, but F_V moves
+    from the view coefficient (or 0.25) to p·s. An unstated p moves from 0.32 / 0.25 (sum 0.57, convective 0.43) to
+    0.3345 / 0.2415 (0.576, 0.424). EnergyPlus results for lighting gains change; nothing was simulated here.
+  - An authored view coefficient no longer reaches EnergyPlus.
+  - Importing an OSM sets p = F_R + F_V (previously F_R) and no view coefficient. SAM files imported earlier hold the
+    old meaning and cannot be identified or migrated (§5.1).
+  - A new Summary information line per SpaceType (`SAM-OS-IC-002`) appears in every conversion with lights. A consumer
+    counting Information lines or `SAM-OS-*` codes sees one more code; codes are added, none renamed.
+  - The Tas side is unchanged until the separate, OD-L1-gated SAM_Tas PR: for an unstated p Tas keeps its TBD value
+    (S07: EXPORT-DEFECT on the S08 side), so OpenStudio and Tas differ for unstated p until then.
+- **Not covered by revision 5:** the acceptance and packing scripts (not run; the committed pack is pre-L1); a
+  `Lights` object written with a blank Fraction Radiant or Visible (the writer always states them; the comparator reads
+  blank as 0); the LED view-coefficient value (unresolved in §5.1, not used by OpenStudio).
 - **Translator version:** the IDF comes from the OpenStudio SDK 3.10.0 translator (it matches the SDK that wrote the
   OSM). A production run translates with the CLI. This workstation's CLI is ladybug 3.11.0, and S06 prefers an
   SDK-matching CLI. The CLI translation was not exercised.
@@ -829,10 +999,13 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 ## Next step
 
-S09 stays **BLOCKED** at the owner decision gate. The independent review of revision 4 (head `59036783`) accepted the
-code technically; this record-only correction followed it. Do not start S10.
-- The owner decides the three pending items above (optics, lighting visible-fraction default, T-VENT-INACTIVE). An
-  optics writer fix or a 3a scope change would each be a separate task.
+S09 stays **BLOCKED** at the owner decision gate. Do not start S10.
+- **Independent review of revision 5** (`20f8fb65` and the record head in the PR description): the §5.1 writer,
+  importer and read-back changes, the `SAM-OS-IC-002` code, and the OD-L1 reading in Decision 5.
+- The owner decides the pending items above (optics, T-VENT-INACTIVE, and confirms the OD-L1 reading). An optics
+  writer fix or a 3a scope change would each be a separate task.
+- Optional, if the owner wants a refreshed committed pack: an authorised acceptance run (`Run-S09-ReadBack.ps1`, both
+  phases, then `Pack-S09-Evidence.ps1`) at the reviewed head. It exports and translates with the OpenStudio SDK only.
 - Then the owner's merge decision, the known-SHA `PROJECT_PROGRESS.md` closeout and guarded branch cleanup.
 - The roadmap S09 row changes only through a separate SAM PR.
 - The construction-performance route needs its own owner start and authorisation for any EnergyPlus run.

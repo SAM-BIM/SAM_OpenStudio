@@ -1,0 +1,17 @@
+S09 OpenStudio read-back: s08-fix-box -> BlockedOwnerDecision (exit 12); rule set Approved; gate BlockedOwnerDecision; coverage Complete (319 required, 319 results)
+outcomes: AcceptedTransformation 4, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 25
+D-F2 space:5080c000-0000-0000-0000-00000000c001: V2
+NOT PASS MappingDifference / BlockedOwnerDecision: 69
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  ... 57 more in report.json
