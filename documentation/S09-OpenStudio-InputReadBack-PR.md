@@ -15,6 +15,11 @@ merged.**
 
 ## Status
 
+- **S09 is BLOCKED on three owner decisions** (optics, lighting default, T-VENT-INACTIVE; see "Unresolved, risks,
+  limits"). The independent review of `59036783` accepted the revision-4 code technically.
+- **Record correction after that review (documentation only):** the writer-test reproduction command now excludes
+  `TestCategory=Simulation`, and the historical 388 passed / 2 skipped results are separated from the reviewer's filtered
+  363 passed / 2 skipped (see "Writer-test scope correction").
 - **Revision 4 responds to the failed final-head Build 39603021836 at `e0a6ea19`** (see "Revision 4").
   - One negative's `compare` wrote no report, and the test lost its exit code and stderr.
   - A defect that produces exactly this failure is fixed: process freshness was judged by process id alone, and Windows
@@ -714,16 +719,16 @@ calculation, EnergyPlus simulation or sizing was run.
 | Benchmark tests (not Simulation) | `0c232875` | 51/51 |
 | Acceptance and negatives, `C:\TasOut\s09\acc6` | revision-4 harness `25a35b92…` | as in "Fixture verdicts"; 16/16 negatives FAIL; originals unchanged; all 19 `report.txt` and the 3 IDFs byte-identical to acc3 |
 | Reused-id A/B, `C:\TasOut\s09\rev4-ab` | `e0a6ea19` source vs `0c232875` | see "Revision 4" |
-| `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | not re-run: revision 4 changes no writer or writer-test file | 388 passed, 2 skipped at revision 3 |
+| `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | not re-run: revision 4 changes no writer or writer-test file | 388 passed, 2 skipped at revision 3 (unfiltered scope; see "Writer-test scope correction") |
 | S09 tests (export in-process; read and compare in fresh processes) | `c1e53328` (revision 3) | **58/58**: the 50 revision-2 cases, unchanged in what they assert (the BLOCKED-technical test's "mutation applied" check now also covers the OSM), plus 8 new cases: 4 missing-counterpart FAILs (both cases × both fixtures), 1 fixture counterpart count, and 3 cases added to the BLOCKED-technical test (duplicated OS:ThermalZone, unlabelled OS:ThermalZone Name, relabelled OS:SubSurface Multiplier) |
 | The same 58 tests with the reviewed head's `OsComparison.cs` (`6f7e6b7d`) | working tree, then restored and rebuilt `--no-incremental` | **8 failed, 50 passed**: exactly the 8 new tests fail |
 | Acceptance and negatives, `C:\TasOut\s09\acc3` | revision-3 harness | 3 runs as in "Fixture verdicts"; 16/16 negatives FAIL; originals unchanged; acc3 IDFs byte-identical to acc2 |
 | Before/after on the same inputs, `C:\TasOut\s09\rev3-ab` | `6f7e6b7d` vs `c1e53328` | see "Revision 3" |
-| `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | revision-3 working tree (= `c1e53328`; no writer or test change) | 388 passed, 2 skipped (390), as at revision 2 |
+| `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | revision-3 working tree (= `c1e53328`; no writer or test change) | 388 passed, 2 skipped (390), as at revision 2 (Total 390 = no category filter; see "Writer-test scope correction") |
 | `benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests` (not Simulation) | same | 51/51 |
 | S09 tests (revision 2) | `cfe097f4` | **50/50**: the 33 revision-1 tests unchanged, plus 17 new: 9 negatives (6 box, 3 two-zone), 3 SAM-intent-only, 4 BLOCKED-technical, 1 fixture placement |
 | (revision 2) The same 50 tests with `Orientation()` and `Multiplicity()` disabled (the reviewed head's behaviour) | working tree, then restored | **17 failed, 33 passed**: exactly the new tests fail |
-| (revision 2) `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | revision-2 working tree (no writer or test change) | 388 passed, 2 skipped (390 = the `[Test]`/`[TestCase]` count at the base `7f216657` and here; revision 1 recorded 363/2, which is superseded) |
+| (revision 2) `tests/SAM.Analytical.OpenStudio.Tests` (writer regressions) | revision-2 working tree (no writer or test change) | 388 passed, 2 skipped (390 = the `[Test]`/`[TestCase]` count at the base `7f216657` and here; revision 1 recorded 363/2, which is superseded) (historical text kept; 363 + 2 = 365 is the filtered count, so "superseded" is withdrawn: see "Writer-test scope correction") |
 | (revision 2) `benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests` (not Simulation) | same | 51/51 |
 | (revision 2) Acceptance and negatives, `C:\TasOut\s09\acc2` | revision-2 harness | 3 runs as in "Fixture verdicts"; 14/14 negatives FAIL; originals unchanged |
 | Before/after on the same inputs, `C:\TasOut\s09\rev2-ab` | `d6d1cc5b` vs revision 2 | see "Revision 2" |
@@ -731,12 +736,33 @@ calculation, EnergyPlus simulation or sizing was run.
 
 ```text
 dotnet test benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/SAM.Analytical.OpenStudio.InputReadBack.Tests.csproj -c Release -p:Platform=x64
-dotnet test tests/SAM.Analytical.OpenStudio.Tests/SAM.Analytical.OpenStudio.Tests.csproj -c Release -p:Platform=x64
+dotnet test tests/SAM.Analytical.OpenStudio.Tests/SAM.Analytical.OpenStudio.Tests.csproj -c Release -p:Platform=x64 --filter 'TestCategory!=Simulation'
 dotnet test benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests/SAM.Analytical.OpenStudio.Benchmark.Tests.csproj -c Release -p:Platform=x64 --filter TestCategory!=Simulation
 benchmark/SAM.Analytical.OpenStudio.InputReadBack/Run-S09-ReadBack.ps1 -Phase acceptance -Root <new dir> -WeatherEpw <budapest.epw>
 benchmark/SAM.Analytical.OpenStudio.InputReadBack/Run-S09-ReadBack.ps1 -Phase acceptance-negative -Root <same dir> -WeatherEpw <budapest.epw>
 benchmark/SAM.Analytical.OpenStudio.InputReadBack/Pack-S09-Evidence.ps1 -Root <same dir>
 ```
+
+### Writer-test scope correction (record only, after the review of `59036783`)
+
+- **The command was unsafe.** Until this correction the writer-test line above had no category filter. The writer
+  suite has 25 `[Category("Simulation")]` cases (390 total, 365 without them), so as written it would also select
+  the Simulation cases. It now passes `--filter 'TestCategory!=Simulation'`. The benchmark line already filtered; the
+  S09 project has no Simulation category. No other S09 reproduction command in this record or the `revision-2/`,
+  `revision-3/` or `revision-4/` READMEs runs the writer suite.
+- **Historical 388 passed / 2 skipped claims (kept above, not rewritten):**
+  - Revision 3: a retained machine-local summary, `C:\TasOut\s09\rev3-ab\other-tests.txt` (not committed), reads
+    `Passed: 388, Skipped: 2, Total: 390, Duration: 5 m 45 s`. Total 390 shows the run had no category filter, so the
+    25 Simulation cases were in scope. The summary does not show per-test outcomes or whether EnergyPlus was invoked.
+  - Revision 2: no log retained. The record's total of 390 indicates the same unfiltered scope; its execution scope is
+    otherwise unverified.
+  - Revision 4: not run (as stated above).
+  - No owner authorisation for a simulation run is recorded for any of these runs, and none is inferred here.
+  - Revision 1's 363/2 (365 total) matches the filtered count. The revision-2 note calling it superseded is withdrawn;
+    revision 1's exact command is not recorded, so its scope is likewise unverified.
+- **The independent reviewer's results at `59036783` (reviewer-run; not run in this session):** S09 tests 62/62;
+  benchmark tests excluding Simulation 51/51; writer suite with `--filter 'TestCategory!=Simulation'` 363 passed,
+  2 skipped. This filtered writer result is the one that matches the corrected command.
 
 The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evidence/revision-3/README.md`
 (revision 3) and `revision-2/README.md` (revision 2, with the optics commands). Under Windows PowerShell 5.1, pass
@@ -803,10 +829,10 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 ## Next step
 
-Independent review of revision 4: GPT-6 or Claude Opus 5.5, effort High, a new session in read-only review mode, so the
-reviewer is independent of this session. Revision 4 changes only the process-identity checks and test diagnostics, so a
-focused review is enough.
-- The owner decides the pending items above. An optics writer fix or a 3a scope change would each be a separate task.
+S09 stays **BLOCKED** at the owner decision gate. The independent review of revision 4 (head `59036783`) accepted the
+code technically; this record-only correction followed it. Do not start S10.
+- The owner decides the three pending items above (optics, lighting visible-fraction default, T-VENT-INACTIVE). An
+  optics writer fix or a 3a scope change would each be a separate task.
 - Then the owner's merge decision, the known-SHA `PROJECT_PROGRESS.md` closeout and guarded branch cleanup.
 - The roadmap S09 row changes only through a separate SAM PR.
 - The construction-performance route needs its own owner start and authorisation for any EnergyPlus run.
