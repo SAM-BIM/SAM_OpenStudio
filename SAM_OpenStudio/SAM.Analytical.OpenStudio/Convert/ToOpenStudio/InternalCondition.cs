@@ -262,8 +262,10 @@ namespace SAM.Analytical.OpenStudio
             // Sum, from the condition's supply parameters (per person / per area / ACH /
             // absolute). SpaceParameter.OutsideSupplyAirFlow still takes precedence — the
             // orchestrator assigns a per-space DSOA which overrides the SpaceType one in
-            // EnergyPlus. A named-but-unresolved ventilation profile is an error; without a
-            // named profile the rates are unscheduled (fraction 1).
+            // EnergyPlus. The supply parameters are the requirement; the selected Ventilation
+            // profile is the delivery (S07 D-F2). Without a selection, or with a selection that
+            // does not resolve, the requirement is kept and an all-zero fraction schedule
+            // delivers no outdoor air (never unscheduled).
             double supplyAirFlowPerPerson = ParameterValue(internalCondition, InternalConditionParameter.SupplyAirFlowPerPerson);
             double supplyAirFlowPerArea = ParameterValue(internalCondition, InternalConditionParameter.SupplyAirFlowPerArea);
             double supplyAirChangesPerHour = ParameterValue(internalCondition, InternalConditionParameter.SupplyAirChangesPerHour);
@@ -278,16 +280,7 @@ namespace SAM.Analytical.OpenStudio
                 designSpecificationOutdoorAir.setOutdoorAirFlowperFloorArea(supplyAirFlowPerArea > 0 ? supplyAirFlowPerArea : 0);
                 designSpecificationOutdoorAir.setOutdoorAirFlowAirChangesperHour(supplyAirChangesPerHour > 0 ? supplyAirChangesPerHour : 0);
                 designSpecificationOutdoorAir.setOutdoorAirFlowRate(supplyAirFlow > 0 ? supplyAirFlow : 0);
-
-                string ventilationProfileName = internalCondition.GetProfileName(ProfileType.Ventilation);
-                if (ventilationProfileName != null)
-                {
-                    global::OpenStudio.Schedule ventilationSchedule = RequiredSchedule(internalCondition, profileDictionary, ProfileType.Ventilation, name, openStudioConversionContext);
-                    if (ventilationSchedule != null)
-                    {
-                        designSpecificationOutdoorAir.setOutdoorAirFlowRateFractionSchedule(ventilationSchedule);
-                    }
-                }
+                designSpecificationOutdoorAir.setOutdoorAirFlowRateFractionSchedule(VentilationDeliverySchedule(internalCondition, profileDictionary, designSpecificationOutdoorAir.nameString(), openStudioConversionContext));
 
                 result.setDesignSpecificationOutdoorAir(designSpecificationOutdoorAir);
             }
@@ -380,6 +373,59 @@ namespace SAM.Analytical.OpenStudio
         {
             double value;
             return internalCondition.TryGetValue(internalConditionParameter, out value) ? value : double.NaN;
+        }
+
+        /// <summary>
+        /// The outdoor-air delivery schedule of a space's ventilation requirement (S07 D-F2): the selected Ventilation
+        /// profile when it resolves (V2); otherwise <see cref="VentilationNotDeliveredScheduleName"/>, an all-zero fraction
+        /// schedule, so the requirement stays in the model and no outdoor air is delivered. No selection (V1) is reported
+        /// as information; a selection that does not resolve to a Ventilation profile (missing, or another type) is an
+        /// invalid input and an error. Used for the SpaceType DSOA and for the per-space OutsideSupplyAirFlow DSOA.
+        /// </summary>
+        /// <param name="internalCondition">The space's internal condition; null means no selection.</param>
+        /// <param name="openStudioConversionContext">Conversion context.</param>
+        /// <param name="openStudioObjectName">The DSOA the schedule is for (diagnostics).</param>
+        /// <returns>The delivery schedule; never null.</returns>
+        public static global::OpenStudio.Schedule ToOpenStudio_VentilationDeliverySchedule(this InternalCondition internalCondition, OpenStudioConversionContext openStudioConversionContext, string openStudioObjectName)
+        {
+            ProfileLibrary profileLibrary = openStudioConversionContext.Source?.ProfileLibrary;
+            Dictionary<ProfileType, Profile> profileDictionary = internalCondition == null || profileLibrary == null ? new Dictionary<ProfileType, Profile>() : internalCondition.GetProfileDictionary(profileLibrary);
+            return VentilationDeliverySchedule(internalCondition, profileDictionary, openStudioObjectName, openStudioConversionContext);
+        }
+
+        /// <summary>The name of the all-zero fraction schedule that delivers no outdoor air (V1, or an invalid selection).</summary>
+        public const string VentilationNotDeliveredScheduleName = "SAM_Schedule_VentilationNotDelivered";
+
+        private static global::OpenStudio.Schedule VentilationDeliverySchedule(InternalCondition internalCondition, Dictionary<ProfileType, Profile> profileDictionary, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
+        {
+            string selection = internalCondition?.GetProfileName(ProfileType.Ventilation);
+            if (string.IsNullOrWhiteSpace(selection))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "No Ventilation profile is selected: the outdoor-air requirement is kept and no outdoor air is delivered (S07 D-F2 V1)", internalCondition, openStudioObjectName);
+                return openStudioConversionContext.ToOpenStudio_ConstantSchedule(VentilationNotDeliveredScheduleName, 0, "Fractional");
+            }
+
+            global::OpenStudio.Schedule result = null;
+            if (profileDictionary != null && profileDictionary.TryGetValue(ProfileType.Ventilation, out Profile profile) && profile != null)
+            {
+                result = profile.ToOpenStudio(ProfileType.Ventilation, openStudioConversionContext);
+                if (result == null)
+                {
+                    openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("The selected Ventilation profile '{0}' could not be converted; no outdoor air is delivered (never unscheduled)", selection), internalCondition, openStudioObjectName);
+                }
+            }
+            else
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("The selected Ventilation profile '{0}' was not found as a Ventilation profile (missing, or of another type): an invalid input; no outdoor air is delivered (never unscheduled)", selection), internalCondition, openStudioObjectName);
+            }
+
+            if (result == null)
+            {
+                openStudioConversionContext.RegisterSkip();
+                return openStudioConversionContext.ToOpenStudio_ConstantSchedule(VentilationNotDeliveredScheduleName, 0, "Fractional");
+            }
+
+            return result;
         }
 
         private static global::OpenStudio.Schedule RequiredSchedule(InternalCondition internalCondition, Dictionary<ProfileType, Profile> profileDictionary, ProfileType profileType, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)

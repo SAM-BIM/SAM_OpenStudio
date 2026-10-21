@@ -289,11 +289,21 @@ namespace SAM.Analytical.OpenStudio
                         }
                     }
 
+                    // Per-space outdoor-air override: replaces the SpaceType DSOA in EnergyPlus. It is the
+                    // space's requirement, so it is delivered by the same rule as the SpaceType one (S07
+                    // D-F2): only through the selected Ventilation profile, otherwise not at all. Every
+                    // rate field is written explicitly so no OpenStudio default (Flow/Person, 0.00944
+                    // m3/s per person) can add air SAM never stated.
                     if (space.TryGetValue(SpaceParameter.OutsideSupplyAirFlow, out double outsideSupplyAirFlow) && !double.IsNaN(outsideSupplyAirFlow) && outsideSupplyAirFlow > 0)
                     {
                         global::OpenStudio.DesignSpecificationOutdoorAir designSpecificationOutdoorAir = new global::OpenStudio.DesignSpecificationOutdoorAir(context.Target);
                         designSpecificationOutdoorAir.setName(Core.OpenStudio.Query.OpenStudioName("DesignSpecificationOutdoorAir", space.Name, space.Guid));
+                        designSpecificationOutdoorAir.setOutdoorAirMethod("Sum");
+                        designSpecificationOutdoorAir.setOutdoorAirFlowperPerson(0);
+                        designSpecificationOutdoorAir.setOutdoorAirFlowperFloorArea(0);
+                        designSpecificationOutdoorAir.setOutdoorAirFlowAirChangesperHour(0);
                         designSpecificationOutdoorAir.setOutdoorAirFlowRate(outsideSupplyAirFlow);
+                        designSpecificationOutdoorAir.setOutdoorAirFlowRateFractionSchedule(internalCondition.ToOpenStudio_VentilationDeliverySchedule(context, designSpecificationOutdoorAir.nameString()));
                         openStudioSpace.setDesignSpecificationOutdoorAir(designSpecificationOutdoorAir);
                     }
 
