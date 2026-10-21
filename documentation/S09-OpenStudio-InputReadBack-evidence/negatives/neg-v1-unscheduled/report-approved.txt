@@ -1,0 +1,27 @@
+S09 OpenStudio read-back: s08-fix-two -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (586 required, 586 results)
+outcomes: DocumentedDefault 2, ExportDefect 2, MappingDifference 138, Match 393, NotApplicable 3, UnverifiedUnresolved 2, WithinTolerance 46
+D-F2 space:5080c000-0000-0000-0000-00000000c0a1: V1
+D-F2 space:5080c000-0000-0000-0000-00000000c0b1: V1
+NOT PASS DocumentedDefault / BlockedOwnerDecision: 2
+  4c space:5080c000-0000-0000-0000-00000000c0a1.ic.lighting.visible: SAM states no value and the native holds the contract-listed default. Not accepted by the owner.
+  4c space:5080c000-0000-0000-0000-00000000c0b1.ic.lighting.visible: SAM states no value and the native holds the contract-listed default. Not accepted by the owner.
+NOT PASS ExportDefect / Fail: 2
+  8b space:5080c000-0000-0000-0000-00000000c0a1.ic.ventilation.delivered: SAM states no value (S-UNSPEC) and the native holds a non-zero value that is not the contract-listed default. Also: Hour/day-type alignment is unverified (S07 section 7); an EFLH agreement is supporting evidence only. [decisive element space:5080c000-0000-0000-0000-00000000c0a1.ic.ventilation.delivered[0] of 8760]
+  8b space:5080c000-0000-0000-0000-00000000c0b1.ic.ventilation.delivered: SAM states no value (S-UNSPEC) and the native holds a non-zero value that is not the contract-listed default. Also: Hour/day-type alignment is unverified (S07 section 7); an EFLH agreement is supporting evidence only. [decisive element space:5080c000-0000-0000-0000-00000000c0b1.ic.ventilation.delivered[0] of 8760]
+NOT PASS MappingDifference / BlockedOwnerDecision: 138
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer1.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer1.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer1.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer2.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer2.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer2.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer3.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer3.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:26780260-a110-447e-b7ec-9e52919fb23d@space:5080c000-0000-0000-0000-00000000c0a1#layer3.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:fe8a6b43-ec73-4201-91e8-0dedf413b25c@space:5080c000-0000-0000-0000-00000000c0a1#layer1.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:fe8a6b43-ec73-4201-91e8-0dedf413b25c@space:5080c000-0000-0000-0000-00000000c0a1#layer1.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:fe8a6b43-ec73-4201-91e8-0dedf413b25c@space:5080c000-0000-0000-0000-00000000c0a1#layer1.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  ... 126 more in report.json
+NOT PASS UnverifiedUnresolved / NotRun: 2
+  6.hourly space:5080c000-0000-0000-0000-00000000c0a1.ic.schedule.ventilation: Hour/day-type alignment is unverified (S07 section 7); an EFLH agreement is supporting evidence only.
+  6.hourly space:5080c000-0000-0000-0000-00000000c0b1.ic.schedule.ventilation: Hour/day-type alignment is unverified (S07 section 7); an EFLH agreement is supporting evidence only.

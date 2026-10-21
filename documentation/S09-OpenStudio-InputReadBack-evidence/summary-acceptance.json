@@ -1,0 +1,43 @@
+{
+    "phase":  "acceptance",
+    "started":  "2026-10-21T10:55:12.3941938Z",
+    "harnessDll":  "3ae640b4c1c79c330d027a78fa73aa1898ff11181ed41d8b584d340a5bdce16c",
+    "runs":  [
+                 {
+                     "label":  "box",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  12,
+                     "provisionalExit":  12,
+                     "status":  "BlockedOwnerDecision",
+                     "coverage":  "Complete",
+                     "required":  316,
+                     "results":  316
+                 },
+                 {
+                     "label":  "two",
+                     "fixture":  "s08-fix-two",
+                     "approvedExit":  12,
+                     "provisionalExit":  12,
+                     "status":  "BlockedOwnerDecision",
+                     "coverage":  "Complete",
+                     "required":  586,
+                     "results":  586
+                 },
+                 {
+                     "label":  "box-repeat",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  12,
+                     "provisionalExit":  12,
+                     "status":  "BlockedOwnerDecision",
+                     "coverage":  "Complete",
+                     "required":  316,
+                     "results":  316
+                 }
+             ],
+    "fixture:s08-fix-box.json":  "45524172b32f85df89511dd344141023de999faa9552a199e6b49062612acd08",
+    "fixture:s08-fix-two.json":  "20da9b586345e9fc67dc6308e6da1578b9bc41b3c694dbdab37e9c677959baa0",
+    "epw":  "472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3",
+    "repeat:model.osm":  "DIFFERENT 53eafa9dbc17b6aa8cdb25772381d66eb1fa3d9788977c8fcfbc8ee045665815 ed2d26b536817b1f33d18af80865bfe46d610986681b0fa26215d3c4b410cace",
+    "repeat:in.idf":  "identical",
+    "finished":  "2026-10-21T10:55:28.8058255Z"
+}

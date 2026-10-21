@@ -83,6 +83,12 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             result.CompareWeather(epwPath, snapshot);
             result.CompareDesignDays(expected);
 
+            int singleSided = result.Results.Count(x => x.Input.Listing == ContractListing.MappingDifference);
+            if (singleSided > 0)
+            {
+                result.Supporting.Add(SingleSidedOpaque + ": " + singleSided + " internal-side opaque optical row(s) differ from SAM because EnergyPlus opaque materials are single-sided and the writer writes the external value (SAM-OS-MAT-002). Listed as MAPPING-DIFFERENCE by S09 from the writer's documented behaviour, not by S07: an owner decision (accept, or require a writer change).");
+            }
+
             result.Gate = EQ.Gate(result.Results, result.Configuration);
             GateStatus status = result.Gate.Status;
             if (result.Consistency.Count > 0)

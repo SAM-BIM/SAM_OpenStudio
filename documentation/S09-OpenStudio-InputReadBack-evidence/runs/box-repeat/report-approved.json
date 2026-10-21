@@ -1,0 +1,654 @@
+{
+  "Schema": "s09-readback-report/1",
+  "FixtureId": "s08-fix-box",
+  "RuleSet": "Approved",
+  "Status": "BlockedOwnerDecision",
+  "ExitCode": 12,
+  "GateStatus": "BlockedOwnerDecision",
+  "Coverage": "Complete",
+  "Required": 316,
+  "Results": 316,
+  "MissingComparisons": [],
+  "CountByOutcome": {
+    "DocumentedDefault": 1,
+    "MappingDifference": 69,
+    "Match": 220,
+    "NotApplicable": 1,
+    "WithinTolerance": 25
+  },
+  "NonPass": [
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer2.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer2.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer2.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer3.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer3.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer3.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer4.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer4.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer2.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer2.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer2.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer3.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer3.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer3.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer4.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer4.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer2.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer2.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer2.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer3.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer3.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer3.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer4.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer4.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer2.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer2.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer2.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer3.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer3.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer3.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer4.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer4.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer2.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer2.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer2.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer3.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer3.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer3.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer4.internalSolarReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "3a",
+      "Key": "panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer4.internalEmissivity",
+      "Outcome": "MappingDifference",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner."
+    },
+    {
+      "Quantity": "4c",
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.lighting.visible",
+      "Outcome": "DocumentedDefault",
+      "Status": "BlockedOwnerDecision",
+      "Reason": "SAM states no value and the native holds the contract-listed default. Not accepted by the owner."
+    }
+  ],
+  "OwnerDecisionsNamed": [
+    "owner acceptance of MappingDifference for 3a on fixture s08-fix-box",
+    "owner acceptance of DocumentedDefault for 4c on fixture s08-fix-box"
+  ],
+  "TechnicalBlockersNamed": [],
+  "Consistency": [],
+  "FixtureCriteria": [],
+  "VentilationStates": {
+    "space:5080c000-0000-0000-0000-00000000c001": "V2"
+  },
+  "Series": [
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.schedule.occupancy",
+      "QuantityId": "6.hourly",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.schedule.lighting",
+      "QuantityId": "6.hourly",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.schedule.equipmentSensible",
+      "QuantityId": "6.hourly",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.schedule.equipmentLatent",
+      "QuantityId": "6.hourly",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.schedule.infiltration",
+      "QuantityId": "6.hourly",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.heating",
+      "QuantityId": "5.temperature",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.cooling",
+      "QuantityId": "5.temperature",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.humidification",
+      "QuantityId": "5.humidity",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.dehumidification",
+      "QuantityId": "5.humidity",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.ventilation.delivered",
+      "QuantityId": "8b",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "WithinTolerance",
+      "FirstNotPass": null
+    },
+    {
+      "Key": "space:5080c000-0000-0000-0000-00000000c001.ic.schedule.ventilation",
+      "QuantityId": "6.hourly",
+      "Count": 8760,
+      "NotPass": 0,
+      "Status": "Pass",
+      "Outcome": "Match",
+      "FirstNotPass": null
+    }
+  ],
+  "Supporting": [
+    "calendar: one non-leap run year 1/1-12/31 (IDF RunPeriod begin year 2006), EPW 8760 rows; hour index 0 = 1 January 00:00-01:00. Each schedule\u0027s own hour labels are checked separately.",
+    "space:5080c000-0000-0000-0000-00000000c001 \u0027FixBox\u0027 = native space \u0027SAM_Space_FixBox_5080c000\u0027 by geometry (6 surfaces one to one); name carrier agrees",
+    "space:5080c000-0000-0000-0000-00000000c001: native signed shell volume 76.608 m3 (positive = outward-facing surfaces)",
+    "space:5080c000-0000-0000-0000-00000000c001: D-F9 stored volume 76.608 m3 vs geometric 76.608 m3: Identical",
+    "aperture:95717805-e6c7-4051-9c99-937da3d94f15@space:5080c000-0000-0000-0000-00000000c001: native subsurface \u0027SAM_SubSurface_FIX_WIN_FRAMED_0_95717805\u0027 with frame \u0027SAM_SubSurface_FIX_WIN_FRAMED_0_95717805_FrameAndDivider\u0027, identity Verified",
+    "aperture:95717805-e6c7-4051-9c99-937da3d94f15@space:5080c000-0000-0000-0000-00000000c001: native frame width 0.065 m; SAM T-FRAME OpenStudio rule: DefaultFrameWidth, else the frame layer thickness (pane = face offset inwards by 0.065 m)",
+    "aperture:6adea09c-1557-4dfd-bfab-75f66600343f@space:5080c000-0000-0000-0000-00000000c001: native subsurface \u0027SAM_SubSurface_FIX_WIN_UNFRAMED_0_6adea09c\u0027 (no frame), identity Verified",
+    "space:5080c000-0000-0000-0000-00000000c001: D-F2 V2; selection FIX_IC_BOX_VNT; requirement Value(0.03)",
+    "Ideal Loads \u0027SAM_IdealLoads_FixBox_5080c000\u0027: DCV \u0027None\u0027, economizer \u0027NoEconomizer\u0027, heat recovery \u0027None\u0027, availability \u0027\u0027",
+    "space:5080c000-0000-0000-0000-00000000c001: OSM DSOA \u0027SAM_InternalCondition_FIX_IC_BOX_af50b3dc_DesignSpecificationOutdoorAir\u0027 inherited from SpaceType \u0027SAM_InternalCondition_FIX_IC_BOX_af50b3dc\u0027; IDF Ideal Loads names \u0027SAM_InternalCondition_FIX_IC_BOX_af50b3dc_DesignSpecificationOutdoorAir\u0027",
+    "weather: run EPW sha256 472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3; the OSM references a file with sha256 472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3",
+    "weather: Site:GroundTemperature:BuildingSurface 4.58, 1.15, 0.22, 1.03, 5.66, 10.85, 15.73, 19.27, 20.3, 18.64, 14.64, 9.6 (9.ground, not gated)",
+    "design days: SAM states 0 (none); the IDF has 0 sizing period(s)",
+    "OS-MAT-SINGLE-SIDED: 69 internal-side opaque optical row(s) differ from SAM because EnergyPlus opaque materials are single-sided and the writer writes the external value (SAM-OS-MAT-002). Listed as MAPPING-DIFFERENCE by S09 from the writer\u0027s documented behaviour, not by S07: an owner decision (accept, or require a writer change)."
+  ],
+  "Inputs": {
+    "label": "box-repeat",
+    "modelSha256": "45524172b32f85df89511dd344141023de999faa9552a199e6b49062612acd08",
+    "epwSha256": "472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3",
+    "osmSha256": "ed2d26b536817b1f33d18af80865bfe46d610986681b0fa26215d3c4b410cace",
+    "idfSha256": "737ea1f44600aff8726d3d46203bb32e026c0ae6518107aafe92e219aaa1b6a6",
+    "openStudioSdk": "3.10.0\u002B86d7e215a1",
+    "writerSha256": "0d93d7faba8ea80c15ba4144e801b91fc66c356b6298b98b20a2c7ca83fe1eaa",
+    "readerSha256": "7d4206e867cd95549af67265398eab95d50bd4864102070bb2819502bd8dfdd3",
+    "exportPid": "38876",
+    "readerPid": "3480",
+    "comparePid": "13468",
+    "mutation": null,
+    "writerDiagnostics": "Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-MAT-002 Internal-side optical properties (InternalEmissivity, InternalSolarReflectance, InternalLightReflectance) differ from the external-side values \u2014 EnergyPlus opaque materials are single-sided; the external values govern both sides | Information SAM-OS-RUN-002 Annual weather source: explicit EPW (weather.epw) | Information SAM-OS-RUN-002 Ground temperatures taken from the EPW GROUND TEMPERATURES header (depth 0.5 m set, 12 monthly values) | Information SAM-OS-RUN-002 No design-day source supplied; sizing-period runs stay disabled unless OpenStudioConversionOptions.RunSizingPeriods overrides",
+    "translatorMessages": "0"
+  }
+}

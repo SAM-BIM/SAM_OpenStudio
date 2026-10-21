@@ -7,8 +7,9 @@
 
 .DESCRIPTION
   Per run: export.json (paths reduced to file names), compare-approved\report.json and report.txt, and
-  compare-provisional\report.txt. Per negative: report.json and report.txt. Plus the summary files. Native files (OSM,
-  IDF, native.json) and console logs stay machine-local; their hashes are in export.json and report.json.
+  compare-provisional\report.txt. Per negative: report.txt (its report.json stays machine-local). Plus the summary
+  files. Native files (OSM, IDF, native.json) and console logs stay machine-local; their hashes are in export.json and
+  report.json.
 #>
 param(
     [string]$Root = 'C:\TasOut\s09\acc1',
@@ -41,7 +42,6 @@ $negatives = Join-Path $rootFull 'negatives'
 if (Test-Path $negatives) {
     foreach ($case in Get-ChildItem -Directory $negatives) {
         $out = Join-Path $Target "negatives\$($case.Name)"
-        Copy-Sanitized (Join-Path $case.FullName 'compare-approved\report.json') (Join-Path $out 'report-approved.json')
         Copy-Sanitized (Join-Path $case.FullName 'compare-approved\report.txt') (Join-Path $out 'report-approved.txt')
     }
 }
