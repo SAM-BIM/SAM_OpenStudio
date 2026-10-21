@@ -1,0 +1,27 @@
+<!-- SPDX-License-Identifier: LGPL-3.0-or-later -->
+<!-- Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors -->
+<!--
+  S09 revision 2 evidence program (not part of the solution or CI): prints the opaque optics decision table from the
+  comparator's own rows. Arguments: <fixture.json> <run>/native.json <run>/weather.epw <fixture-id>; the full command is in
+  ../README.md.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\benchmark\SAM.Analytical.OpenStudio.InputReadBack\SAM.Analytical.OpenStudio.InputReadBack.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="SAM.Core"><HintPath>..\..\..\..\..\SAM\build\SAM.Core.dll</HintPath></Reference>
+    <Reference Include="SAM.Geometry"><HintPath>..\..\..\..\..\SAM\build\SAM.Geometry.dll</HintPath></Reference>
+    <Reference Include="SAM.Analytical"><HintPath>..\..\..\..\..\SAM\build\SAM.Analytical.dll</HintPath></Reference>
+    <Reference Include="SAM.Architectural"><HintPath>..\..\..\..\..\SAM\build\SAM.Architectural.dll</HintPath></Reference>
+    <Reference Include="SAM.Weather"><HintPath>..\..\..\..\..\SAM\build\SAM.Weather.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>
