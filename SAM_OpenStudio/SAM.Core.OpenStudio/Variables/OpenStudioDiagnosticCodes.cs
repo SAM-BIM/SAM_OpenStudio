@@ -39,6 +39,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>Unsupported internal-condition parameter.</summary>
         public const string InternalConditionUnsupportedParameter = "SAM-OS-IC-001";
 
+        /// <summary>Declared internal-condition conversion assumption or contract default applied (S07 §5.1 lighting split and its common default).</summary>
+        public const string InternalConditionAssumption = "SAM-OS-IC-002";
+
         /// <summary>Conditioned zone missing setpoints, or HVAC-dependent data (emitter characteristics, exhaust flows) deferred to the detailed-HVAC programme.</summary>
         public const string HvacMissingSetpoints = "SAM-OS-HVAC-001";
 

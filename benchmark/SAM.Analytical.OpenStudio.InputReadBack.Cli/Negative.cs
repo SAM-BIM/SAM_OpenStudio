@@ -34,7 +34,12 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
             "neg-window-multiplier-both",
             "neg-north-axis-both",
             "neg-osm-missing-thermal-zone",
-            "neg-osm-missing-subsurfaces"
+            "neg-osm-missing-subsurfaces",
+            "neg-lighting-previous-mapping",
+            "neg-lighting-visible-zero",
+            "neg-lighting-radiant-is-p",
+            "neg-lighting-return-air",
+            "neg-lighting-swapped"
         };
 
         public static int Run(string runDirectory, string caseId, string outputDirectory)
@@ -213,6 +218,40 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
                     }
 
                     return "OSM OS:SubSurface removed for " + names.Count + " subsurface(s) (IDF unchanged)";
+                }
+
+                // S07 §5.1 T-LIGHT-SPLIT (amendment L1): the first IDF Lights object, whose written p = Fraction Radiant +
+                // Fraction Visible is positive on both fixtures. The OSM is unchanged; the lighting rows must refuse it.
+                case "neg-lighting-previous-mapping":
+                case "neg-lighting-visible-zero":
+                case "neg-lighting-radiant-is-p":
+                case "neg-lighting-return-air":
+                case "neg-lighting-swapped":
+                {
+                    IdfObject lights = idfObjects.First(x => x.Type == "Lights");
+                    string radiant = lights.Value(8), visible = lights.Value(9);
+                    string p = (double.Parse(radiant, CultureInfo.InvariantCulture) + double.Parse(visible, CultureInfo.InvariantCulture)).ToString("R", CultureInfo.InvariantCulture);
+                    switch (caseId)
+                    {
+                        case "neg-lighting-previous-mapping":
+                            // The pre-L1 writer: Fraction Radiant = p and the view-coefficient default 0.25 as Fraction Visible.
+                            idf = SetField(idf, "Lights", lights.Name, "Fraction Radiant", p);
+                            idf = SetField(idf, "Lights", lights.Name, "Fraction Visible", "0.25");
+                            return "IDF Lights '" + lights.Name + "' Fraction Radiant -> p = " + p + ", Fraction Visible -> 0.25 (the previous mapping)";
+                        case "neg-lighting-visible-zero":
+                            idf = SetField(idf, "Lights", lights.Name, "Fraction Visible", "0");
+                            return "IDF Lights '" + lights.Name + "' Fraction Visible " + visible + " -> 0 with a positive authored p";
+                        case "neg-lighting-radiant-is-p":
+                            idf = SetField(idf, "Lights", lights.Name, "Fraction Radiant", p);
+                            return "IDF Lights '" + lights.Name + "' Fraction Radiant -> p = " + p + " with Fraction Visible " + visible + " kept";
+                        case "neg-lighting-return-air":
+                            idf = SetField(idf, "Lights", lights.Name, "Return Air Fraction", "0.1");
+                            return "IDF Lights '" + lights.Name + "' Return Air Fraction blank -> 0.1";
+                        default:
+                            idf = SetField(idf, "Lights", lights.Name, "Fraction Radiant", visible);
+                            idf = SetField(idf, "Lights", lights.Name, "Fraction Visible", radiant);
+                            return "IDF Lights '" + lights.Name + "' Fraction Radiant " + radiant + " and Fraction Visible " + visible + " swapped";
+                    }
                 }
             }
 

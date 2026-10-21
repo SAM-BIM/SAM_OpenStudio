@@ -27,8 +27,8 @@ independent: a concept can be Native one way and Unsupported the other.
 
 | Status | Entries |
 |---|---|
-| Native | 57 |
-| Derived | 11 |
+| Native | 56 |
+| Derived | 12 |
 | Approximated | 16 |
 | Unsupported | 45 |
 | Deferred | 9 |
@@ -173,7 +173,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 | `OS:People.AutocalculatedSensibleFraction` | - | **Approximated** | `SAM-OSI-APX-001` | No fixed split exists; the whole metabolic rate is imported as sensible. |
 | `OS:People.NumberOfPeopleMethod` | - | **Unsupported** | `SAM-OSI-LOAD-001` | An absolute count cannot become a density on a shared space type without inventing an area. |
 | `OS:Lights` | `InternalConditionParameter.LightingGainPerArea + LightingProfileName` | **Native** | - |  |
-| `OS:Lights.RadiantVisibleFractions` | `InternalConditionParameter.LightingRadiantProportion / LightingViewCoefficient` | **Native** | - |  |
+| `OS:Lights.RadiantVisibleFractions` | `InternalConditionParameter.LightingRadiantProportion` | **Derived** | `SAM-OSI-APX-001` | p = Fraction Radiant + Fraction Visible (SAM S07 §5.1); `LightingViewCoefficient` is a comfort coefficient and is not set. Warning when Return Air Fraction > 0 (that share becomes convective room gain) or the fractions sum above 1 (not imported); information when Fraction Visible / (Fraction Radiant + Fraction Visible) differs from s = 0.2415 / 0.576. Files imported under the previous mapping hold Fraction Radiant in p and Fraction Visible in the view coefficient; they cannot be identified and are not migrated. |
 | `OS:ElectricEquipment` | `InternalConditionParameter.EquipmentSensibleGainPerArea / EquipmentLatentGainPerArea` | **Native** | - |  |
 | `OS:ElectricEquipment.PartLatent` | - | **Approximated** | `SAM-OSI-APX-001` | A single part-latent instance is apportioned; the two halves then share one schedule. |
 | `OS:GasEquipment` | - | **Unsupported** | `SAM-OSI-LOAD-001` |  |

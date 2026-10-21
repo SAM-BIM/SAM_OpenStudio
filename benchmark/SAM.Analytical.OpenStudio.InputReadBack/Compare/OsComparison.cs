@@ -39,6 +39,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         /// <summary>The verified inactive-delivery transformation of the S08 owner decision 3, applied with the same preconditions (S09 owner ventilation policy, V0/V1).</summary>
         public const string InactiveVentilation = "T-VENT-INACTIVE";
 
+        /// <summary>The S07 §5.1 lighting energy split (amendment L1), verified for an authored p.</summary>
+        public const string LightSplit = "T-LIGHT-SPLIT";
+
         /// <summary>The writer's single-sided opaque optical properties (SAM-OS-MAT-002): a known converter behaviour, named for the owner.</summary>
         public const string SingleSidedOpaque = "OS-MAT-SINGLE-SIDED";
 
@@ -183,6 +186,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                 {
                     Add("4c", Keys.Ic(space.Guid, fraction));
                 }
+
+                Add(OsQuantities.LightingReturnAir.Id, Keys.Ic(space.Guid, LayerProperties.LightingReturnAir));
 
                 Add("5.temperature", Keys.Ic(space.Guid, "heating"));
                 Add("5.temperature", Keys.Ic(space.Guid, "cooling"));
@@ -1138,8 +1143,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             IdfObject light = lights.Count == 1 ? lights[0] : null;
             ReaderResult lightDensity = lights.Count > 1 ? ReaderResult.Unreadable(lights.Count + " Lights objects apply to the space") : DesignDensity(light, floorArea, peopleDensity, 4, 5, 6, "Lighting Level", "Watts per Floor Area", "Watts per Person", 1);
             Gain("lighting", g, GainTotal(space, "LightingGainPerArea", "LightingGain", "LightingGainPerPerson"), space.StoredArea, lightDensity, floorArea, identity, light != null);
-            Fraction("lighting.radiant", g, Parameter(space, "LightingRadiantProportion"), 0.32, NativeModel.Number(light, 8, "Fraction Radiant"), identity);
-            Fraction("lighting.visible", g, RawParameter(g, InternalConditionParameter.LightingViewCoefficient), 0.25, NativeModel.Number(light, 9, "Fraction Visible"), identity);
+            LightingSplit(g, Parameter(space, "LightingRadiantProportion"), light, identity);
             Schedule("lighting", g, space, "ticLG", light?.Value(2, "Schedule Name", out string _), identity, null);
 
             // --- equipment: the sensible instance (no latent fraction) and the latent one (Fraction Latent = 1) ---
@@ -1285,12 +1289,6 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             return schedule.Values.All(x => x == first) ? ReaderResult.FromValue(first) : ReaderResult.Unreadable(what + " schedule '" + schedule.Name + "' is not constant");
         }
 
-        private double RawParameter(Guid space, InternalConditionParameter parameter)
-        {
-            InternalCondition internalCondition = model.AdjacencyCluster.GetObject<Space>(space)?.InternalCondition;
-            return internalCondition != null && internalCondition.TryGetValue(parameter, out double value) ? value : double.NaN;
-        }
-
         private void Gain(string what, Guid space, double total, double storedArea, ReaderResult density, ReaderResult floorArea, IdentityStatus identity, bool nativePresent)
         {
             ExpectedValue expectedDensity = EQ.ExpectedGainDensity(total, storedArea);
@@ -1316,6 +1314,78 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             };
 
             Results.Add(EQ.Evaluate(input, Configuration));
+        }
+
+        /// <summary>
+        /// S07 §5.1 T-LIGHT-SPLIT on the IDF <c>Lights</c> object: Return Air Fraction (blank reads as 0) against 0, exact;
+        /// Fraction Radiant + Fraction Visible against p; Fraction Visible against p·s; Fraction Radiant against p·(1 − s); the
+        /// convective remainder 1 − F_RA − F_R − F_V against 1 − p. Expectations come from the raw SAM p and the §5.1
+        /// constants only (<see cref="OsQuantities.LightingShortWaveShare"/>), never from the writer or the view coefficient.
+        /// An authored p (including 0) is verified as an accepted transformation. An absent or NaN p stays S-UNSPEC on every
+        /// row, with the contract-listed default (p₀ split) as the listed default: DOCUMENTED-DEFAULT at best, never PASS.
+        /// A p outside [0, 1] is S-INVALID.
+        /// </summary>
+        private void LightingSplit(Guid space, double p, IdfObject light, IdentityStatus identity)
+        {
+            double s = OsQuantities.LightingShortWaveShare;
+            double p0 = OsQuantities.LightingReferenceRadiantProportion;
+
+            // A blank field of a present Lights object is its EnergyPlus IDD default, 0 for all three (S07: "blank reads as
+            // 0"). Read as 0, a blank cannot pass as native absence (NOT-APPLICABLE) for an unstated p.
+            ReaderResult Field(int index, string label)
+            {
+                ReaderResult value = NativeModel.Number(light, index, label);
+                return light != null && value.Kind == ReaderKind.Absent ? ReaderResult.FromValue(0) : value;
+            }
+
+            ReaderResult returnAir = Field(7, "Return Air Fraction");
+            ReaderResult radiant = Field(8, "Fraction Radiant");
+            ReaderResult visible = Field(9, "Fraction Visible");
+            ReaderResult total = Combine(new[] { radiant, visible }, x => x[0] + x[1]);
+            ReaderResult convective = Combine(new[] { returnAir, radiant, visible }, x => 1 - x[0] - x[1] - x[2]);
+
+            void Row(string what, QuantityDefinition definition, Func<double, double> expected, ReaderResult nativeValue)
+            {
+                ExpectedValue value;
+                if (double.IsNaN(p))
+                {
+                    value = ExpectedValue.Unspecified("LightingRadiantProportion not authored; the S07 §5.1 listed default is p0 = " + p0.ToString("R", ci));
+                }
+                else if (p < 0 || p > 1)
+                {
+                    value = ExpectedValue.Invalid("LightingRadiantProportion " + p.ToString("R", ci) + " is not a fraction between 0 and 1");
+                }
+                else
+                {
+                    value = ExpectedValue.FromValue(expected(p));
+                }
+
+                Results.Add(EQ.Evaluate(new QuantityInput
+                {
+                    Definition = definition,
+                    FixtureId = FixtureId,
+                    ObjectKey = Keys.Ic(space, what),
+                    Expected = value,
+                    Native = nativeValue,
+                    Identity = identity,
+                    ListedDefault = expected(p0),
+                    TransformationId = LightSplit,
+                    TransformationVerified = true
+                }, Configuration));
+            }
+
+            Row(LayerProperties.LightingReturnAir, OsQuantities.LightingReturnAir, x => 0, returnAir);
+            Row("lighting.radiantTotal", QuantityCatalog.Get("4c"), x => x, total);
+            Row("lighting.visible", QuantityCatalog.Get("4c"), x => x * s, visible);
+            Row("lighting.radiant", QuantityCatalog.Get("4c"), x => x * (1 - s), radiant);
+            Row("lighting.convective", QuantityCatalog.Get("4c"), x => 1 - x, convective);
+        }
+
+        /// <summary>A quantity derived from native fields: absent, unreadable or NaN when any input is; otherwise the value.</summary>
+        private static ReaderResult Combine(ReaderResult[] inputs, Func<double[], double> combine)
+        {
+            ReaderResult problem = inputs.FirstOrDefault(x => x.Kind == ReaderKind.Unreadable) ?? inputs.FirstOrDefault(x => x.Kind == ReaderKind.NaN) ?? inputs.FirstOrDefault(x => x.Kind == ReaderKind.Absent);
+            return problem ?? ReaderResult.FromValue(combine(inputs.Select(x => x.Value).ToArray()));
         }
 
         private ReaderResult Infiltration(IdfObject infiltration, Guid space)

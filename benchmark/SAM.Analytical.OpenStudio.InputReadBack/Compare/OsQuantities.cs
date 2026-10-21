@@ -33,10 +33,23 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         /// <summary>T-FRAME, OpenStudio: frame conductance 1/sum(t/lambda), 1e-5 W/m2K.</summary>
         public static readonly QuantityDefinition FrameConductance = new QuantityDefinition("T-FRAME.conductance", "Frame conductance (T-FRAME)", "W/m2K", ToleranceRule.Create(null, 1e-5, "W/m2K"), true);
 
+        /// <summary>
+        /// S07 §5.1 T-LIGHT-SPLIT, OpenStudio: Return Air Fraction against 0, exact. The other split rows use row 4c (0.001),
+        /// as the T-LIGHT-SPLIT table states.
+        /// </summary>
+        public static readonly QuantityDefinition LightingReturnAir = new QuantityDefinition("4c.os.returnAir", "Lighting return-air fraction (T-LIGHT-SPLIT)", "-", ToleranceRule.Exact("-"), true);
+
+        /// <summary>S07 §5.1: s, the short-wave share of the radiant output, 0.2415 / 0.576 at full precision (a declared contract constant).</summary>
+        public const double LightingShortWaveShare = 0.2415 / 0.576;
+
+        /// <summary>S07 §5.1: p₀, the contract-listed default total radiant share for an unstated p (listed default only, never an expected value).</summary>
+        public const double LightingReferenceRadiantProportion = 0.576;
+
         public static QuantityDefinition Get(string id)
         {
             switch (id)
             {
+                case "4c.os.returnAir": return LightingReturnAir;
                 case "9.os.epw": return WeatherFile;
                 case "9.os.latitude": return Latitude;
                 case "9.os.longitude": return Longitude;
@@ -75,6 +88,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         public static readonly string[] VentilationBases = { "flow", "flowPerArea", "flowPerPerson", "airChangesPerHour" };
         public static readonly string[] Gains = { "occupancySensible", "occupancyLatent", "lighting", "equipmentSensible", "equipmentLatent" };
         public static readonly string[] Schedules = { "occupancy", "lighting", "equipmentSensible", "equipmentLatent", "infiltration", "ventilation" };
-        public static readonly string[] Fractions = { "occupancy.radiant", "lighting.radiant", "lighting.visible", "equipment.radiant" };
+        /// <summary>Row 4c keys. The lighting rows are T-LIGHT-SPLIT (S07 §5.1); its return-air row is <see cref="OsQuantities.LightingReturnAir"/>.</summary>
+        public static readonly string[] Fractions = { "occupancy.radiant", "lighting.radiantTotal", "lighting.visible", "lighting.radiant", "lighting.convective", "equipment.radiant" };
+
+        public const string LightingReturnAir = "lighting.returnAir";
     }
 }

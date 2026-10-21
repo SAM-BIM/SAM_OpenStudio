@@ -102,12 +102,12 @@ diagnostic code and/or note recorded in the manifest.
 | `InternalConditionParameter.SupplyAirFlow` | m3/s | OS:DesignSpecification:OutdoorAir Outdoor Air Flow Rate (method Sum) | Native | C2 | SpaceParameter.OutsideSupplyAirFlow takes precedence when present (space override). |
 | `InternalConditionParameter.ExhaustAirFlow` | m3/s | - | Deferred | C2 | SAM-OS-HVAC-001 info |
 | `InternalConditionParameter.VentilationProfileName` | - | OS:DesignSpecification:OutdoorAir Outdoor Air Schedule | Native | C2 | SAM-OS-SCH-001 error when named but unresolved |
-| `InternalConditionParameter.LightingRadiantProportion` | 0-1 | OS:Lights:Definition Fraction Radiant | Native | MVP | Documented default 0.32 when absent. |
+| `InternalConditionParameter.LightingRadiantProportion` | 0-1 | OS:Lights:Definition Fraction Radiant + Fraction Visible (Return Air Fraction 0) | Derived | MVP | SAM S07 §5.1 T-LIGHT-SPLIT: p is the total radiant share; Fraction Visible = p·s, Fraction Radiant = p·(1 − s), convective 1 − p, s = 0.2415 / 0.576. Authored p, including 0, is preserved. Absent or NaN p → common default p₀ = 0.576 (suspended LED office reference category; suitability outside it is owner decision OD-L1). SAM-OS-IC-002 info (Summary) states the values, s, the category and its limits. |
 | `InternalConditionParameter.OccupancyRadiantProportion` | 0-1 | OS:People:Definition Fraction Radiant | Native | MVP | Documented default 0.3 when absent. |
 | `InternalConditionParameter.EquipmentRadiantProportion` | 0-1 | OS:ElectricEquipment:Definition Fraction Radiant | Native | MVP | Documented default 0 when absent. |
-| `InternalConditionParameter.LightingViewCoefficient` | 0-1 | OS:Lights:Definition Fraction Visible | Approximated | MVP | TAS view coefficient mapped to EnergyPlus visible fraction; documented default 0.25 when absent. |
-| `InternalConditionParameter.OccupancyViewCoefficient` | 0-1 | - | Unsupported | C2 | SAM-OS-IC-001 info; OS:People has no visible-fraction field |
-| `InternalConditionParameter.EquipmentViewCoefficient` | 0-1 | - | Unsupported | C2 | SAM-OS-IC-001 info; OS:ElectricEquipment has no visible-fraction field |
+| `InternalConditionParameter.LightingViewCoefficient` | 0-1 | - | Unsupported | C2 | SAM-OS-IC-001 info; a TAS comfort (mean radiant and resultant temperature) coefficient, not an energy fraction; OS:Lights has no input for it (SAM S07 §5.1). It no longer sets Fraction Visible. |
+| `InternalConditionParameter.OccupancyViewCoefficient` | 0-1 | - | Unsupported | C2 | SAM-OS-IC-001 info; a TAS comfort coefficient, not an energy fraction; OS:People has no input for it |
+| `InternalConditionParameter.EquipmentViewCoefficient` | 0-1 | - | Unsupported | C2 | SAM-OS-IC-001 info; a TAS comfort coefficient, not an energy fraction; OS:ElectricEquipment has no input for it |
 | `InternalConditionParameter.LightingControlFunction` | - | - | Unsupported | C2 | SAM-OS-IC-001 info; TAS control function string has no deterministic daylighting-control mapping |
 | `InternalConditionParameter.VentilationFunction` | - | - | Unsupported | C2 | SAM-OS-IC-001 info; TAS function expression |
 | `InternalConditionParameter.VentilationFunctionFactor` | - | - | Unsupported | C2 | SAM-OS-IC-001 info |

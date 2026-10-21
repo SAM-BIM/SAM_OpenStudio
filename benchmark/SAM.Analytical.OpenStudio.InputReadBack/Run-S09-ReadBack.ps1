@@ -94,7 +94,12 @@ else {
         @('neg-window-multiplier-both', 'box', 's08-fix-box'),
         @('neg-north-axis-both', 'box', 's08-fix-box'),
         @('neg-osm-missing-thermal-zone', 'two', 's08-fix-two'),
-        @('neg-osm-missing-subsurfaces', 'box', 's08-fix-box')
+        @('neg-osm-missing-subsurfaces', 'box', 's08-fix-box'),
+        @('neg-lighting-previous-mapping', 'box', 's08-fix-box'),
+        @('neg-lighting-visible-zero', 'box', 's08-fix-box'),
+        @('neg-lighting-radiant-is-p', 'two', 's08-fix-two'),
+        @('neg-lighting-return-air', 'box', 's08-fix-box'),
+        @('neg-lighting-swapped', 'two', 's08-fix-two')
     )
     $before = @{}
     foreach ($source in @('box', 'two')) { $before[$source] = Get-Sha256 (Join-Path $Root "$source\in.idf") }

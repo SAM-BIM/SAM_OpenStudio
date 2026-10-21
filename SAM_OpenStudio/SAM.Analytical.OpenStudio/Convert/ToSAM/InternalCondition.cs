@@ -233,10 +233,46 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
-            internalCondition.SetValue(InternalConditionParameter.LightingRadiantProportion, lightsDefinition.fractionRadiant());
-            internalCondition.SetValue(InternalConditionParameter.LightingViewCoefficient, lightsDefinition.fractionVisible());
+            ToSAM_LightingRadiantProportion(lightsDefinition, internalCondition, openStudioImportContext, label);
 
             AssignProfile(internalCondition, InternalConditionParameter.LightingProfileName, lights.schedule(), ProfileType.Lighting, openStudioImportContext, profileLibrary);
+        }
+
+        /// <summary>
+        /// Lights radiant and visible fractions → SAM's total radiant share (S07 §5.1, default resolution item 5):
+        /// p = Fraction Radiant + Fraction Visible. The view coefficient is a comfort coefficient, not an energy fraction,
+        /// and is not set. A return-air share has no SAM allocation and becomes part of the convective room gain
+        /// (warning); a short-wave share of the radiant output other than s is reported (information). A sum above 1 is
+        /// an EnergyPlus input error and is not imported.
+        /// </summary>
+        private static void ToSAM_LightingRadiantProportion(global::OpenStudio.LightsDefinition lightsDefinition, InternalCondition internalCondition, OpenStudioImportContext openStudioImportContext, string label)
+        {
+            double fractionRadiant = lightsDefinition.fractionRadiant();
+            double fractionVisible = lightsDefinition.fractionVisible();
+            double fractionReturnAir = lightsDefinition.returnAirFraction();
+            if (double.IsNaN(fractionRadiant) || double.IsNaN(fractionVisible))
+            {
+                return;
+            }
+
+            double radiantProportion = fractionRadiant + fractionVisible;
+            if (radiantProportion > 1 + 1e-9 || (!double.IsNaN(fractionReturnAir) && fractionReturnAir + radiantProportion > 1 + 1e-9))
+            {
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(CultureInfo.InvariantCulture, "The Lights fractions sum above 1 (Return Air {0:G6}, Radiant {1:G6}, Visible {2:G6}), an EnergyPlus input error; no lighting radiant proportion was imported", fractionReturnAir, fractionRadiant, fractionVisible), label, internalCondition);
+                return;
+            }
+
+            internalCondition.SetValue(InternalConditionParameter.LightingRadiantProportion, radiantProportion);
+
+            if (!double.IsNaN(fractionReturnAir) && fractionReturnAir > 0)
+            {
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(CultureInfo.InvariantCulture, "The Lights Return Air Fraction {0:G6} has no SAM allocation; that share becomes part of the convective room gain (SAM convective share 1 − p = {1:G6}, S07 §5.1)", fractionReturnAir, 1 - radiantProportion), label, internalCondition);
+            }
+
+            if (radiantProportion > 0 && Math.Abs(fractionVisible / radiantProportion - LightingSplit.ShortWaveShare) > 1e-6)
+            {
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format(CultureInfo.InvariantCulture, "The Lights short-wave share of the radiant output, Fraction Visible / (Fraction Radiant + Fraction Visible) = {0:G6}, differs from the S07 §5.1 declared s = {1:G6}; SAM keeps only the total radiant share p = {2:G6}, so an export re-splits it by s", fractionVisible / radiantProportion, LightingSplit.ShortWaveShare, radiantProportion), label, internalCondition);
+            }
         }
 
         /// <summary>

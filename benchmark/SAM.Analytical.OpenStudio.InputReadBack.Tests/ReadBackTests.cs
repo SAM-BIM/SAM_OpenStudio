@@ -13,9 +13,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
 {
     /// <summary>
     /// The S09 read-back end to end, offline: export, fresh-process read and compare on the S08 signed-off fixtures with the
-    /// Budapest EPW. Each fixture has complete S07 coverage, and every non-PASS item is one of the two named owner
-    /// decisions (single-sided opaque optics, the lighting visible-fraction default). The ventilation policy holds hour by
-    /// hour, and every targeted mutation is refused.
+    /// Budapest EPW. Each fixture has complete S07 coverage, and every non-PASS item is the named owner decision on
+    /// single-sided opaque optics. The lighting split is the S07 §5.1 T-LIGHT-SPLIT of the authored p. The ventilation
+    /// policy holds hour by hour, and every targeted mutation is refused.
     /// </summary>
     [TestFixture]
     public class ReadBackTests
@@ -36,15 +36,161 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
 
         private static string Ic(Guid space, string what) => "space:" + space.ToString("D") + ".ic." + what;
 
-        /// <summary>The non-PASS items of a fixture, minus the two named owner decisions; must be empty.</summary>
+        /// <summary>
+        /// The non-PASS items of a fixture, minus the named owner decision (single-sided opaque optics); must be empty. The
+        /// lighting rows have no exception (S07 §5.1 removed the view-coefficient comparison and its DOCUMENTED-DEFAULT).
+        /// </summary>
         private static List<ReportItem> Unexplained(OsReport report)
         {
-            return report.NonPass.Where(x => !(x.Outcome == "MappingDifference" && x.Quantity == "3a" && x.Key.Contains(".internal"))
-                                          && !(x.Outcome == "DocumentedDefault" && x.Key.EndsWith(".ic.lighting.visible", StringComparison.Ordinal))).ToList();
+            return report.NonPass.Where(x => !(x.Outcome == "MappingDifference" && x.Quantity == "3a" && x.Key.Contains(".internal"))).ToList();
+        }
+
+        private static readonly string[] LightingRows = { "lighting.returnAir", "lighting.radiantTotal", "lighting.visible", "lighting.radiant", "lighting.convective" };
+
+        /// <summary>
+        /// Every T-LIGHT-SPLIT row of a space, recomputed in this process from the run's frozen model and the snapshot the
+        /// fresh-process reader wrote (the report lists only the non-PASS rows). The verdict itself is the CLI's.
+        /// </summary>
+        private static Dictionary<string, QuantityResult> LightingResults(string run, string fixtureId, Guid space)
+        {
+            AnalyticalModel model = Core.Convert.ToSAM<AnalyticalModel>(Path.Combine(run, "frozen-model.json")).Single();
+            NativeSnapshot snapshot = NativeSnapshot.Load(Path.Combine(run, "native.json"));
+            OsComparison comparison = OsComparison.Run(model, snapshot, Path.Combine(run, "weather.epw"), fixtureId, GateRuleSet.Approved);
+            return LightingRows.ToDictionary(x => x, x => comparison.Results.Single(r => r.Input.ObjectKey == Ic(space, x)));
+        }
+
+        [TestCase(TestSupport.Box, "5080c000-0000-0000-0000-00000000c001", 0.37)]
+        [TestCase(TestSupport.Two, "5080c000-0000-0000-0000-00000000c0a1", 0.34)]
+        [TestCase(TestSupport.Two, "5080c000-0000-0000-0000-00000000c0b1", 0.41)]
+        public void TheAuthoredP_IsWrittenAsTheAcceptedLightingSplit(string fixtureId, string spaceId, double p)
+        {
+            // S07 §5.1 expected vectors (tolerance 0.001): F_V, F_R, F_C.
+            Dictionary<double, double[]> vectors = new Dictionary<double, double[]>
+            {
+                [0.37] = new[] { 0.155130, 0.214870, 0.63 },
+                [0.34] = new[] { 0.142552, 0.197448, 0.66 },
+                [0.41] = new[] { 0.171901, 0.238099, 0.59 },
+            };
+
+            Dictionary<string, QuantityResult> rows = LightingResults(fixtureId == TestSupport.Box ? boxRun : twoRun, fixtureId, Guid.Parse(spaceId));
+            Assert.That(rows["lighting.returnAir"].Outcome, Is.EqualTo(EquivalenceOutcome.Match), rows["lighting.returnAir"].Reason);
+            Assert.That(rows["lighting.returnAir"].Input.Native.Kind, Is.EqualTo(ReaderKind.Zero), "blank reads as 0");
+            foreach (string row in new[] { "lighting.radiantTotal", "lighting.visible", "lighting.radiant", "lighting.convective" })
+            {
+                Assert.That(rows[row].Outcome, Is.EqualTo(EquivalenceOutcome.AcceptedTransformation), row + ": " + rows[row].Reason);
+                Assert.That(rows[row].Input.TransformationId, Is.EqualTo(OsComparison.LightSplit));
+            }
+
+            Assert.That(rows["lighting.radiantTotal"].Input.Expected.Value, Is.EqualTo(p));
+            Assert.That(rows["lighting.visible"].Input.Expected.Value, Is.EqualTo(vectors[p][0]).Within(1e-6));
+            Assert.That(rows["lighting.radiant"].Input.Expected.Value, Is.EqualTo(vectors[p][1]).Within(1e-6));
+            Assert.That(rows["lighting.convective"].Input.Expected.Value, Is.EqualTo(vectors[p][2]).Within(1e-12));
+            Assert.That(rows["lighting.visible"].Input.Native.Value, Is.EqualTo(vectors[p][0]).Within(0.001));
+            Assert.That(rows["lighting.radiant"].Input.Native.Value, Is.EqualTo(vectors[p][1]).Within(0.001));
         }
 
         [Test]
-        public void BothFixtures_HaveCompleteCoverage_AndOnlyTheTwoNamedOwnerDecisionsRemain()
+        public void AnAuthoredZero_IsPreserved_AndReadsBackAllConvective()
+        {
+            AnalyticalModel model = TestSupport.Load(TestSupport.Box);
+            TestSupport.ChangeCondition(model, TestSupport.BoxSpace, ic => ic.SetValue(InternalConditionParameter.LightingRadiantProportion, 0.0));
+            OsReport report = TestSupport.Pipeline(TestSupport.Write(model, "box-p0-zero"), TestSupport.Box, "box-p-zero", out string run);
+            Assert.That(Unexplained(report), Is.Empty, string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), "the optics decision only");
+
+            Dictionary<string, QuantityResult> rows = LightingResults(run, TestSupport.Box, TestSupport.BoxSpace);
+            foreach (string row in new[] { "lighting.returnAir", "lighting.radiantTotal", "lighting.visible", "lighting.radiant" })
+            {
+                Assert.That(rows[row].Input.Expected.State, Is.EqualTo(SamInputState.Zero), row);
+                Assert.That(rows[row].Input.Native.Kind, Is.EqualTo(ReaderKind.Zero), row);
+                Assert.That(rows[row].Outcome, Is.EqualTo(EquivalenceOutcome.Match), row);
+            }
+
+            Assert.That(rows["lighting.convective"].Input.Expected.Value, Is.EqualTo(1.0));
+            Assert.That(rows["lighting.convective"].Outcome, Is.EqualTo(EquivalenceOutcome.AcceptedTransformation));
+        }
+
+        [TestCase(0.49)]
+        [TestCase(0.0)]
+        public void TheComfortCoefficient_LeavesEveryLightingRowUnchanged(double coefficient)
+        {
+            AnalyticalModel model = TestSupport.Load(TestSupport.Box);
+            TestSupport.ChangeCondition(model, TestSupport.BoxSpace, ic => ic.SetValue(InternalConditionParameter.LightingViewCoefficient, coefficient));
+            string label = "box-c-" + coefficient.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            OsReport report = TestSupport.Pipeline(TestSupport.Write(model, label), TestSupport.Box, label, out string run);
+            Assert.That(Unexplained(report), Is.Empty, string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
+            Assert.That(report.Required, Is.EqualTo(box.Required), "the view coefficient adds no compared row");
+            Assert.That(report.CountByOutcome, Is.EqualTo(box.CountByOutcome));
+
+            Dictionary<string, QuantityResult> baseline = LightingResults(boxRun, TestSupport.Box, TestSupport.BoxSpace);
+            Dictionary<string, QuantityResult> rows = LightingResults(run, TestSupport.Box, TestSupport.BoxSpace);
+            foreach (string row in LightingRows)
+            {
+                Assert.That(rows[row].Outcome, Is.EqualTo(baseline[row].Outcome), row);
+                Assert.That(rows[row].Input.Expected.ToString(), Is.EqualTo(baseline[row].Input.Expected.ToString()), row);
+                Assert.That(rows[row].Input.Native.Value, Is.EqualTo(baseline[row].Input.Native.Value), row);
+            }
+        }
+
+        /// <summary>An unstated (absent or NaN) p keeps S-UNSPEC on every lighting row: the p₀ split is DOCUMENTED-DEFAULT, never PASS.</summary>
+        [TestCase("absent")]
+        [TestCase("nan")]
+        public void AnUnstatedP_IsADocumentedDefault_NeverPass(string what)
+        {
+            AnalyticalModel model = TestSupport.Load(TestSupport.Box);
+            TestSupport.ChangeCondition(model, TestSupport.BoxSpace, ic =>
+            {
+                if (what == "nan")
+                {
+                    ic.SetValue(InternalConditionParameter.LightingRadiantProportion, double.NaN);
+                }
+                else
+                {
+                    ic.RemoveValue(InternalConditionParameter.LightingRadiantProportion);
+                }
+            });
+
+            string label = "box-p-" + what;
+            OsReport report = TestSupport.Pipeline(TestSupport.Write(model, label), TestSupport.Box, label, out string run);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), report.Status);
+            List<ReportItem> lighting = Unexplained(report);
+            Assert.That(lighting.Select(x => x.Key).OrderBy(x => x), Is.EqualTo(LightingRows.Select(x => Ic(TestSupport.BoxSpace, x)).OrderBy(x => x)), string.Join(" | ", lighting.Select(x => x.Key + " " + x.Outcome)));
+            Assert.That(lighting.All(x => x.Outcome == "DocumentedDefault" && x.Status == "BlockedOwnerDecision"), Is.True, string.Join(" | ", lighting.Select(x => x.Key + " " + x.Outcome + " " + x.Status)));
+
+            Dictionary<string, QuantityResult> rows = LightingResults(run, TestSupport.Box, TestSupport.BoxSpace);
+            Assert.That(rows.Values.All(x => x.Input.Expected.State == SamInputState.Unspecified), Is.True, "no expected value is computed from p0 as if SAM had stated it");
+            Assert.That(rows["lighting.radiantTotal"].Input.ListedDefault, Is.EqualTo(0.576));
+            Assert.That(rows["lighting.visible"].Input.Native.Value, Is.EqualTo(0.2415).Within(1e-9));
+            Assert.That(rows["lighting.radiant"].Input.Native.Value, Is.EqualTo(0.3345).Within(1e-9));
+        }
+
+        [TestCase("neg-lighting-previous-mapping", TestSupport.Box, "lighting.visible")]
+        [TestCase("neg-lighting-previous-mapping", TestSupport.Two, "lighting.visible")]
+        [TestCase("neg-lighting-visible-zero", TestSupport.Box, "lighting.visible")]
+        [TestCase("neg-lighting-visible-zero", TestSupport.Two, "lighting.visible")]
+        [TestCase("neg-lighting-radiant-is-p", TestSupport.Box, "lighting.radiant")]
+        [TestCase("neg-lighting-radiant-is-p", TestSupport.Two, "lighting.radiant")]
+        [TestCase("neg-lighting-return-air", TestSupport.Box, "lighting.returnAir")]
+        [TestCase("neg-lighting-return-air", TestSupport.Two, "lighting.returnAir")]
+        [TestCase("neg-lighting-swapped", TestSupport.Box, "lighting.visible")]
+        [TestCase("neg-lighting-swapped", TestSupport.Two, "lighting.visible")]
+        public void AnIncorrectLightingPartition_Fails_OnTheLightingRows(string caseId, string fixture, string failingRow)
+        {
+            OsReport original = fixture == TestSupport.Box ? box : two;
+            string run = TestSupport.NewDirectory(caseId + "-" + fixture);
+            Assert.That(TestSupport.Cli(out string output, "negative", "--run", fixture == TestSupport.Box ? boxRun : twoRun, "--case", caseId, "--out", run), Is.EqualTo(0), output);
+            OsReport report = TestSupport.ReadAndCompare(run, fixture);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), caseId + ": " + report.Status);
+            List<ReportItem> failed = report.NonPass.Where(x => x.Status == "Fail").ToList();
+            Assert.That(failed, Is.Not.Empty);
+            Assert.That(failed.All(x => x.Key.Contains(".ic.lighting.")), Is.True, string.Join(" | ", failed.Select(x => x.Key + " " + x.Reason)));
+            Assert.That(failed.Any(x => x.Key.EndsWith(".ic." + failingRow, StringComparison.Ordinal)), Is.True, string.Join(" | ", failed.Select(x => x.Key)));
+            Assert.That(report.Consistency, Is.Empty, "the OSM is not compared for the split; the lighting rows refuse it");
+            Assert.That(report.Required, Is.EqualTo(original.Required));
+        }
+
+        [Test]
+        public void BothFixtures_HaveCompleteCoverage_AndOnlyTheNamedOwnerDecisionRemains()
         {
             foreach (OsReport report in new[] { box, two })
             {
@@ -79,7 +225,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                 Assert.That(two.Series.Single(x => x.Key == Ic(space, "ventilation.delivered")).Outcome, Is.EqualTo("AcceptedTransformation"));
             }
 
-            Assert.That(two.CountByOutcome["AcceptedTransformation"], Is.EqualTo(6), "8b, 6.hourly and 6.eflh of the two V1 zones");
+            Assert.That(two.CountByOutcome["AcceptedTransformation"], Is.EqualTo(14), "8b, 6.hourly and 6.eflh of the two V1 zones (6), and the four T-LIGHT-SPLIT rows of each zone (8)");
             Assert.That(two.NonPass.Any(x => x.Quantity == "8a"), Is.False, "the requirement is read back and matches");
         }
 

@@ -106,7 +106,7 @@
     { "id": "OS:People.AutocalculatedSensibleFraction", "status": "Approximated", "diagnostic": "SAM-OSI-APX-001", "notes": "No fixed split exists; the whole metabolic rate is imported as sensible." },
     { "id": "OS:People.NumberOfPeopleMethod", "status": "Unsupported", "diagnostic": "SAM-OSI-LOAD-001", "notes": "An absolute count cannot become a density on a shared space type without inventing an area." },
     { "id": "OS:Lights", "status": "Native", "target": "InternalConditionParameter.LightingGainPerArea + LightingProfileName" },
-    { "id": "OS:Lights.RadiantVisibleFractions", "status": "Native", "target": "InternalConditionParameter.LightingRadiantProportion / LightingViewCoefficient" },
+    { "id": "OS:Lights.RadiantVisibleFractions", "status": "Derived", "target": "InternalConditionParameter.LightingRadiantProportion", "formula": "p = Fraction Radiant + Fraction Visible (SAM S07 section 5.1); LightingViewCoefficient (a comfort coefficient) is not set", "diagnostic": "SAM-OSI-APX-001", "notes": "Warning when Return Air Fraction > 0 (that share becomes convective room gain) or the fractions sum above 1 (not imported); information when Fraction Visible / (Fraction Radiant + Fraction Visible) differs from s = 0.2415 / 0.576." },
     { "id": "OS:ElectricEquipment", "status": "Native", "target": "InternalConditionParameter.EquipmentSensibleGainPerArea / EquipmentLatentGainPerArea" },
     { "id": "OS:ElectricEquipment.PartLatent", "status": "Approximated", "diagnostic": "SAM-OSI-APX-001", "notes": "A single part-latent instance is apportioned; the two halves then share one schedule." },
     { "id": "OS:GasEquipment", "status": "Unsupported", "diagnostic": "SAM-OSI-LOAD-001" },

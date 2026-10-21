@@ -29,6 +29,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         private const string CON_PARAM = Core.OpenStudio.OpenStudioDiagnosticCodes.ConstructionUnsupportedParameter;
         private const string MAT_PARAM = Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialUnsupportedParameter;
         private const string IC_PARAM = Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionUnsupportedParameter;
+        private const string IC_ASSUME = Core.OpenStudio.OpenStudioDiagnosticCodes.InternalConditionAssumption;
         private const string HVAC = Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints;
         private const string SCHEDULE = Core.OpenStudio.OpenStudioDiagnosticCodes.ScheduleMissingProfile;
         private const string NON_CONVEX = Core.OpenStudio.OpenStudioDiagnosticCodes.GeometryNonConvexCasting;
@@ -72,12 +73,15 @@ namespace SAM.Analytical.OpenStudio.Tests
             (CON_PARAM, "Internal-shadow flag (TAS) on the construction is not converted", S, "not shown to be inert"),
             (IC_PARAM, "Ventilation function (TAS expression/factor/setback) is not converted", S, "ventilation"),
             (IC_PARAM, "Lighting control function (TAS control expression) is not converted", S, "lighting gains"),
+            (IC_PARAM, "Lighting view coefficient is not converted", S, "until S07 §5.1 it reached EnergyPlus as Fraction Visible; kept visible rather than lowered as inert"),
+            (IC_ASSUME, "Lighting radiant proportion p = 0.37 (authored) is split under S07 §5.1 T-LIGHT-SPLIT", S, "the declared short-wave share s sets the radiant split"),
+            (IC_ASSUME, "Lighting radiant proportion is not stated; the S07 §5.1 common default p₀ = 0.576 was applied", S, "a contract default that can change results"),
             (HVAC, "Emitter characteristics (HeatingEmitterCoefficient) are not converted", S, "emitters are deferred"),
             (HVAC, "Exhaust air flows (ExhaustAirFlow) are not converted", S, "exhaust ventilation is deferred"),
 
             // Known-inert lines: lowered.
-            (IC_PARAM, "Occupancy view coefficient is not converted", D, "OS:People has no visible-fraction field; daylighting only"),
-            (IC_PARAM, "Equipment view coefficient is not converted", D, "OS:ElectricEquipment has no visible-fraction field; daylighting only"),
+            (IC_PARAM, "Occupancy view coefficient is not converted", D, "a TAS comfort coefficient; OS:People has no input for it"),
+            (IC_PARAM, "Equipment view coefficient is not converted", D, "a TAS comfort coefficient; OS:ElectricEquipment has no input for it"),
             (MAT_PARAM, "Vapour diffusion factor (10) is not converted", D, "only matters for HAMT / EMPD, which is not used"),
             (CON_PARAM, "Frame data on an opaque door is not converted (frames apply to glazed subsurfaces); frameless conversion", T, "frames do not apply to opaque doors"),
 
@@ -96,6 +100,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             (Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, "Subsurface type 'TubularDaylightDome' was imported as a SAM aperture", S, "approximation"),
             (Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, "Construction 'X' has opaque (non-glazing) layers but is used by a subsurface", S, "approximation"),
             (Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, "Electric equipment 'E' is 20% latent; the gain was split", S, "approximation"),
+            (Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, "The Lights short-wave share of the radiant output, Fraction Visible / (Fraction Radiant + Fraction Visible) = 0.4, differs", S, "S07 §5.1 import"),
             (Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, "Massless material (R = 0.1 m²K/W) imported as a SAM material", S, "approximation"),
             (Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, "Shading group 'G' declares a shaded surface", S, "approximation"),
             (Core.OpenStudio.OpenStudioImportDiagnosticCodes.WeatherLimitation, "The model's Site still carries the default (0, 0, 0) coordinates", S, "no Location"),
@@ -181,6 +186,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             internalCondition.SetValue(InternalConditionParameter.OccupancyViewCoefficient, 0.227);
             internalCondition.SetValue(InternalConditionParameter.EquipmentViewCoefficient, 0.372);
             internalCondition.SetValue(InternalConditionParameter.LightingControlFunction, "PHOTOCELL 300");
+            internalCondition.SetValue(InternalConditionParameter.LightingViewCoefficient, 0.49);
 
             using (OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox(internalConditionOverride: internalCondition).ToOpenStudio())
             {
@@ -189,6 +195,8 @@ namespace SAM.Analytical.OpenStudio.Tests
                 Assert.That(information.Single(x => x.Message.Contains("Occupancy view coefficient")).GetDiagnosticDetail(), Is.EqualTo(D));
                 Assert.That(information.Single(x => x.Message.Contains("Equipment view coefficient")).GetDiagnosticDetail(), Is.EqualTo(D));
                 Assert.That(information.Single(x => x.Message.Contains("Lighting control function")).GetDiagnosticDetail(), Is.EqualTo(S));
+                Assert.That(information.Single(x => x.Message.StartsWith("Lighting view coefficient")).GetDiagnosticDetail(), Is.EqualTo(S));
+                Assert.That(Information(result).Single(x => x.Code == IC_ASSUME).GetDiagnosticDetail(), Is.EqualTo(S), "the S07 §5.1 lighting note");
             }
         }
 
