@@ -53,6 +53,12 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         /// <summary>Contradictions between the two native views (OSM, IDF) or with the run's own files. Any one fails the fixture.</summary>
         public List<string> Consistency { get; } = new List<string>();
 
+        /// <summary>
+        /// Native configurations the S09 reader does not interpret (an unreadable or unrecognised field, or a form S07 gives
+        /// no rule for). Any one blocks the fixture as BLOCKED technical; never PASS.
+        /// </summary>
+        public List<string> Unsupported { get; } = new List<string>();
+
         public List<string> FixtureCriteria { get; } = new List<string>();
         public Dictionary<string, string> VentilationStates { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
         public GateReport Gate { get; private set; }
@@ -71,6 +77,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             result.Configuration = new GateConfiguration { RuleSet = ruleSet, RequiredComparisons = result.Required };
 
             result.Calendar(epwPath);
+            result.Orientation();
+            result.Multiplicity();
             List<IdfObject> matchedSurfaces = new List<IdfObject>();
             List<IdfObject> matchedSubSurfaces = new List<IdfObject>();
             List<string> matchedSpaces = new List<string>();
@@ -94,6 +102,10 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             if (result.Consistency.Count > 0)
             {
                 status = GateStatus.Fail;
+            }
+            else if (result.Unsupported.Count > 0 && (int)status > (int)GateStatus.BlockedTechnical)
+            {
+                status = GateStatus.BlockedTechnical;
             }
             else if (result.FixtureCriteria.Count > 0 && (int)status > (int)GateStatus.BlockedOwnerDecision)
             {
@@ -746,7 +758,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             }
 
             // Objects that add air, heat or geometry SAM never stated for these fixtures.
-            foreach (string type in new[] { "ZoneVentilation:DesignFlowRate", "ZoneVentilation:WindandStackOpenArea", "ZoneMixing", "ZoneCrossMixing", "AirflowNetwork:SimulationControl", "AirLoopHVAC", "GasEquipment", "HotWaterEquipment", "SteamEquipment", "OtherEquipment", "ZoneInfiltration:EffectiveLeakageArea", "ZoneInfiltration:FlowCoefficient", "InternalMass", "Wall:Detailed", "RoofCeiling:Detailed", "Floor:Detailed", "Construction:AirBoundary" })
+            foreach (string type in new[] { "ZoneVentilation:DesignFlowRate", "ZoneVentilation:WindandStackOpenArea", "ZoneMixing", "ZoneCrossMixing", "AirflowNetwork:SimulationControl", "AirLoopHVAC", "GasEquipment", "HotWaterEquipment", "SteamEquipment", "OtherEquipment", "ZoneInfiltration:EffectiveLeakageArea", "ZoneInfiltration:FlowCoefficient", "InternalMass", "Wall:Detailed", "RoofCeiling:Detailed", "Floor:Detailed", "Window", "Door", "GlazedDoor", "Window:Interzone", "Door:Interzone", "GlazedDoor:Interzone", "Construction:AirBoundary" })
             {
                 foreach (IdfObject o in native.Idf(type))
                 {
@@ -762,6 +774,202 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                     Supporting.Add("native " + type + ": " + count + " object(s)");
                 }
             }
+        }
+
+        // ---- orientation and multiplicity -------------------------------------------------------------------------------
+
+        /// <summary>
+        /// The native building orientation against SAM intent. SAM states the building rotation only as
+        /// AnalyticalModelParameter.NorthAngle (radians, clockwise from true North); unstated, the writer leaves the
+        /// OpenStudio/EnergyPlus default 0. EnergyPlus 25.1 (GlobalGeometryRules, Zone): with Relative coordinates the
+        /// vertices are rotated by the Building North Axis and each Zone's Direction of Relative North (and moved by the
+        /// zone origin); with World coordinates neither north axis is used. S07 has no orientation row or tolerance, so only
+        /// the unrotated configuration is supported: SAM 0 or unstated, and a native effective rotation of exactly 0. A
+        /// native rotation SAM does not state FAILs; anything the reader cannot interpret blocks (BLOCKED technical).
+        /// </summary>
+        private void Orientation()
+        {
+            List<string> facts = new List<string>();
+            double samDegrees = double.NaN;
+            if (model.TryGetValue(AnalyticalModelParameter.NorthAngle, out double radians) && !double.IsNaN(radians))
+            {
+                samDegrees = radians * 180.0 / Math.PI;
+            }
+
+            facts.Add("SAM North Angle " + (double.IsNaN(samDegrees) ? "unstated (writer default 0)" : samDegrees.ToString("R", ci) + " deg"));
+            if (!double.IsNaN(samDegrees) && samDegrees != 0)
+            {
+                Unsupported.Add("orientation: SAM states a North Angle of " + samDegrees.ToString("R", ci) + " deg; S07 has no orientation row or tolerance, so S09 supports only an unrotated model");
+            }
+
+            List<IdfObject> rules = native.Idf("GlobalGeometryRules").ToList();
+            string problem = null;
+            string system = rules.Count == 1 ? rules[0].Value(2, "Coordinate System", out problem) : null;
+            bool relative = string.Equals(system, "Relative", StringComparison.OrdinalIgnoreCase);
+            bool world = string.Equals(system, "World", StringComparison.OrdinalIgnoreCase) || string.Equals(system, "Absolute", StringComparison.OrdinalIgnoreCase);
+            if (!relative && !world)
+            {
+                Unsupported.Add("orientation: " + (rules.Count != 1 ? "the IDF has " + rules.Count + " GlobalGeometryRules objects" : "GlobalGeometryRules Coordinate System '" + system + "' is not Relative or World" + (problem == null ? string.Empty : " (" + problem + ")")));
+            }
+
+            facts.Add("Coordinate System " + (system ?? "(none)"));
+
+            List<IdfObject> buildings = native.Idf("Building").ToList();
+            ReaderResult north = buildings.Count == 1 ? NativeModel.Number(buildings[0], 1, "North Axis") : ReaderResult.Unreadable("the IDF has " + buildings.Count + " Building objects");
+            double northDegrees = Degrees(north, "IDF Building North Axis", facts);
+
+            // The OSM must state the same building rotation as the IDF it was translated to.
+            IdfObject osmBuilding = native.Snapshot.OsmOf("OS:Building").SingleOrDefault();
+            string osmNorth = osmBuilding?.ValueByLabel("North Axis", out bool _);
+            double osmDegrees = string.IsNullOrWhiteSpace(osmNorth) ? 0 : double.TryParse(osmNorth, NumberStyles.Float, ci, out double parsed) ? parsed : double.NaN;
+            if (osmBuilding == null || double.IsNaN(osmDegrees))
+            {
+                Unsupported.Add("orientation: the OSM " + (osmBuilding == null ? "has no single OS:Building" : "OS:Building North Axis '" + osmNorth + "' is not a number"));
+            }
+            else if (!double.IsNaN(northDegrees) && osmDegrees != northDegrees)
+            {
+                Consistency.Add("orientation: OS:Building North Axis " + osmDegrees.ToString("R", ci) + " deg in the OSM, Building North Axis " + northDegrees.ToString("R", ci) + " deg in the IDF");
+            }
+
+            foreach (IdfObject osmSpace in native.Snapshot.OsmOf("OS:Space"))
+            {
+                foreach (string label in new[] { "Direction of Relative North", "X Origin", "Y Origin", "Z Origin" })
+                {
+                    string text = osmSpace.ValueByLabel(label, out bool _);
+                    if (!string.IsNullOrWhiteSpace(text) && (!double.TryParse(text, NumberStyles.Float, ci, out double v) || v != 0))
+                    {
+                        Unsupported.Add("orientation: OSM OS:Space '" + osmSpace.Value(1) + "' " + label + " is '" + text + "' (a space transformation is not verified by S09)");
+                    }
+                }
+            }
+
+            double expected = double.IsNaN(samDegrees) ? 0 : samDegrees;
+            foreach (IdfObject zone in native.Idf("Zone"))
+            {
+                double zoneDegrees = Degrees(NativeModel.Number(zone, 1, "Direction of Relative North"), "Zone '" + zone.Name + "' Direction of Relative North", null);
+                if (world && !double.IsNaN(zoneDegrees) && zoneDegrees != 0)
+                {
+                    Unsupported.Add("orientation: Zone '" + zone.Name + "' states Direction of Relative North " + zoneDegrees.ToString("R", ci) + " deg under World coordinates, where EnergyPlus does not use it");
+                }
+                else if (relative && !double.IsNaN(zoneDegrees) && !double.IsNaN(northDegrees) && expected == 0 && northDegrees + zoneDegrees != 0)
+                {
+                    Consistency.Add("orientation: Zone '" + zone.Name + "' is rotated by " + (northDegrees + zoneDegrees).ToString("R", ci) + " deg (Building North Axis " + northDegrees.ToString("R", ci) + " + Direction of Relative North " + zoneDegrees.ToString("R", ci) + "; Relative coordinates); SAM states no rotation");
+                }
+            }
+
+            if (world && !double.IsNaN(northDegrees) && northDegrees != 0)
+            {
+                Unsupported.Add("orientation: Building North Axis " + northDegrees.ToString("R", ci) + " deg under World coordinates, where EnergyPlus does not use it for the geometry");
+            }
+            else if (relative && !double.IsNaN(northDegrees) && expected == 0 && northDegrees != 0 && !native.Idf("Zone").Any())
+            {
+                Consistency.Add("orientation: Building North Axis " + northDegrees.ToString("R", ci) + " deg; SAM states no rotation");
+            }
+
+            Supporting.Add("orientation: " + string.Join("; ", facts) + (Unsupported.Any(x => x.StartsWith("orientation", StringComparison.Ordinal)) || Consistency.Any(x => x.StartsWith("orientation", StringComparison.Ordinal)) ? string.Empty : ": the native building is unrotated, as SAM states"));
+        }
+
+        /// <summary>A rotation field in degrees: blank is the EnergyPlus default 0; unreadable, NaN or non-finite blocks the fixture.</summary>
+        private double Degrees(ReaderResult field, string what, List<string> facts)
+        {
+            facts?.Add(what + (field.Kind == ReaderKind.Absent ? " blank (EnergyPlus default 0)" : field.HasNumber ? " " + field.Value.ToString("R", ci) + " deg" : " " + field.Kind));
+            if (field.Kind == ReaderKind.Absent)
+            {
+                return 0;
+            }
+
+            if (!field.HasNumber || double.IsInfinity(field.Value))
+            {
+                Unsupported.Add("orientation: " + what + " is " + field.Kind + (field.Detail == null ? string.Empty : " (" + field.Detail + ")"));
+                return double.NaN;
+            }
+
+            return field.Value;
+        }
+
+        /// <summary>
+        /// Native multiplicity against SAM intent. SAM has no zone, zone-list or aperture multiplier: each SAM space and
+        /// aperture is one physical object, and every S07 row compares that one object. EnergyPlus 25.1: a Zone Multiplier
+        /// multiplies the zone's floor area, loads and internal-gain energy (default 1); a ZoneGroup multiplies a zone list
+        /// on top of it; a subsurface Multiplier multiplies the window area, frame and divider included (default 1,
+        /// non-integers truncated). Blank is read as that documented default, never assumed. Any effective multiplier other
+        /// than 1 contradicts SAM and FAILs; a field the reader cannot interpret blocks (BLOCKED technical).
+        /// </summary>
+        private void Multiplicity()
+        {
+            int zones = 0, subSurfaces = 0;
+            foreach (IdfObject zone in native.Idf("Zone"))
+            {
+                zones++;
+                double multiplier = Multiplier(NativeModel.Number(zone, 6, "Multiplier"), "IDF Zone '" + zone.Name + "' Multiplier");
+                if (multiplier != 1 && !double.IsNaN(multiplier))
+                {
+                    Consistency.Add("multiplicity: IDF Zone '" + zone.Name + "' Multiplier " + multiplier.ToString("R", ci) + ": EnergyPlus multiplies the zone's floor area, loads and internal gains; SAM states one space and no multiplier");
+                }
+
+                IdfObject osmZone = native.OsmByName("OS:ThermalZone", zone.Name);
+                double osmMultiplier = osmZone == null ? double.NaN : OsmMultiplier(osmZone, "OSM OS:ThermalZone '" + zone.Name + "' Multiplier");
+                if (osmZone != null && !double.IsNaN(osmMultiplier) && !double.IsNaN(multiplier) && osmMultiplier != multiplier)
+                {
+                    Consistency.Add("multiplicity: zone '" + zone.Name + "' Multiplier " + osmMultiplier.ToString("R", ci) + " in the OSM, " + multiplier.ToString("R", ci) + " in the IDF");
+                }
+            }
+
+            foreach (IdfObject group in native.Idf("ZoneGroup"))
+            {
+                double multiplier = Multiplier(NativeModel.Number(group, 2, "Zone List Multiplier"), "IDF ZoneGroup '" + group.Name + "' Zone List Multiplier");
+                if (multiplier != 1 && !double.IsNaN(multiplier))
+                {
+                    Consistency.Add("multiplicity: IDF ZoneGroup '" + group.Name + "' multiplies zone list '" + group.Value(1) + "' by " + multiplier.ToString("R", ci) + "; SAM states no multiplier");
+                }
+            }
+
+            foreach (IdfObject sub in native.Idf("FenestrationSurface:Detailed"))
+            {
+                subSurfaces++;
+                double multiplier = Multiplier(NativeModel.Number(sub, 7, "Multiplier"), "IDF FenestrationSurface:Detailed '" + sub.Name + "' Multiplier");
+                if (multiplier != 1 && !double.IsNaN(multiplier))
+                {
+                    Consistency.Add("multiplicity: IDF FenestrationSurface:Detailed '" + sub.Name + "' Multiplier " + multiplier.ToString("R", ci) + ": EnergyPlus multiplies its area (frame and divider included); SAM states one aperture and no multiplier");
+                }
+
+                IdfObject osmSub = native.OsmByName("OS:SubSurface", sub.Name);
+                double osmMultiplier = osmSub == null ? double.NaN : OsmMultiplier(osmSub, "OSM OS:SubSurface '" + sub.Name + "' Multiplier");
+                if (osmSub != null && !double.IsNaN(osmMultiplier) && !double.IsNaN(multiplier) && osmMultiplier != multiplier)
+                {
+                    Consistency.Add("multiplicity: subsurface '" + sub.Name + "' Multiplier " + osmMultiplier.ToString("R", ci) + " in the OSM, " + multiplier.ToString("R", ci) + " in the IDF");
+                }
+            }
+
+            Supporting.Add("multiplicity: " + zones + " IDF zone(s), " + native.Idf("ZoneGroup").Count() + " ZoneGroup(s), " + subSurfaces + " IDF subsurface(s) read; blank multipliers are the EnergyPlus default 1" + (Consistency.Any(x => x.StartsWith("multiplicity", StringComparison.Ordinal)) || Unsupported.Any(x => x.StartsWith("multiplicity", StringComparison.Ordinal)) ? string.Empty : "; every effective multiplier is 1, as SAM states"));
+        }
+
+        /// <summary>A multiplier field: blank is the documented default 1; a non-integer, non-positive or unreadable value blocks the fixture.</summary>
+        private double Multiplier(ReaderResult field, string what)
+        {
+            if (field.Kind == ReaderKind.Absent)
+            {
+                return 1;
+            }
+
+            if (!field.HasNumber || field.Value <= 0 || field.Value != Math.Floor(field.Value) || double.IsInfinity(field.Value))
+            {
+                Unsupported.Add("multiplicity: " + what + " is " + field.Kind + (field.HasNumber ? " " + field.Value.ToString("R", ci) : field.Detail == null ? string.Empty : " (" + field.Detail + ")") + ": not a positive integer");
+                return double.NaN;
+            }
+
+            return field.Value;
+        }
+
+        private double OsmMultiplier(IdfObject o, string what)
+        {
+            string text = o.ValueByLabel("Multiplier", out bool found);
+            if (!found || string.IsNullOrWhiteSpace(text))
+            {
+                return 1;
+            }
+
+            return double.TryParse(text, NumberStyles.Float, ci, out double value) ? Multiplier(ReaderResult.FromValue(value), what) : Multiplier(ReaderResult.Unreadable("'" + text + "' is not a number"), what);
         }
 
         // ---- internal condition -----------------------------------------------------------------------------------------

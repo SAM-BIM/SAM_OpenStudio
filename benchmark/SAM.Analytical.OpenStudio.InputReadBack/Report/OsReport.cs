@@ -21,10 +21,10 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         public string Reason { get; set; }
     }
 
-    /// <summary>report.json (schema s09-readback-report/1): the fixture verdict and everything that decided it.</summary>
+    /// <summary>report.json (schema s09-readback-report/2, which adds Unsupported): the fixture verdict and everything that decided it.</summary>
     public sealed class OsReport
     {
-        public string Schema { get; set; } = "s09-readback-report/1";
+        public string Schema { get; set; } = "s09-readback-report/2";
         public string FixtureId { get; set; }
         public string RuleSet { get; set; }
         public string Status { get; set; }
@@ -39,6 +39,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         public List<string> OwnerDecisionsNamed { get; set; }
         public List<string> TechnicalBlockersNamed { get; set; }
         public List<string> Consistency { get; set; }
+        public List<string> Unsupported { get; set; }
         public List<string> FixtureCriteria { get; set; }
         public Dictionary<string, string> VentilationStates { get; set; }
         public List<SeriesSummary> Series { get; set; }
@@ -64,6 +65,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                 OwnerDecisionsNamed = gate.OwnerDecisionsNamed.ToList(),
                 TechnicalBlockersNamed = gate.TechnicalBlockersNamed.ToList(),
                 Consistency = comparison.Consistency,
+                Unsupported = comparison.Unsupported,
                 FixtureCriteria = comparison.FixtureCriteria,
                 VentilationStates = comparison.VentilationStates,
                 Series = comparison.Series,
@@ -97,6 +99,11 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             foreach (string item in Consistency)
             {
                 text.AppendLine("CONSISTENCY FAIL: " + item);
+            }
+
+            foreach (string item in Unsupported ?? new List<string>())
+            {
+                text.AppendLine("UNSUPPORTED (blocked technical): " + item);
             }
 
             foreach (string item in FixtureCriteria)

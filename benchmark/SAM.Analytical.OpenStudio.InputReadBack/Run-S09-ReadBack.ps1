@@ -86,7 +86,13 @@ else {
         @('neg-missing-schedule-object', 'box', 's08-fix-box'),
         @('neg-people-density', 'box', 's08-fix-box'),
         @('neg-layer-conductivity', 'two', 's08-fix-two'),
-        @('neg-osm-dsoa-schedule', 'box', 's08-fix-box')
+        @('neg-osm-dsoa-schedule', 'box', 's08-fix-box'),
+        @('neg-zone-multiplier', 'box', 's08-fix-box'),
+        @('neg-window-multiplier', 'box', 's08-fix-box'),
+        @('neg-north-axis', 'box', 's08-fix-box'),
+        @('neg-zone-multiplier-both', 'box', 's08-fix-box'),
+        @('neg-window-multiplier-both', 'box', 's08-fix-box'),
+        @('neg-north-axis-both', 'box', 's08-fix-box')
     )
     $before = @{}
     foreach ($source in @('box', 'two')) { $before[$source] = Get-Sha256 (Join-Path $Root "$source\in.idf") }

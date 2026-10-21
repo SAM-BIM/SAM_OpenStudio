@@ -69,8 +69,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         /// </summary>
         public static readonly string[] IdfTypes =
         {
-            "Building", "GlobalGeometryRules", "Zone", "Space", "SpaceList", "ZoneList",
+            "Building", "GlobalGeometryRules", "Zone", "Space", "SpaceList", "ZoneList", "ZoneGroup",
             "BuildingSurface:Detailed", "FenestrationSurface:Detailed", "Wall:Detailed", "RoofCeiling:Detailed", "Floor:Detailed",
+            "Window", "Door", "GlazedDoor", "Window:Interzone", "Door:Interzone", "GlazedDoor:Interzone",
             "Shading:Building:Detailed", "Shading:Site:Detailed", "Shading:Zone:Detailed", "InternalMass",
             "Construction", "Construction:AirBoundary", "Material", "Material:NoMass", "Material:AirGap",
             "WindowMaterial:Glazing", "WindowMaterial:Gas", "WindowMaterial:SimpleGlazingSystem", "WindowProperty:FrameAndDivider",
@@ -88,7 +89,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         public static readonly string[] OsmTypes =
         {
             "OS:Space", "OS:SpaceType", "OS:ThermalZone", "OS:DesignSpecification:OutdoorAir", "OS:ZoneHVAC:IdealLoadsAirSystem",
-            "OS:WeatherFile", "OS:Site", "OS:RunPeriod", "OS:YearDescription", "OS:Building"
+            "OS:WeatherFile", "OS:Site", "OS:RunPeriod", "OS:YearDescription", "OS:Building", "OS:SubSurface"
         };
 
         private static readonly string[] scheduleTypes = { "Schedule:Compact", "Schedule:Constant", "Schedule:File", "Schedule:Year", "Schedule:Day:Interval", "Schedule:FixedInterval" };

@@ -26,7 +26,13 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
             "neg-missing-schedule-object",
             "neg-people-density",
             "neg-layer-conductivity",
-            "neg-osm-dsoa-schedule"
+            "neg-osm-dsoa-schedule",
+            "neg-zone-multiplier",
+            "neg-window-multiplier",
+            "neg-north-axis",
+            "neg-zone-multiplier-both",
+            "neg-window-multiplier-both",
+            "neg-north-axis-both"
         };
 
         public static int Run(string runDirectory, string caseId, string outputDirectory)
@@ -141,6 +147,50 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
                     IdfObject dsoa = IdfText.Parse(osm).First(x => x.Type == "OS:DesignSpecification:OutdoorAir");
                     osm = SetField(osm, "OS:DesignSpecification:OutdoorAir", dsoa.Value(1), "Outdoor Air Flow Rate Fraction Schedule Name", string.Empty, true);
                     return "OSM DSOA '" + dsoa.Value(1) + "' fraction schedule removed (IDF unchanged)";
+                }
+
+                // Multiplicity and orientation (independent review of d6d1cc5b). The plain cases are the reviewer's IDF-only
+                // mutations; the "-both" cases make the OSM agree, so only the check against SAM intent can refuse them.
+                case "neg-zone-multiplier":
+                case "neg-zone-multiplier-both":
+                {
+                    IdfObject zone = idfObjects.First(x => x.Type == "Zone");
+                    idf = SetField(idf, "Zone", zone.Name, "Multiplier", "2");
+                    if (caseId.EndsWith("-both", StringComparison.Ordinal))
+                    {
+                        osm = SetField(osm, "OS:ThermalZone", zone.Name, "Multiplier", "2", true);
+                    }
+
+                    return "IDF Zone '" + zone.Name + "' Multiplier 1 -> 2" + (caseId.EndsWith("-both", StringComparison.Ordinal) ? " and OSM OS:ThermalZone Multiplier blank -> 2" : " (OSM unchanged)");
+                }
+
+                case "neg-window-multiplier":
+                case "neg-window-multiplier-both":
+                {
+                    List<string> names = idfObjects.Where(x => x.Type == "FenestrationSurface:Detailed").Select(x => x.Name).ToList();
+                    foreach (string name in names)
+                    {
+                        idf = SetField(idf, "FenestrationSurface:Detailed", name, "Multiplier", "2");
+                        if (caseId.EndsWith("-both", StringComparison.Ordinal))
+                        {
+                            osm = SetField(osm, "OS:SubSurface", name, "Multiplier", "2", true);
+                        }
+                    }
+
+                    return "IDF FenestrationSurface:Detailed Multiplier blank -> 2 on " + names.Count + " subsurface(s)" + (caseId.EndsWith("-both", StringComparison.Ordinal) ? " and OSM OS:SubSurface Multiplier blank -> 2" : " (OSM unchanged)");
+                }
+
+                case "neg-north-axis":
+                case "neg-north-axis-both":
+                {
+                    IdfObject building = idfObjects.First(x => x.Type == "Building");
+                    idf = SetField(idf, "Building", building.Name, "North Axis", "90");
+                    if (caseId.EndsWith("-both", StringComparison.Ordinal))
+                    {
+                        osm = SetField(osm, "OS:Building", IdfText.Parse(osm).First(x => x.Type == "OS:Building").Value(1), "North Axis", "90", true);
+                    }
+
+                    return "IDF Building '" + building.Name + "' North Axis blank -> 90" + (caseId.EndsWith("-both", StringComparison.Ordinal) ? " and OSM OS:Building North Axis blank -> 90" : " (OSM unchanged)");
                 }
             }
 

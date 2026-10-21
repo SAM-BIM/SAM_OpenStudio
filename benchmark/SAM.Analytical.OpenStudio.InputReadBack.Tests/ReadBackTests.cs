@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
 {
@@ -127,6 +128,15 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         [TestCase("neg-people-density", TestSupport.Box)]
         [TestCase("neg-layer-conductivity", TestSupport.Two)]
         [TestCase("neg-osm-dsoa-schedule", TestSupport.Box)]
+        [TestCase("neg-zone-multiplier", TestSupport.Box)]
+        [TestCase("neg-window-multiplier", TestSupport.Box)]
+        [TestCase("neg-north-axis", TestSupport.Box)]
+        [TestCase("neg-zone-multiplier-both", TestSupport.Box)]
+        [TestCase("neg-window-multiplier-both", TestSupport.Box)]
+        [TestCase("neg-north-axis-both", TestSupport.Box)]
+        [TestCase("neg-zone-multiplier", TestSupport.Two)]
+        [TestCase("neg-window-multiplier", TestSupport.Two)]
+        [TestCase("neg-north-axis", TestSupport.Two)]
         public void EveryTargetedMutation_Fails(string caseId, string fixture)
         {
             string source = fixture == TestSupport.Box ? boxRun : twoRun;
@@ -135,6 +145,88 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             OsReport report = TestSupport.ReadAndCompare(run, fixture);
             Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), caseId + ": " + report.Status + " " + string.Join(" | ", report.NonPass.Where(x => x.Status != "BlockedOwnerDecision").Take(3).Select(x => x.Key + " " + x.Reason)));
             Assert.That(report.Inputs["mutation"], Does.StartWith(caseId));
+        }
+
+        /// <summary>
+        /// The reviewed head (d6d1cc5b) left these reports unchanged (BLOCKED owner, exit 12). With the OSM made to agree,
+        /// no OSM/IDF disagreement is left to catch them: the refusal must come from the check against SAM intent.
+        /// </summary>
+        [TestCase("neg-zone-multiplier-both", "multiplicity: IDF Zone '", "Multiplier 2")]
+        [TestCase("neg-window-multiplier-both", "multiplicity: IDF FenestrationSurface:Detailed '", "Multiplier 2")]
+        [TestCase("neg-north-axis-both", "orientation: Zone '", "is rotated by 90 deg")]
+        public void MultiplicityAndOrientation_AreRefusedAgainstSamIntent(string caseId, string prefix, string fragment)
+        {
+            string run = TestSupport.NewDirectory(caseId);
+            Assert.That(TestSupport.Cli(out string output, "negative", "--run", boxRun, "--case", caseId, "--out", run), Is.EqualTo(0), output);
+            OsReport report = TestSupport.ReadAndCompare(run, TestSupport.Box);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), report.Status);
+            Assert.That(report.Consistency, Is.Not.Empty);
+            Assert.That(report.Consistency.All(x => x.StartsWith(prefix, StringComparison.Ordinal) && x.Contains(fragment) && x.Contains("SAM states")), Is.True, string.Join(" | ", report.Consistency));
+            Assert.That(report.Required, Is.EqualTo(box.Required), "coverage is unchanged; the verdict changes");
+        }
+
+        /// <summary>Multiplicity or orientation the reader cannot interpret blocks the fixture (BLOCKED technical, exit 11), never PASS and never assumed.</summary>
+        [TestCase("zone-multiplier-1.5")]
+        [TestCase("north-axis-text")]
+        [TestCase("coordinate-system-unknown")]
+        [TestCase("world-with-north-axis")]
+        public void UninterpretableMultiplicityOrOrientation_BlocksTechnical(string what)
+        {
+            string run = TestSupport.NewDirectory("unsupported-" + what);
+            Directory.CreateDirectory(run);
+            foreach (string file in new[] { "frozen-model.json", "weather.epw", "model.osm", "in.idf", "export.json" })
+            {
+                File.Copy(Path.Combine(boxRun, file), Path.Combine(run, file));
+            }
+
+            string idfPath = Path.Combine(run, "in.idf"), osmPath = Path.Combine(run, "model.osm");
+            string idf = File.ReadAllText(idfPath), osm = File.ReadAllText(osmPath);
+            List<IdfObject> objects = IdfText.Parse(idf);
+            string zone = objects.First(x => x.Type == "Zone").Name;
+            string building = objects.First(x => x.Type == "Building").Name;
+            const string coordinateSystem = @"Relative(,\s*!- Coordinate System)";
+            switch (what)
+            {
+                case "zone-multiplier-1.5":
+                    idf = Cli.Negative.SetField(idf, "Zone", zone, "Multiplier", "1.5");
+                    break;
+                case "north-axis-text":
+                    idf = Cli.Negative.SetField(idf, "Building", building, "North Axis", "east");
+                    break;
+                case "coordinate-system-unknown":
+                    idf = Regex.Replace(idf, coordinateSystem, "Sideways$1");
+                    break;
+                case "world-with-north-axis":
+                    idf = Regex.Replace(idf, coordinateSystem, "World$1");
+                    idf = Cli.Negative.SetField(idf, "Building", building, "North Axis", "90");
+                    osm = Cli.Negative.SetField(osm, "OS:Building", IdfText.Parse(osm).First(x => x.Type == "OS:Building").Value(1), "North Axis", "90", true);
+                    break;
+            }
+
+            Assert.That(idf, Is.Not.EqualTo(File.ReadAllText(idfPath)), "the mutation applied");
+            File.WriteAllText(idfPath, idf);
+            File.WriteAllText(osmPath, osm);
+            ExportManifest manifest = ExportManifest.Load(Path.Combine(run, "export.json"));
+            manifest.Mutation = "test: " + what;
+            manifest.IdfSha256 = Hashing.Sha256(idfPath);
+            manifest.OsmSha256 = Hashing.Sha256(osmPath);
+            manifest.Save(Path.Combine(run, "export.json"));
+
+            OsReport report = TestSupport.ReadAndCompare(run, TestSupport.Box);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedTechnical), what + ": " + report.Status + " " + string.Join(" | ", report.Consistency.Concat(report.Unsupported)));
+            Assert.That(report.Consistency, Is.Empty, string.Join(" | ", report.Consistency));
+            Assert.That(report.Unsupported, Is.Not.Empty);
+        }
+
+        [Test]
+        public void BothFixtures_AreUnrotatedAndSingleCopy_AsSamStates()
+        {
+            foreach (OsReport report in new[] { box, two })
+            {
+                Assert.That(report.Unsupported, Is.Empty, report.FixtureId + ": " + string.Join(" | ", report.Unsupported));
+                Assert.That(report.Supporting.Single(x => x.StartsWith("orientation:", StringComparison.Ordinal)), Does.EndWith("the native building is unrotated, as SAM states"));
+                Assert.That(report.Supporting.Single(x => x.StartsWith("multiplicity:", StringComparison.Ordinal)), Does.EndWith("every effective multiplier is 1, as SAM states"));
+            }
         }
 
         [Test]
