@@ -8,6 +8,7 @@ single-layer safeguards are unchanged.
 |---|---|
 | `test-summaries.txt` | S09, writer/importer and benchmark summaries at the tested content, and the two A/B runs |
 | `probe-output.txt` | the reviewer's revision-9 probe (unchanged, machine-local) run against the revision-11 binaries |
+| `consistency-probe-output.txt` | the review of `89a2216`'s revision-11 consistency probe (unchanged, machine-local) run against `4ea2e6c`: the 12.5 mm / 20 mm interzone reproduction now SAM-OSI-CON-002, no model |
 
 ## What changed
 
@@ -24,6 +25,11 @@ single-layer safeguards are unchanged.
    imported opaque surface panel must reproduce its native layer order and the absorptances of every face EnergyPlus
    uses; otherwise error SAM-OSI-CON-002 and no model (`Successful` false). Edited/mixed models whose orientation or face
    roles would move a differing face, and contradictory forward sides, now fail named; equivalent cases succeed.
+4. **Per-layer consistency** (`4ea2e6c`, the review of `89a2216`): each native StandardOpaqueMaterial layer's thickness,
+   conductivity, density and specific heat on both sides, in each side's direction, must be the SAM panel layer's.
+   Merged source names had hidden a 20 mm copy on one side of a 12.5 mm interzone wall; that now fails named. Valid
+   mirrors, repeated materials at two thicknesses, reuse in unrelated constructions, massless and air-gap layers are
+   unchanged (an imported air gap keeps its pre-existing 0 thickness, which the writer refuses on re-export).
 
 ## Results
 

@@ -6,11 +6,16 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 11, the owner-approved opaque multi-layer import order, fail closed):**
-  `f5f207b456a3e7e2429ead4054c779031615e2b7` (after `37841ea` and `5241bdd`, which it supersedes for the re-read).
+- **Tested content (revision 11, the owner-approved opaque multi-layer import order, fail closed, per-layer
+  consistency):** `4ea2e6c2ac5805426ed1b39bdd5d88b39b1c723f` (after `37841ea`, `5241bdd` and `f5f207b`).
+- **Revision 11 reviewed state:** code `f5f207b456a3e7e2429ead4054c779031615e2b7`, head
+  `89a2216da8acbde8abfd25430d0b0cf15f9f9730` (Build 39824715351 and SPDX 39824715431 succeeded). The independent review
+  of that head confirmed the corrections and found one P1, the per-layer interzone consistency gap that `4ea2e6c`
+  closes.
 - **Revision 10 (group membership, shared equal-face edits):** tested content `78f10146481dbd4fe46af8761813fa4f9d58d357`,
-  head `93ec3151f30cdb0de398cf7eac189bbceb8b72fd` (Build 39766696575 and SPDX 39766696573 succeeded; not independently
-  reviewed before revision 11 was approved).
+  head `93ec3151f30cdb0de398cf7eac189bbceb8b72fd` (Build 39766696575 and SPDX 39766696573 succeeded). **It passed
+  independent review**: the review of revision 10 accepted its two bounded fixes before revision 11 was approved. This
+  corrects the earlier revision-11 record text, which said it was not independently reviewed.
 - **Revision 9 (native edits, merging, inherited faces):** tested content `354e5322fa3a4c31a984de911c48534e768c40e4`,
   reviewed head `806d5449ef02bafa2dada3283a1aa00808ce5fad` (Build 39761623252 and SPDX 39761623127 succeeded).
 - **Revision 8 (the opaque face-optics correction):** tested content `fc83a6df1f843f82a043353616a2b4e42a94e6d6`, reviewed head
@@ -46,11 +51,18 @@ merged.**
     cannot, the import raises the new error SAM-OSI-CON-002 and is unsuccessful (no model). This covers an edited or mixed
     model whose re-read would move a differing face, and contradictory forward sides. Equivalent re-reads and
     equal-face edited models still succeed.
+  - **Per-layer consistency** (the review of `89a2216`, one P1): the check also compares each native layer's thickness,
+    conductivity, density and specific heat, on both sides in each side's direction, with the SAM panel's layers. Before
+    this, merged source names hid the reviewer's 12.5 mm / 20 mm interzone reproduction, which imported successfully
+    and re-exported 12.5 mm on both sides. It now fails with SAM-OSI-CON-002 and returns no model. Valid mirrors, one
+    material twice at two thicknesses, and reuse of one material at other thicknesses in unrelated constructions still
+    import; massless and air-gap handling is unchanged.
   - Glazing, opaque door panes, shading, air boundaries and non-layered constructions are unchanged (controls). A
     construction shared by surfaces and a door or shade is split, reported.
   - Compatibility: earlier imports keep their reversed constructions; no automatic migration.
-- **Revision 10 addresses the independent review of `806d5449`** (see "Revision 10"). Importer only. Not yet
-  independently reviewed; optics acceptance is not renewed and Phase B is not claimed.
+- **Revision 10 addresses the independent review of `806d5449`** (see "Revision 10"). Importer only. **It passed
+  independent review** (corrected; the earlier revision-11 text said otherwise). Optics acceptance is not renewed and
+  Phase B is not claimed.
   - Every face object is validated before a merged material is returned for it, and only a validated group member
     resolves to it. The reviewer's malformed third object now keeps its own conductivity 9 and is named in a warning;
     the valid pair still merges. Order-independent.
@@ -312,7 +324,7 @@ split.
 | `806d544` | Revision 9 evidence (`revision-9/`) and this record |
 | `78f1014` | **Revision 10:** importer only: each face object validated before a merged result and only group members resolve to it; edits kept on every face the object supplies; 23 writer/importer test cases; mapping doc |
 | `e04ff90`, `93ec315` | Revision 10 evidence (`revision-10/`), the layer-order proposal and this record |
-| `37841ea`, `5241bdd`, (fail-closed commit) | **Revision 11:** importer: innermost-first opaque surface constructions, the shared-use split, forward-side panels, the space order and the re-read; then the fail-closed face check SAM-OSI-CON-002 replacing the warning-only re-read; 30 layer-order test cases; mapping, to-SAM coverage and audit docs |
+| `37841ea`, `5241bdd`, `f5f207b`, `4ea2e6c` | **Revision 11:** importer: innermost-first opaque surface constructions, the shared-use split, forward-side panels, the space order and the re-read; then the fail-closed face check SAM-OSI-CON-002 replacing the warning-only re-read, and (review of `89a2216`) the per-layer thickness and thermal comparison of both sides; 39 layer-order test cases; mapping, to-SAM coverage and audit docs |
 | (record commit) | Revision 11 evidence (`revision-11/`) and this record |
 
 ## Revision 11: opaque multi-layer layer order on import (owner-approved proposal)
@@ -375,6 +387,30 @@ instruction 2026-10-22 after the first revision-11 draft reported this case as a
 - The contradiction warning (spaces kept in visit order) stays. The panels it affects are re-read and pass or fail this
   check.
 
+**4. Per-layer consistency of both sides** (`SurfaceFaces.Physical`, `Physical`, `ComparePhysical`; commit `4ea2e6c`;
+the independent review of `89a2216`, P1):
+- **Gap.** The snapshot recorded layer names only, and the check compared the native names translated to SAM names.
+  Face and thickness objects of one source material merge into one SAM material, so their names lose the distinction.
+- **The review's reproduction.** On the reverse side only, the sandwich's 12.5 mm Plasterboard was replaced by a 20 mm
+  copy with the same source and face metadata. The import succeeded, and the re-export had 12.5 mm on both sides.
+- **Fix.**
+  - The snapshot now records, per layer, the thickness, conductivity, density and specific heat of each
+    StandardOpaqueMaterial.
+  - Both sides are compared in their own direction with the panel's SAM layers: the first space's surface reversed
+    (innermost first) and the second as stored. The comparison covers each layer's thickness and the SAM material's
+    thermal properties, with a relative tolerance of 1e-9.
+  - A mismatch adds a SAM-OSI-CON-002 problem naming the layer, side and values; the import returns no model. Example:
+    "layer 2 ('Reviewer_Plasterboard_20mm') of the surface in space B is 0.02 m thick but the SAM layer is 0.0125 m".
+- **Unchanged.**
+  - Source merging (merging still happens; one SAM layer per position, with its own thickness).
+  - Massless and air-gap layers, which keep their nominal-thickness import and are matched by material only.
+  - Valid mirrors, one material twice at two thicknesses, and one material at different thicknesses in unrelated
+    constructions, all of which still import.
+- **Observation (pre-existing, not changed by instruction).** An imported AirGap layer has thickness 0: `LayerThickness`
+  finds no nominal thickness for it, and `ToSAM_AirGap` is unchanged since the base. So a re-export of an imported
+  cavity wall is refused by the writer (SAM-OS-CON-001 "no usable thickness"). The new cavity control therefore
+  asserts the import only.
+
 **Compatibility (no automatic migration).** Every imported multi-layer opaque construction now has the opposite SAM layer
 order to an import made before revision 11. The U-value is unchanged; layer positions, the thermal-mass position and the
 exposed faces change, which is the correction. Interzone panels of SAM-written models now keep their authored first
@@ -383,7 +419,7 @@ constructions: nothing identifies them afterwards, and no migration is made; re-
 A construction shared by surfaces and shading or door uses becomes two SAM constructions (reported). Recorded in
 `docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md` and the to-SAM coverage manifest (`OS:Construction.Opaque`).
 
-**Tests** (`M4/OpaqueLayerOrderImportTests.cs`, new, 30 cases). Each round trip compares, per surface (keyed by absolute
+**Tests** (`M4/OpaqueLayerOrderImportTests.cs`, new, 39 cases). Each round trip compares, per surface (keyed by absolute
 centroid, normal, type, boundary and area), the layers' thickness, conductivity, density and specific heat outside
 first and the thermal, solar and visible absorptances of both used faces, before export-import and after re-export.
 
@@ -396,6 +432,10 @@ first and the thermal, solar and visible absorptances of both used faces, before
 | `AMixedModelWhoseUnstampedHalfIsReRead_KeepsItsUsedFaces_OrFailsNamed` (6: both authored orders × {divergent, north reverse on the new first space}, {divergent, north forward there}, {equal faces}) | placed from the exported model's visit order, so deterministic: the stamped south forward on the space visited second, the north unstamped; one APX-001 re-read. Divergent with the reverse there: **one SAM-OSI-CON-002 error naming the north half, `Successful` false, no model**. The other two: success, both halves from that space, signatures unchanged |
 | `ContradictoryForwardSides_KeepTheUsedFaces_OrFailNamed` (4: both orders × divergent / equal) | both halves stamped, forward sides on different spaces: one contradiction warning and one re-read; divergent: one CON-002, unsuccessful; equal faces: success, signatures unchanged |
 | `AnUnstampedConstructionWithAFaceObjectInTheOtherRole_FailsNamed` / `…WithEqualFaceObjects_Succeeds` | an edited single-sided wall with Brick's external-face object on the zone face: CON-002, unsuccessful; the same edit with equal faces: success, signatures unchanged |
+| `AnInterzoneSideWithAnotherLayerThickness_FailsNamed` (review of `89a2216` reproduction, on the reverse or the forward side) | a 20 mm copy of the 12.5 mm Plasterboard with the same source metadata on one side only: one SAM-OSI-CON-002 naming the mismatched layer and both thicknesses, `Successful` false |
+| `ARepeatedMaterialAtTwoThicknesses_RoundTrips` (both space orders) / `ARepeatedMaterialWithSwappedThicknessesOnOneSide_FailsNamed` | Plasterboard 12.5 mm, Insulation, Plasterboard 20 mm interzone: valid mirror round-trips; the two Plasterboard objects swapped on one side (names still match in order): CON-002, no model |
+| `OneMaterialAtDifferentThicknessesInUnrelatedConstructions_RoundTrips` (box roof, interzone wall) | Plasterboard 12.5 mm in the walls and 15 mm elsewhere: one merged SAM material, each layer its own thickness, round trip unchanged |
+| `AnInterzoneCavityWall_KeepsItsAirGapImport`, `AMasslessInterzoneLayer_KeepsItsDocumentedImport` | air gap at its pre-existing 0 thickness, massless at 25 mm nominal with its APX-001 note: imports succeed, no CON-002 |
 | `ASingleLayerRoundTrip_IsUnchanged` | single-layer floor unchanged |
 | controls: glazing (asymmetric 6/12/4 mm panes), unstamped opaque door pane, shading-only construction, air boundary, F-factor floor | OpenStudio order / layer-free / placeholder exactly as before; the same model's walls innermost first |
 | `AConstructionSharedByWallsAndAShade_IsSplit_AndReported` | walls innermost first with the Guid; shade OpenStudio order, other Guid; one APX-001; signatures unchanged |
@@ -1520,14 +1560,14 @@ calculation, EnergyPlus simulation or sizing was run.
   - importer: `OS/Convert/ToSAM/Construction.cs` (innermost-first read, `ConstructionUse`, the split),
     `OS/Convert/ToSAM/Panel.cs` (`ResolveConstruction` reads `SurfaceConstructionMap` first),
     `OS/Convert/ToSAM/AnalyticalModel.cs` (`PanelSides`, `IsSamForwardSide`, `SurfaceConstruction`, `OrderSpaces`,
-    `ResolvePanel` side choice, fallback survivor, pass D order, `SurfaceFaces`, `Snapshot`, `WrittenAbsorptances`, `VerifySurfaceFaces`), `OS/Classes/OpenStudioImportContext.cs`
+    `ResolvePanel` side choice, fallback survivor, pass D order, `SurfaceFaces` with `Physical`, `Snapshot`, `Physical`, `WrittenAbsorptances`, `ComparePhysical`, `VerifySurfaceFaces`), `OS/Classes/OpenStudioImportContext.cs`
     (`SurfaceConstructionMap`, `ConstructionUses`);
   - `SAM.Core.OpenStudio` `OpenStudioImportDiagnosticCodes.cs` (`ConstructionFacesUnresolved`, SAM-OSI-CON-002);
-  - writer tests: `M4/OpaqueLayerOrderImportTests.cs` (new, 30 cases), `M4/OpaqueFaceOpticsTests.cs` (2 comments),
+  - writer tests: `M4/OpaqueLayerOrderImportTests.cs` (new, 39 cases), `M4/OpaqueFaceOpticsTests.cs` (2 comments),
     `D1/DiagnosticsAdapterTests.cs` (CON-002 in the released import codes);
   - `docs/openstudio-to-sam-import-audit.md` (CON-002) and the `OS:Construction.FacesUnresolved` coverage entry
     (Unsupported 46, total 145);
-  - `docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md` (import layer order and compatibility),
+  - `docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md` (import layer order, fail-closed check including per-layer thickness, compatibility),
     `docs/SAM_OPENSTUDIO_TO_SAM_COVERAGE.md` and `tests/resources/openstudio-to-sam-coverage.json` (`OS:Construction.Opaque`);
   - the new `revision-11/` evidence folder and this record.
 
@@ -1538,7 +1578,12 @@ calculation, EnergyPlus simulation or sizing was run.
 
 | Check | At | Result |
 |---|---|---|
-| S09 tests | `f5f207b` (revision 11, `f5f207b456a3e7e2429ead4054c779031615e2b7`; harness `6b4c510d…`, library `c64d8cb5…`, writer `209c519b…`) | **97/97**; both fixture `report.txt` byte-identical to `revision-9/` |
+| S09 tests | `4ea2e6c` (revision 11 final, `4ea2e6c2ac5805426ed1b39bdd5d88b39b1c723f`; harness `4f746d9a…`, library `0bf9fd32…`, writer `331ec187…`) | **97/97**; both fixture `report.txt` byte-identical to `revision-9/` |
+| Writer/importer, `--filter 'TestCategory!=Simulation'` | `4ea2e6c` | **471 passed, 2 skipped** (462 + 9 per-layer consistency cases) |
+| Benchmark, `--filter TestCategory!=Simulation` | `4ea2e6c` | 51/51 |
+| A/B D: `f5f207b` `AnalyticalModel.cs` (names-only check) | working tree, then restored and rebuilt | the 3 regressions fail (each imported with a changed thickness); the 6 controls pass |
+| The review's `revision-11-consistency-probe`, unchanged | `4ea2e6c` binaries | `importSuccessful=False`, one SAM-OSI-CON-002: layer 2 ('Reviewer_Plasterboard_20mm') in space B is 0.02 m but the SAM layer 0.0125 m (at `f5f207b`: successful, 12.5 mm on both sides) |
+| S09 tests | `f5f207b` (revision 11 reviewed code, `f5f207b456a3e7e2429ead4054c779031615e2b7`; harness `6b4c510d…`, library `c64d8cb5…`, writer `209c519b…`) | **97/97**; both fixture `report.txt` byte-identical to `revision-9/` |
 | Writer/importer, `--filter 'TestCategory!=Simulation'` | `f5f207b` | **462 passed, 2 skipped** (432 + 30 layer-order cases) |
 | Benchmark, `--filter TestCategory!=Simulation` | `f5f207b` | 51/51 |
 | A/B A: revision-10 importer restored (4 files) | working tree, then restored and rebuilt | layer-order cases (20 at `5241bdd`): **18 fail**, 2 pass (shading-only, non-layered); the glazing, door-pane and air-boundary controls fail only on their "walls innermost first" line |
@@ -1754,10 +1799,10 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 ## Next step
 
 Both fixtures report BLOCKED owner, exit 12, with only unused-face rows left. Do not start S10.
-- **Independent review of revisions 10 and 11** (revision 10 `78f1014`, revision 11 under "Tests and validation", and the
-  record head in the PR description): for revision 10 the membership check, served-face rules and merge; for revision
-  11 the innermost-first read and its exclusions, the shared-use split, the forward-side choice, the space order (the
-  deviation from the proposal) and the re-read, the round-trip signatures, controls and A/B, and the compatibility note.
+- **Independent review of the revision-11 per-layer consistency fix** (`4ea2e6c`, and the record head in the PR
+  description): the per-layer thickness and thermal comparison of both sides, its direction, the massless and air-gap
+  exclusion, the 12.5 mm / 20 mm regression and swapped-thickness case, the valid controls and the A/B. Revision 10 has
+  passed independent review; the review of `89a2216` confirmed the rest of revision 11 and raised this one finding.
 - Then the owner decides the unused-face rows (accept, or an S07 3a scope decision through a separate SAM PR).
 - Optional, if the owner wants a refreshed committed pack: an authorised acceptance run (`Run-S09-ReadBack.ps1`, both
   phases, then `Pack-S09-Evidence.ps1`) at the reviewed head. It exports and translates with the OpenStudio SDK only.

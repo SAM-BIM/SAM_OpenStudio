@@ -1,8 +1,6 @@
-Reviewer revision-9 probe (Program.cs and Probe.csproj byte-identical to the review's revision-9-probe), run against
-the revision-11 binaries built from f5f207b (SAM.Analytical.OpenStudio.dll sha256 209c519b...). ROUNDTRIP keeps
-Brick -> Insulation -> Plasterboard_Internal (outside first) and the edited 0.42 zone face; revision 10 gave
-Plasterboard -> Insulation -> Brick_Internal and 0.7 (revision-10/probe-output.txt). The import succeeds: this
-unedited SAM-written model passes the fail-closed face check.
+Reviewer revision-9 probe (unchanged, machine-local), run against the binaries built from 4ea2e6c (SAM.Analytical.OpenStudio.dll
+sha256 331ec187...): ROUNDTRIP keeps Brick -> Insulation -> Plasterboard_Internal and the edited 0.42 zone face, and the
+import succeeds; MALFORMED and EQUAL_FACE as at revision 10.
 Command: dotnet run --project Probe.csproj -c Release -p:Platform=x64 (exit 0).
 
 ROUNDTRIP before=SAM_OpaqueMaterial_Brick_100mm_33333333 -> SAM_OpaqueMaterial_Insulation_100mm_33333333 -> SAM_OpaqueMaterial_Plasterboard_12.5mm_Internal_33333333

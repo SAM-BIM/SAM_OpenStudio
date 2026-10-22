@@ -1,8 +1,34 @@
 S09 revision 11 local test summaries (Release x64, SDK 10.0.401, SAM_Tas sow/2026-Q4 c50e9169)
-Tested content f5f207b456a3e7e2429ead4054c779031615e2b7 (revision 11: 37841ea, 5241bdd, then the fail-closed f5f207b).
-No engine, acceptance or packing script was run. Built with dotnet build ... --no-restore (each project 2 warnings,
-0 errors), then dotnet test --no-build.
+Tested content 4ea2e6c2ac5805426ed1b39bdd5d88b39b1c723f (revision 11: 37841ea, 5241bdd, f5f207b, then the per-layer
+consistency fix 4ea2e6c for the review of 89a2216). No engine, acceptance or packing script was run. Built with
+dotnet build ... --no-restore (each project 2 warnings, 0 errors), then dotnet test --no-build.
 
+== S09 tests at 4ea2e6c
+harness os-input-readback.dll 4f746d9aec6cfdac91773ebd6018b78b2444637fb07df52ad350e2edf476e799
+library SAM.Analytical.OpenStudio.InputReadBack.dll 0bf9fd32a965db4ab65dd45c2e8a27d9abb183f339d1fcbd39eede540f169a03
+writer  SAM.Analytical.OpenStudio.dll 331ec187fcc722195868c2cfbb9717a567f7bdc1bbed08ca1ff18bb35e6a7865
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 3 m 16 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+The box and two-zone fixture report.txt of this run (s09-runs/box-e75504, two-ca5763) are byte-identical to
+revision-9/box-report-approved.txt and two-report-approved.txt.
+
+== Writer/importer --filter 'TestCategory!=Simulation' at 4ea2e6c
+Passed!  - Failed:     0, Passed:   471, Skipped:     2, Total:   473, Duration: 14 m 42 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+(462 at f5f207b + 9 per-layer consistency cases; the 2 skipped are the pre-existing real-SQL fixtures.)
+
+== Benchmark --filter TestCategory!=Simulation at 4ea2e6c
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 311 ms - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+
+== D: f5f207b AnalyticalModel.cs (layer names only, no per-layer thickness) restored; the 9 new cases kept
+    build: 0 errors
+  Failed AnInterzoneSideWithAnotherLayerThickness_FailsNamed(False)
+  Failed AnInterzoneSideWithAnotherLayerThickness_FailsNamed(True)
+  Failed ARepeatedMaterialWithSwappedThicknessesOnOneSide_FailsNamed
+Failed!  - Failed:     3, Passed:     6, Skipped:     0, Total:     9, Duration: 1 m 21 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+restored (cmp identical)
+(D: the three regressions fail under the names-only check: each import succeeded with a changed layer thickness; the
+six controls pass under both.)
+
+== Runs at f5f207b (the reviewed code of 89a2216; kept for continuity)
 == S09 tests at f5f207b
 harness os-input-readback.dll 6b4c510d87fe3a986cdce30d64d31408dbb733eecd3962463718de8f59d48a01
 library SAM.Analytical.OpenStudio.InputReadBack.dll c64d8cb585c54aa3b3e8d7241c5d947d049d1010e772f399875d7bbb5593a4fd
