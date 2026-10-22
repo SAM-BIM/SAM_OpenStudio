@@ -6,7 +6,10 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 6, the lighting read-back guards):** `225881f00971c7cab3596e94867924a11866e147`.
+- **Tested content (revision 7, the owner decisions and acceptance reporting):** `614a7a8d70b6a70c5628a0ef3b57eaec0c5ec794`.
+- **Revision 6 (the lighting read-back guards):** tested content `225881f00971c7cab3596e94867924a11866e147`, reviewed head
+  `8fd0ffc2e7a4d0c1e8463305d74f476e198e4ea7` (Build 39726520323 succeeded). It passed independent technical review
+  (owner statement, 2026-10-22).
 - **Revision 5 (the S07 §5.1 lighting split):** tested content `20f8fb65`, reviewed head
   `31af6022095b8367cf333da0d790dc258955acb0` (Build 39672548198 succeeded).
 - **Revision 4:** tested content `0c232875c8b872e393cd1ddb883e61f63eed30a6`; record head `6a36afb0` (Build 39622605892
@@ -19,8 +22,23 @@ merged.**
 
 ## Status
 
-- **S09 is BLOCKED on two owner decisions** (optics, T-VENT-INACTIVE; see "Unresolved, risks, limits"). The lighting
-  visible-fraction item is withdrawn by S07 amendment L1 (SAM#217), which revision 5 implements. OD-L1 stays open.
+- **The owner took the three S09 decisions on 2026-10-22** (see "Revision 7"):
+  - optics option 1: OS-MAT-SINGLE-SIDED accepted as a limitation for the two reviewed fixtures only, with its effect on
+    results unmeasured;
+  - ventilation A: the T-VENT-INACTIVE extension to OpenStudio confirmed (Decision 1);
+  - lighting B1: the Decision 5 reading confirmed. **OD-L1 stays open**, and the Tas side needs separate approval.
+- **Revision 7 reports the optics acceptance.** Both fixtures are now **NOT PASS, accepted limitation (rank 5), exit 14**,
+  with complete coverage (319/319, 592/592) and unchanged outcome counts. They are never PASS.
+  - The acceptance applies only under the approved rules, to a fixture whose id and frozen-model SHA-256 are both a
+    reviewed fixture's, and only to the 3a MAPPING-DIFFERENCE rows. Any other model, fixture id or rule set stays
+    BLOCKED owner, exit 12.
+  - Every failure check is kept: a wrong opaque optical value still FAILs (exit 10) under the acceptance, and all
+    existing negatives still FAIL.
+  - S09 93/93 (5 new). Revision 7 is not yet independently reviewed.
+- **Not a Phase B PASS.** The roadmap Phase B gate needs S08-S11 PASS. An S09 closed with an accepted limitation does
+  not meet that wording; no roadmap exception is requested or made here.
+- Revision 6 (below) passed independent technical review. It had left S09 BLOCKED on the optics and T-VENT-INACTIVE
+  decisions; the lighting visible-fraction item was withdrawn by S07 amendment L1 (SAM#217), which revision 5 implements.
 - **Revision 6 closes the two gaps the independent review of `31af6022` reproduced in the lighting read-back** (see
   "Revision 6"). The writer and importer are unchanged.
   - Native domain and energy conservation are checked before any S07 tolerance. An invalid split (a fraction outside
@@ -41,7 +59,8 @@ merged.**
     tests, 5 new negatives FAIL on both fixtures.
   - Not run under this scope: the acceptance scripts, so the committed `acc3` pack predates L1.
 - The independent review of `59036783` accepted the revision-4 code technically. The review of `31af6022` (revision 5)
-  found the two gaps revision 6 closes; revision 6 is not yet reviewed.
+  found the two gaps revision 6 closes. Revision 6 then passed independent technical review (owner statement,
+  2026-10-22).
 - **Record correction after that review (documentation only):** the writer-test reproduction command now excludes
   `TestCategory=Simulation`, and the historical 388 passed / 2 skipped results are separated from the reviewer's filtered
   363 passed / 2 skipped (see "Writer-test scope correction").
@@ -82,12 +101,13 @@ merged.**
 - **All 16 targeted negatives FAIL** (exit 10): the original 8, the 6 of revision 2 and the 2 of revision 3. Revision 5
   adds 5 lighting negatives, which FAIL on both fixtures in the S09 tests.
 - **The optics decision table for OS-MAT-SINGLE-SIDED is below.** It separates exposed-face differences (18 box rows /
-  33 two-zone rows) from buried-layer metadata (51 / 105). The item stays proposed and owner-unaccepted.
+  33 two-zone rows) from buried-layer metadata (51 / 105). The owner accepted option 1 on 2026-10-22 for the two
+  reviewed fixtures only (revision 7).
 - **Construction-performance calculation methods are assessed below.** This is an assessment only; nothing is
   implemented. Revision 3 corrects its wording only.
-- On this evidence the S09 roadmap criterion ("as S08, for OpenStudio") is met **subject to** the owner deciding the
-  named items and to independent review. PASS needs either a writer change for the optics item or the owner's
-  acceptance, which gives "Not PASS — accepted limitation", never PASS.
+- On this evidence the S09 roadmap criterion ("as S08, for OpenStudio") is met **with an accepted limitation**, subject
+  to the independent review of revision 7: "Not PASS — accepted limitation", never PASS. PASS would need a writer change
+  for the optics item (and, for the buried rows, a 3a scope decision).
 
 ## Owner instructions applied
 
@@ -167,6 +187,14 @@ split.
 - Show that the new regressions expose the reviewed behaviour. Keep fixtures, original evidence and the OD-L1, optics
   and ventilation decisions open. No other repository edits, simulations, sizing, engine execution or merge.
 
+**Owner decisions and revision 7 (2026-10-22, in substance).**
+- Revision 6 at `8fd0ffc2` passed independent technical review.
+- The owner approved the three recommendations of the advisory note: optics option 1, ventilation A, lighting B1.
+- Accept optics only for the two reviewed fixtures, with result effects unmeasured.
+- Authorised: the bounded #33 record and acceptance-reporting update. Preserve all failure checks and the pending OD-L1
+  limits. Return for independent review after final-head CI.
+- Excluded: merge, engines, Tas changes, a roadmap exception and S10.
+
 ## Work completed
 
 | Commit | Change |
@@ -185,7 +213,69 @@ split.
 | `20f8fb6` | **Revision 5:** the S07 §5.1 lighting split in the writer (`LightingSplit`, `SAM-OS-IC-002`) and the importer; the S09 T-LIGHT-SPLIT rows; 5 negatives; 18 S09 and 16 writer/importer tests; manifests and mapping documents |
 | `31af602` | Revision 5 evidence (`revision-5/`) and this record |
 | `225881f` | **Revision 6:** the native-domain and plenum guards in `OsComparison.LightingSplit`, `OsQuantities.LightingFractionBoundary`, 6 CLI cases, 8 S09 tests |
-| (record commit) | Revision 6 evidence (`revision-6/`) and this record |
+| `8fd0ffc` | Revision 6 evidence (`revision-6/`) and this record |
+| `614a7a8` | **Revision 7:** `Compare/OwnerDecisions.cs` (new), the acceptance in `OsComparison.Run` and its Supporting line, the model hash passed by `compare`; 5 S09 tests |
+| (record commit) | Revision 7 evidence (`revision-7/`) and this record |
+
+## Revision 7: the owner decisions and acceptance reporting
+
+Tested content `614a7a8d70b6a70c5628a0ef3b57eaec0c5ec794`. Revision 6 (`8fd0ffc2`) passed independent technical review; the owner then took the three
+decisions of the advisory note on 2026-10-22.
+
+**Decisions recorded:**
+
+| Item | Decision | Bounds |
+|---|---|---|
+| Optics (OS-MAT-SINGLE-SIDED) | Option 1: accepted as a limitation | The two reviewed fixtures only (`s08-fix-box` `45524172…`, `s08-fix-two` `20da9b58…`). Exposed zone faces differ by ρs/ρv −0.06 and ε −0.01 (Plasterboard) / +0.04 (Screed); 18 / 33 rows, the other 51 / 105 on faces EnergyPlus does not use. **Effect on results unmeasured** (nothing simulated). Never PASS. |
+| Ventilation (T-VENT-INACTIVE) | A: the extension to OpenStudio confirmed (Decision 1) | Rows 6 and 8b, under the unchanged S08 owner decision 3 preconditions. Exercised by the two-zone V1/V1 fixture only; no V0 case or per-space override among the fixtures. |
+| Lighting | B1: the Decision 5 reading confirmed | OpenStudio applies p₀ to an unstated p with `SAM-OS-IC-002`, claiming nothing outside suspended LED office lighting. **OD-L1 stays open.** No fixture uses the fallback; an unstated p stays DOCUMENTED-DEFAULT, never PASS. The Tas side needs a separate, OD-L1-gated SAM_Tas approval. |
+
+Ventilation A and lighting B1 confirm behaviour revisions 1–6 already implement; neither changes code or a verdict.
+
+**Acceptance reporting (`Compare/OwnerDecisions.cs`, `OsComparison.Run`, `Cli/ReadBackRead.cs`):**
+- The S08 core already supports owner acceptances (`GateConfiguration.Acceptances`, `OwnerAcceptance` per quantity and
+  per fixture, with a required decision reference; rank 5). S09 previously passed none, so every report was exit 12.
+- `OwnerDecisions.For` returns one acceptance, (`3a`, fixture id, MAPPING-DIFFERENCE, the decision reference), only when
+  the rule set is Approved **and** the fixture id and the frozen-model SHA-256 are a reviewed fixture's. Otherwise none.
+- `compare` passes the model hash from the manifest, which its infrastructure check has already verified against the
+  run's frozen model, so the acceptance is bound to those bytes. `OsComparison.Run` takes it as an optional argument;
+  without it no acceptance applies.
+- Only rows S09 lists as MAPPING-DIFFERENCE are affected: the internal-side opaque optical rows whose SAM value differs
+  from the external one. A DOCUMENTED-DEFAULT (an unstated p, OD-L1), every FAIL and every BLOCKED result are unchanged.
+  A single-valued material's external-face rows still compare the same native value with SAM, so a wrong optical value
+  fails there.
+- The OS-MAT-SINGLE-SIDED Supporting line names the acceptance and its reference when it applies, and is unchanged
+  otherwise. No report schema, exit code, quantity, tolerance, writer, importer or core change.
+
+**Fixture results (S09 test runs at `614a7a8`; `revision-7/`):**
+
+| Fixture | Status (exit) | Coverage | Outcomes |
+|---|---|---|---|
+| `s08-fix-box` | NOT PASS, accepted limitation (14) | 319/319 | as revision 5; the 69 MappingDifference rows rank 5 |
+| `s08-fix-two` | NOT PASS, accepted limitation (14) | 592/592 | as revision 5; the 138 MappingDifference rows rank 5 |
+
+Against `revision-5/`, each `report.txt` differs only in its status line and in the "accepted by the owner (reference);
+this is not a pass" reasons of the listed rows.
+
+**New S09 tests (5):**
+
+| Test | Required |
+|---|---|
+| `BothFixtures_HaveCompleteCoverage_AndOnlyTheNamedOwnerDecisionRemains` (changed) | both fixtures exit 14, no owner decision named, every non-PASS row rank 5 with the reference; 69 / 138 rows |
+| `TheOpticsAcceptance_NeedsTheReviewedFixtureIdAndApprovedRules` (3) | the unchanged box run compared as `s08-fix-two`, as an unknown id, or under the provisional rules: exit 12, the optics decision named |
+| `TheOpticsAcceptance_DoesNotApplyToAChangedModel` | the box re-saved with the same p (other bytes): exit 12, the same outcome counts |
+| `AWrongOpaqueOpticalValue_StillFails_UnderTheAcceptance` | Plasterboard Solar Absorptance 0.5 in the IDF: FAIL (exit 10) on 3a external-face rows only; the internal-face rows keep rank 5 |
+
+Tests that change the model (lighting p, comfort coefficient, ventilation) keep exit 12: their bytes are not reviewed.
+
+**A/B:** with `Cli/ReadBackRead.cs` of `8fd0ffc2` restored (no model hash passed, so no acceptance), the two acceptance
+tests fail and the 4 binding controls and the plenum control pass (`revision-7/test-summaries.txt`). In that A/B the
+wrong optical value still fails, exit 10.
+
+**Not changed or run:** the acceptance and packing scripts (not run; the committed pack is acc3, pre-L1 and
+pre-acceptance). Under `Run-S09-ReadBack.ps1 -Phase acceptance` the approved compare would now exit 14 and the
+provisional baseline 12, because the acceptance applies under the approved rules only. The writer suite and benchmark
+tests were not re-run: revision 7 changes no writer, importer or benchmark file.
 
 ### Writer change (`SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/`)
 
@@ -562,8 +652,8 @@ because `FenestrationTests.Holes_...` takes the first diagnostic containing "hol
      - every delivered flow is exactly 0;
      - approved rules only.
    - It covers rows 6 (ventilation) and 8b only.
-   - Without it, V1 would be the G1 UNLISTED-DEFAULT (BLOCKED owner). **Pending: the owner should confirm the
-     extension.**
+   - Without it, V1 would be the G1 UNLISTED-DEFAULT (BLOCKED owner). **Confirmed by the owner on 2026-10-22
+     (ventilation A; see "Revision 7").**
 2. **8a per basis:** an unstated basis is S-ZERO once any basis is stated. The S07 8a requirement is the sum, and the core's
    `ExpectedRequiredSupplyFlow` adds nothing for it. In V0 it stays S-UNSPEC. The summed requirement is also compared
    (`ventilation.requirement.total`).
@@ -575,11 +665,12 @@ because `FenestrationTests.Holes_...` takes the first diagnostic containing "hol
      external value (`SAM-OS-MAT-002`, `OS/Material.cs:92-116`).
    - Each internal-side row whose SAM value differs is listed MAPPING-DIFFERENCE by S09, from the writer's documented
      behaviour, not by S07. Rank 3.
-   - **Proposed, owner-unaccepted.** The decision table and options are below.
+   - **Accepted by the owner on 2026-10-22 (option 1) for the two reviewed fixtures only**, with its effect on results
+     unmeasured; reported as rank 5, exit 14, by revision 7. The decision table and options are below.
 5. **Lighting split (revision 5; supersedes the "lighting visible fraction" item of revisions 1–4):** S07 amendment L1
    withdrew the view coefficient ↔ Fraction Visible identity, so that item is no longer an owner decision. The fixtures
    author p and pass T-LIGHT-SPLIT.
-   - **OD-L1 interpretation (for the owner to confirm):** §5.1 and §8 gate only the **SAM_Tas** fallback on OD-L1, and
+   - **OD-L1 interpretation (confirmed by the owner on 2026-10-22, lighting B1; OD-L1 itself stays open):** §5.1 and §8 gate only the **SAM_Tas** fallback on OD-L1, and
      list "absent p → p₀ with the diagnostic" among the required SAM_OpenStudio#33 changes under the approved D-LIGHT.
      The OpenStudio writer has no template value to replace; it had silent defaults 0.32 / 0.25. Revision 5 therefore
      applies p₀ for an unstated p, states it at Summary with the category, its limits and OD-L1, and claims no
@@ -607,7 +698,8 @@ because `FenestrationTests.Holes_...` takes the first diagnostic containing "hol
 
 ## Fixture verdicts (approved rules)
 
-**Revision 5 supersedes the counts and the lighting item below** (319/319 and 592/592, optics only; see "Revision 5").
+**Revision 5 supersedes the counts and the lighting item below** (319/319 and 592/592, optics only; see "Revision 5"),
+and revision 7 the status: both fixtures are NOT PASS, accepted limitation, exit 14 (see "Revision 7").
 This section is the revisions 1–4 acceptance (`acc3`/`acc6`), which predates amendment L1 and was not re-run.
 
 Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/`, revision-3 acceptance `acc3`. Harness
@@ -659,7 +751,7 @@ unchanged:
 | osm-missing-thermal-zone (two-zone in acceptance; both fixtures in the tests) | OSM-only: the first IDF zone's OS:ThermalZone removed | FAIL (missing OSM counterpart only) |
 | osm-missing-subsurfaces (box in acceptance; both fixtures in the tests) | OSM-only: every IDF subsurface's OS:SubSurface removed | FAIL (missing OSM counterpart only) |
 
-## OS-MAT-SINGLE-SIDED: optics decision table (proposed, owner-unaccepted)
+## OS-MAT-SINGLE-SIDED: optics decision table (option 1 accepted 2026-10-22, the two reviewed fixtures only)
 
 **Sources:**
 - the comparator's own rows on the acc2 runs, printed by the evidence program
@@ -726,8 +818,9 @@ unchanged:
   documented to modify only the outside face; it was not assessed.
 - **Glazing is not affected:** `WindowMaterial:Glazing` carries front and back reflectance and emissivity, and all 3c
   rows match.
-- **Owner options (nothing here accepts or authorises any):**
-  1. accept OS-MAT-SINGLE-SIDED as a limitation for both fixtures (rank 5, never PASS);
+- **Owner options.** The owner chose option 1 on 2026-10-22, for the two reviewed fixtures only, with result effects
+  unmeasured. Options 2 and 3 are not authorised and stay available as separate tasks.
+  1. accept OS-MAT-SINGLE-SIDED as a limitation for both fixtures (rank 5, never PASS) — **chosen**;
   2. a separate SAM_OpenStudio writer task for construction-aware variants, which fixes the exposed faces;
      single-layer constructions would still need a rule;
   3. a separate S07/S09 contract decision on whether 3a gates optics on faces EnergyPlus does not use.
@@ -937,11 +1030,21 @@ calculation, EnergyPlus simulation or sizing was run.
   - the new `revision-6/` evidence folder and this record.
 
   No writer, importer, report schema, shared-core, fixture, weather, tolerance, ventilation or optics change.
+- Revision 7 changed:
+  - `Compare/OwnerDecisions.cs` (new), `Compare/OsComparison.cs` (`Run`: the acceptances and the OS-MAT-SINGLE-SIDED
+    Supporting line), `Cli/ReadBackRead.cs` (the verified model hash passed to `Run`);
+  - `Tests/ReadBackTests.cs` (1 test changed, 5 added, 1 message filter);
+  - the new `revision-7/` evidence folder and this record.
+
+  No writer, importer, report schema, exit code, shared-core, SAM_Tas, fixture, weather, tolerance, ventilation or
+  lighting change.
 
 ## Tests and validation (local, Release x64)
 
 | Check | At | Result |
 |---|---|---|
+| S09 tests | `614a7a8` (revision 7; harness `e41b13ee…`, library `afc9920c…`) | **93/93**: the 88 revision-6 cases (1 changed to require exit 14) plus 5 |
+| The new and changed tests with `Cli/ReadBackRead.cs` of `8fd0ffc2` restored | working tree, then restored and rebuilt | **2 failed, 5 passed**: the two acceptance tests fail (exit 12); the binding and plenum controls pass |
 | S09 tests | `225881f0` (revision 6; harness `a05202d0…`, library `727c08bc…`) | **88/88**: the 80 revision-5 cases, unchanged, plus 8 (5 regressions, 3 controls) |
 | The 8 new tests with the reviewed `OsComparison.cs` (`31af6022`) restored | working tree, then restored (`cmp` identical) and rebuilt | **5 failed, 3 passed**: exactly the 5 regressions fail (exit 12) |
 | The reviewer's 5 artifacts, read and compared fresh | `225881f0` harness | 2 controls unchanged (12); 2 invalid splits FAIL (10); dynamic plenum BLOCKED technical (11) |
@@ -1032,13 +1135,21 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 ## Unresolved, risks, limits
 
-- **Owner decisions (pending; none taken here):**
-  - OS-MAT-SINGLE-SIDED: accept, or a separate writer task, and/or a 3a scope decision (see the decision table);
-  - the T-VENT-INACTIVE extension to OpenStudio;
-  - **OD-L1 (S07 §8, open):** suitability of p₀ outside suspended LED office lighting, and whether a writer may replace
-    a template-prescribed value with it. Revision 5 applies p₀ to an unstated p in OpenStudio as §5.1 lists for this PR,
-    states it and claims nothing beyond the category; the owner should confirm that reading (Decision 5). No current
-    fixture uses the fallback.
+- **Owner decisions taken 2026-10-22** (see "Revision 7"): optics option 1 for the two reviewed fixtures only; the
+  T-VENT-INACTIVE extension (ventilation A); the Decision 5 reading (lighting B1).
+- **Limits of those decisions:**
+  - The optics acceptance covers only the reviewed fixture bytes under the approved rules. Any other model is BLOCKED
+    owner, exit 12, until accepted separately. Single-layer constructions are untested.
+  - **The effect of the optics difference on results is unmeasured**; nothing was simulated.
+  - The writer fix for exposed faces (option 2) and a 3a scope decision (option 3) remain separate, unauthorised tasks.
+  - Recorded acceptance gives "Not PASS — accepted limitation" (exit 14), never PASS. The roadmap Phase B gate needs
+    S08-S11 PASS; treating this as meeting it would need an explicit owner exception through a separate SAM PR, which
+    is not requested here.
+- **Still open:**
+  - **OD-L1 (S07 §8):** suitability of p₀ outside suspended LED office lighting, and whether a writer may replace a
+    template-prescribed value with it. The confirmed reading lets OpenStudio apply p₀ to an unstated p, stated and
+    claiming nothing beyond the category. No current fixture uses the fallback.
+  - The Tas-side lighting change needs a separate, OD-L1-gated SAM_Tas approval.
   - The lighting visible-fraction default of revisions 1–4 is withdrawn by L1; it needs no decision.
 - **Compatibility risks (revision 5):**
   - Every OpenStudio export changes its `Lights` fractions. An authored p keeps its total radiant share, but F_V moves
@@ -1091,14 +1202,13 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 ## Next step
 
-S09 stays **BLOCKED** at the owner decision gate. Do not start S10.
-- **Independent review of revision 6** (`225881f0` and the record head in the PR description): the domain and plenum
-  guards and their boundary, with revision 5's §5.1 writer, importer and read-back changes, the `SAM-OS-IC-002` code
-  and the OD-L1 reading in Decision 5.
-- The owner decides the pending items above (optics, T-VENT-INACTIVE, and confirms the OD-L1 reading). An optics
-  writer fix or a 3a scope change would each be a separate task.
+The owner decisions are taken; both fixtures report NOT PASS, accepted limitation, exit 14. Do not start S10.
+- **Independent review of revision 7** (`614a7a8d70b6a70c5628a0ef3b57eaec0c5ec794` and the record head in the PR description): `OwnerDecisions` and its
+  binding (approved rules, fixture id and frozen-model SHA-256), that only 3a MAPPING-DIFFERENCE rows move to rank 5,
+  that every failure and OD-L1 limit is kept, and the five tests and A/B.
+- An optics writer fix or a 3a scope change would each be a separate task.
 - Optional, if the owner wants a refreshed committed pack: an authorised acceptance run (`Run-S09-ReadBack.ps1`, both
   phases, then `Pack-S09-Evidence.ps1`) at the reviewed head. It exports and translates with the OpenStudio SDK only.
 - Then the owner's merge decision, the known-SHA `PROJECT_PROGRESS.md` closeout and guarded branch cleanup.
-- The roadmap S09 row changes only through a separate SAM PR.
+- The roadmap S09 row, and any Phase B gate exception, change only through a separate SAM PR.
 - The construction-performance route needs its own owner start and authorisation for any EnergyPlus run.
