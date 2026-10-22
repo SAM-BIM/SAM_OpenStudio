@@ -45,6 +45,15 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         /// <summary>S07 §5.1: p₀, the contract-listed default total radiant share for an unstated p (listed default only, never an expected value).</summary>
         public const double LightingReferenceRadiantProportion = 0.576;
 
+        /// <summary>
+        /// The floating-point boundary of the T-LIGHT-SPLIT native-domain guard (not an S07 tolerance): a Lights fraction is
+        /// in its domain when −1e-12 ≤ value ≤ 1 + 1e-12, and the fractions sum to at most 1 + 1e-12. It absorbs only the
+        /// rounding of the decimal IDF text to double (under 1e-15 for three values in [0, 1]); a writer-made p = 1 split
+        /// sums to 1 within that. It is 1e9 times smaller than the 4c tolerance and is applied before, never instead of, the
+        /// S07 comparison.
+        /// </summary>
+        public const double LightingFractionBoundary = 1e-12;
+
         public static QuantityDefinition Get(string id)
         {
             switch (id)

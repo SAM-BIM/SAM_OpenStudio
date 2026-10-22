@@ -1324,6 +1324,19 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         /// An authored p (including 0) is verified as an accepted transformation. An absent or NaN p stays S-UNSPEC on every
         /// row, with the contract-listed default (p₀ split) as the listed default: DOCUMENTED-DEFAULT at best, never PASS.
         /// A p outside [0, 1] is S-INVALID.
+        /// <para>
+        /// Two guards run before any S07 tolerance is applied, so a tolerance can never accept an invalid or dynamic split:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description><b>Native domain and energy conservation</b> (<see cref="LightsDomainProblem"/>): each of
+        /// Return Air, Radiant and Visible within [0, 1] and their sum at most 1 (S07 §5.1: "A sum above 1 is an input
+        /// error"). A violation is an EXPORT-DEFECT on all five rows, with the violation named; nothing is compared.</description></item>
+        /// <item><description><b>Plenum-calculated return air</b> (<see cref="LightsPlenumProblem"/>): blank or No, the
+        /// EnergyPlus default, is the static split S07 describes. Yes makes the return-air share follow the plenum
+        /// temperature at run time, so no static T-LIGHT-SPLIT can be verified; any other or unreadable setting is
+        /// uninterpretable. Either way every lighting row is UNVERIFIED (unreadable, BLOCKED technical) and the space is
+        /// named in <see cref="Unsupported"/>.</description></item>
+        /// </list>
         /// </summary>
         private void LightingSplit(Guid space, double p, IdfObject light, IdentityStatus identity)
         {
@@ -1344,6 +1357,15 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             ReaderResult total = Combine(new[] { radiant, visible }, x => x[0] + x[1]);
             ReaderResult convective = Combine(new[] { returnAir, radiant, visible }, x => 1 - x[0] - x[1] - x[2]);
 
+            string domain = LightsDomainProblem(light, returnAir, radiant, visible);
+            string plenum = LightsPlenumProblem(light);
+            if (plenum != null)
+            {
+                Unsupported.Add("lighting: " + Keys.Space(space) + ": " + plenum);
+                ReaderResult dynamic = ReaderResult.Unreadable(plenum);
+                returnAir = radiant = visible = total = convective = dynamic;
+            }
+
             void Row(string what, QuantityDefinition definition, Func<double, double> expected, ReaderResult nativeValue)
             {
                 ExpectedValue value;
@@ -1360,7 +1382,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                     value = ExpectedValue.FromValue(expected(p));
                 }
 
-                Results.Add(EQ.Evaluate(new QuantityInput
+                QuantityInput input = new QuantityInput
                 {
                     Definition = definition,
                     FixtureId = FixtureId,
@@ -1370,8 +1392,13 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                     Identity = identity,
                     ListedDefault = expected(p0),
                     TransformationId = LightSplit,
-                    TransformationVerified = true
-                }, Configuration));
+                    TransformationVerified = plenum == null
+                };
+
+                // An invalid native split is decided before, and instead of, the numeric comparison.
+                Results.Add(domain != null
+                    ? new QuantityResult(input, EquivalenceOutcome.ExportDefect, GateStatus.Fail, "The native Lights split is invalid (" + domain + "); it is not compared, and no tolerance applies.", null, null, null, null, null)
+                    : EQ.Evaluate(input, Configuration));
             }
 
             Row(LayerProperties.LightingReturnAir, OsQuantities.LightingReturnAir, x => 0, returnAir);
@@ -1379,6 +1406,69 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             Row("lighting.visible", QuantityCatalog.Get("4c"), x => x * s, visible);
             Row("lighting.radiant", QuantityCatalog.Get("4c"), x => x * (1 - s), radiant);
             Row("lighting.convective", QuantityCatalog.Get("4c"), x => 1 - x, convective);
+        }
+
+        /// <summary>
+        /// The native-domain guard of T-LIGHT-SPLIT: null when every readable fraction of the Lights object lies in [0, 1] and
+        /// Return Air + Radiant + Visible is at most 1; otherwise the violation, named. Unreadable and NaN fields are left to
+        /// the row evaluation. <see cref="OsQuantities.LightingFractionBoundary"/> absorbs only the rounding of decimal IDF
+        /// text to double at the bounds 0 and 1; it is no S07 tolerance and never widens one.
+        /// </summary>
+        private static string LightsDomainProblem(IdfObject light, ReaderResult returnAir, ReaderResult radiant, ReaderResult visible)
+        {
+            if (light == null)
+            {
+                return null;
+            }
+
+            double e = OsQuantities.LightingFractionBoundary;
+            List<string> problems = new List<string>();
+            foreach ((string label, ReaderResult value) in new[] { ("Return Air Fraction", returnAir), ("Fraction Radiant", radiant), ("Fraction Visible", visible) })
+            {
+                if (value.HasNumber && (value.Value < -e || value.Value > 1 + e))
+                {
+                    problems.Add("Lights '" + light.Name + "' " + label + " " + value.Value.ToString("R", ci) + " is outside [0, 1]");
+                }
+            }
+
+            if (returnAir.HasNumber && radiant.HasNumber && visible.HasNumber)
+            {
+                double sum = returnAir.Value + radiant.Value + visible.Value;
+                if (sum > 1 + e)
+                {
+                    problems.Add("Lights '" + light.Name + "' Return Air + Radiant + Visible = " + sum.ToString("R", ci) + " exceeds 1, a negative convective share (S07 §5.1: a sum above 1 is an input error)");
+                }
+            }
+
+            return problems.Count == 0 ? null : string.Join("; ", problems);
+        }
+
+        /// <summary>
+        /// The Lights "Return Air Fraction Calculated from Plenum Temperature" setting (index 12, counting Name as 0): null for blank, absent or
+        /// No (the EnergyPlus default, a static return-air share); otherwise why no static T-LIGHT-SPLIT can be verified.
+        /// </summary>
+        private static string LightsPlenumProblem(IdfObject light)
+        {
+            if (light == null)
+            {
+                return null;
+            }
+
+            const string label = "Return Air Fraction Calculated from Plenum Temperature";
+            string text = light.Value(12, label, out string problem);
+            if (problem != null)
+            {
+                return "Lights '" + light.Name + "' " + label + " is unreadable (" + problem + "); the return-air setting cannot be interpreted, so T-LIGHT-SPLIT is not verified";
+            }
+
+            if (string.IsNullOrWhiteSpace(text) || string.Equals(text.Trim(), "No", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return string.Equals(text.Trim(), "Yes", StringComparison.OrdinalIgnoreCase)
+                ? "Lights '" + light.Name + "' " + label + " = Yes: the return-air share follows the plenum temperature at run time, so a static T-LIGHT-SPLIT cannot be verified (unsupported by S09)"
+                : "Lights '" + light.Name + "' " + label + " = '" + text + "' is neither Yes nor No (uninterpretable), so T-LIGHT-SPLIT is not verified";
         }
 
         /// <summary>A quantity derived from native fields: absent, unreadable or NaN when any input is; otherwise the value.</summary>

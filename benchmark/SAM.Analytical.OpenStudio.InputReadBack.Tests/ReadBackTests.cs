@@ -189,6 +189,102 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             Assert.That(report.Required, Is.EqualTo(original.Required));
         }
 
+        /// <summary>A box export with an authored p (fresh-process read and compare).</summary>
+        private static OsReport BoxWithP(double p, out string run)
+        {
+            AnalyticalModel model = TestSupport.Load(TestSupport.Box);
+            TestSupport.ChangeCondition(model, TestSupport.BoxSpace, ic => ic.SetValue(InternalConditionParameter.LightingRadiantProportion, p));
+            string label = "box-p-" + p.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            return TestSupport.Pipeline(TestSupport.Write(model, label), TestSupport.Box, label, out run);
+        }
+
+        /// <summary>A CLI negative (or control) case applied to a copy of <paramref name="source"/>, read and compared fresh.</summary>
+        private static OsReport Mutated(string source, string caseId, out string run)
+        {
+            run = TestSupport.NewDirectory(caseId);
+            Assert.That(TestSupport.Cli(out string output, "negative", "--run", source, "--case", caseId, "--out", run), Is.EqualTo(0), output);
+            return TestSupport.ReadAndCompare(run, TestSupport.Box);
+        }
+
+        /// <summary>The boundaries p = 1 and p = 0 written by the writer are valid splits: every lighting row passes.</summary>
+        [TestCase(1.0)]
+        [TestCase(0.0)]
+        public void TheBoundarySplits_PEqualOneAndZero_AreValid(double p)
+        {
+            OsReport report = BoxWithP(p, out string run);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), report.Status);
+            Assert.That(Unexplained(report), Is.Empty, string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
+            Assert.That(report.Unsupported, Is.Empty, string.Join(" | ", report.Unsupported));
+
+            Dictionary<string, QuantityResult> rows = LightingResults(run, TestSupport.Box, TestSupport.BoxSpace);
+            Assert.That(rows.Values.All(x => x.IsPass), Is.True, string.Join(" | ", rows.Select(x => x.Key + " " + x.Value.Outcome + " " + x.Value.Reason)));
+            Assert.That(rows["lighting.radiantTotal"].Input.Native.Value, Is.EqualTo(p).Within(OsQuantities.LightingFractionBoundary), "the writer's split sums to p within the floating-point boundary");
+        }
+
+        /// <summary>
+        /// Independent review of 31af6022: a native split shifted by 0.0004 per field is within the 0.001 tolerance of every
+        /// row, and the reviewed head accepted it (exit 12). On p = 1 it sums to 1.0008; on p = 0 Fraction Radiant is
+        /// -0.0004. The domain guard now fails every lighting row, named, before any tolerance is applied.
+        /// </summary>
+        [TestCase(1.0, "neg-lighting-sum-above-one", "exceeds 1")]
+        [TestCase(0.0, "neg-lighting-radiant-to-visible", "Fraction Radiant -0.0004 is outside [0, 1]")]
+        public void AnInvalidNativeSplit_FailsBeforeAnyTolerance(double p, string caseId, string fragment)
+        {
+            BoxWithP(p, out string source);
+            OsReport report = Mutated(source, caseId, out string run);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), report.Status);
+
+            List<ReportItem> lighting = report.NonPass.Where(x => x.Key.Contains(".ic.lighting.")).ToList();
+            Assert.That(lighting.Select(x => x.Key).OrderBy(x => x), Is.EqualTo(LightingRows.Select(x => Ic(TestSupport.BoxSpace, x)).OrderBy(x => x)));
+            Assert.That(lighting.All(x => x.Outcome == "ExportDefect" && x.Status == "Fail" && x.Reason.Contains(fragment)), Is.True, string.Join(" | ", lighting.Select(x => x.Outcome + " " + x.Reason)));
+            Assert.That(report.NonPass.Where(x => x.Status == "Fail").All(x => x.Key.Contains(".ic.lighting.")), Is.True, "only the lighting rows fail");
+
+            Dictionary<string, QuantityResult> rows = LightingResults(run, TestSupport.Box, TestSupport.BoxSpace);
+            Assert.That(rows.Values.Any(x => x.IsPass), Is.False, "no lighting row is accepted");
+            Assert.That(rows.Values.All(x => x.Comparison == null), Is.True, "no tolerance was applied");
+        }
+
+        /// <summary>
+        /// Independent review of 31af6022: with Return Air Fraction Calculated from Plenum Temperature = Yes the reviewed
+        /// head still accepted the static split (exit 12). Yes, an uninterpretable value and an unreadable field now block
+        /// technically (exit 11), named, with no lighting row accepted.
+        /// </summary>
+        [TestCase("neg-lighting-plenum-yes", "= Yes: the return-air share follows the plenum temperature at run time")]
+        [TestCase("neg-lighting-plenum-unknown", "= 'Maybe' is neither Yes nor No (uninterpretable)")]
+        [TestCase("neg-lighting-plenum-relabelled", "is unreadable")]
+        public void APlenumCalculatedOrUninterpretableReturnAir_BlocksTechnically(string caseId, string fragment)
+        {
+            OsReport report = Mutated(boxRun, caseId, out string run);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedTechnical), report.Status);
+            Assert.That(report.Consistency, Is.Empty, string.Join(" | ", report.Consistency));
+            Assert.That(report.Unsupported.Single(), Does.StartWith("lighting: " + "space:" + TestSupport.BoxSpace.ToString("D") + ": Lights '").And.Contain(fragment));
+            Assert.That(report.Required, Is.EqualTo(box.Required));
+
+            List<ReportItem> lighting = report.NonPass.Where(x => x.Key.Contains(".ic.lighting.")).ToList();
+            Assert.That(lighting.Select(x => x.Key).OrderBy(x => x), Is.EqualTo(LightingRows.Select(x => Ic(TestSupport.BoxSpace, x)).OrderBy(x => x)));
+            Assert.That(lighting.All(x => x.Outcome == "UnverifiedUnreadable" && x.Status == "BlockedTechnical" && x.Reason.Contains(fragment)), Is.True, string.Join(" | ", lighting.Select(x => x.Outcome + " " + x.Reason)));
+            Assert.That(LightingResults(run, TestSupport.Box, TestSupport.BoxSpace).Values.Any(x => x.IsPass), Is.False, "no lighting row is accepted");
+        }
+
+        /// <summary>The valid control: an explicit No (with coefficients, which EnergyPlus ignores under No) changes nothing.</summary>
+        [Test]
+        public void AnExplicitNoPlenumSetting_IsTheUnchangedControl()
+        {
+            OsReport report = Mutated(boxRun, "ctl-lighting-plenum-no", out string run);
+            Assert.That(report.Inputs["mutation"], Does.StartWith("ctl-lighting-plenum-no"));
+            Assert.That(report.ExitCode, Is.EqualTo(box.ExitCode));
+            Assert.That(report.Unsupported, Is.Empty, string.Join(" | ", report.Unsupported));
+            Assert.That(report.CountByOutcome, Is.EqualTo(box.CountByOutcome));
+            Assert.That(Unexplained(report), Is.Empty);
+
+            Dictionary<string, QuantityResult> baseline = LightingResults(boxRun, TestSupport.Box, TestSupport.BoxSpace);
+            Dictionary<string, QuantityResult> rows = LightingResults(run, TestSupport.Box, TestSupport.BoxSpace);
+            foreach (string row in LightingRows)
+            {
+                Assert.That(rows[row].Outcome, Is.EqualTo(baseline[row].Outcome), row);
+            }
+        }
+
         [Test]
         public void BothFixtures_HaveCompleteCoverage_AndOnlyTheNamedOwnerDecisionRemains()
         {

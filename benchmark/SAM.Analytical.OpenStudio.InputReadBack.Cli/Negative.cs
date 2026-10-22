@@ -39,7 +39,13 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
             "neg-lighting-visible-zero",
             "neg-lighting-radiant-is-p",
             "neg-lighting-return-air",
-            "neg-lighting-swapped"
+            "neg-lighting-swapped",
+            "neg-lighting-sum-above-one",
+            "neg-lighting-radiant-to-visible",
+            "neg-lighting-plenum-yes",
+            "neg-lighting-plenum-unknown",
+            "neg-lighting-plenum-relabelled",
+            "ctl-lighting-plenum-no"
         };
 
         public static int Run(string runDirectory, string caseId, string outputDirectory)
@@ -253,6 +259,36 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
                             return "IDF Lights '" + lights.Name + "' Fraction Radiant " + radiant + " and Fraction Visible " + visible + " swapped";
                     }
                 }
+
+                // Native-domain guards of T-LIGHT-SPLIT (independent review of 31af6022). Each shift is within the 0.001
+                // tolerance of every row, so only the domain guard can refuse it. They are invalid on the export they are
+                // meant for: sum-above-one on an authored p = 1 (sum 1.0008), radiant-to-visible on an authored p = 0
+                // (Fraction Radiant -0.0004). On the fixtures (p 0.34-0.41) both stay valid and are not refused.
+                case "neg-lighting-sum-above-one":
+                case "neg-lighting-radiant-to-visible":
+                {
+                    IdfObject lights = idfObjects.First(x => x.Type == "Lights");
+                    double radiant = double.Parse(lights.Value(8), CultureInfo.InvariantCulture), visible = double.Parse(lights.Value(9), CultureInfo.InvariantCulture);
+                    double newRadiant = caseId == "neg-lighting-sum-above-one" ? radiant + 0.0004 : radiant - 0.0004;
+                    double newVisible = visible + 0.0004;
+                    idf = SetField(idf, "Lights", lights.Name, "Fraction Radiant", newRadiant.ToString("R", CultureInfo.InvariantCulture));
+                    idf = SetField(idf, "Lights", lights.Name, "Fraction Visible", newVisible.ToString("R", CultureInfo.InvariantCulture));
+                    return "IDF Lights '" + lights.Name + "' Fraction Radiant " + lights.Value(8) + " -> " + newRadiant.ToString("R", CultureInfo.InvariantCulture) + ", Fraction Visible " + lights.Value(9) + " -> " + newVisible.ToString("R", CultureInfo.InvariantCulture);
+                }
+
+                // The plenum-calculated return-air setting (index 12, after End-Use Subcategory), which the writer leaves blank (No). Yes, an unknown value
+                // and a relabelled field must block; an explicit No with coefficients is the valid control.
+                case "neg-lighting-plenum-yes":
+                case "neg-lighting-plenum-unknown":
+                case "neg-lighting-plenum-relabelled":
+                case "ctl-lighting-plenum-no":
+                {
+                    IdfObject lights = idfObjects.First(x => x.Type == "Lights");
+                    string setting = caseId == "neg-lighting-plenum-yes" ? "Yes" : caseId == "neg-lighting-plenum-unknown" ? "Maybe" : "No";
+                    string label = caseId == "neg-lighting-plenum-relabelled" ? "Return Air Plenum Mode" : "Return Air Fraction Calculated from Plenum Temperature";
+                    idf = AppendFields(idf, "Lights", lights.Name, (setting, label), ("0.2", "Return Air Fraction Function of Plenum Temperature Coefficient 1"), ("0", "Return Air Fraction Function of Plenum Temperature Coefficient 2"));
+                    return "IDF Lights '" + lights.Name + "' gains '" + label + "' = " + setting + " with coefficients 0.2, 0";
+                }
             }
 
             throw new ArgumentException(caseId);
@@ -292,6 +328,42 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
                 }
 
                 lines.RemoveRange(i, end - i + 1);
+                return string.Join(newline, lines);
+            }
+
+            throw new InvalidOperationException(type + " '" + name + "' not found");
+        }
+
+        /// <summary>
+        /// Appends labelled fields after the last field of the object of <paramref name="type"/> named
+        /// <paramref name="name"/> (located as in <see cref="SetField"/>): its terminator becomes a comma and the new last
+        /// field ends the object. Line-based: the rest of the file is kept byte for byte.
+        /// </summary>
+        internal static string AppendFields(string text, string type, string name, params (string Value, string Label)[] fields)
+        {
+            string newline = text.Contains("\r\n") ? "\r\n" : "\n";
+            List<string> lines = text.Split(new[] { newline }, StringSplitOptions.None).ToList();
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (!string.Equals(lines[i].Trim(), type + ",", StringComparison.OrdinalIgnoreCase) || i + 1 >= lines.Count || !string.Equals(Data(lines[i + 1]), name, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                int end = i + 1;
+                while (end < lines.Count && !Code(lines[end]).TrimEnd().EndsWith(";", StringComparison.Ordinal))
+                {
+                    end++;
+                }
+
+                if (end >= lines.Count)
+                {
+                    break;
+                }
+
+                int semicolon = Code(lines[end]).LastIndexOf(';');
+                lines[end] = lines[end].Substring(0, semicolon) + "," + lines[end].Substring(semicolon + 1);
+                lines.InsertRange(end + 1, fields.Select((x, k) => "  " + x.Value + (k == fields.Length - 1 ? ";" : ",") + " !- " + x.Label));
                 return string.Join(newline, lines);
             }
 
