@@ -43,9 +43,10 @@ namespace SAM.Analytical.OpenStudio
 
         /// <summary>
         /// Source SAM material Guid → the one SAM material its SAM-written face and thickness objects were merged
-        /// into, or null when they are imported one by one (fewer than two, or a conflict).
+        /// into with the OpenStudio handles of its validated members, or a null material when they are imported one by
+        /// one (fewer than two, or a conflict). Only a listed member resolves to the merged material.
         /// </summary>
-        internal IDictionary<Guid, Core.IMaterial> OpaqueMaterialGroups { get; } = new Dictionary<Guid, Core.IMaterial>();
+        internal IDictionary<Guid, (Core.IMaterial Material, ISet<string> Members)> OpaqueMaterialGroups { get; } = new Dictionary<Guid, (Core.IMaterial Material, ISet<string> Members)>();
 
         /// <summary>OpenStudio construction name → SAM opaque Construction created for it.</summary>
         public IDictionary<string, Construction> ConstructionMap { get; } = new Dictionary<string, Construction>();

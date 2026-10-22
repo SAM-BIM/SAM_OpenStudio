@@ -694,5 +694,337 @@ namespace SAM.Analytical.OpenStudio.Tests
                 }
             }
         }
+
+        // ---- group membership (review of 354e5322, finding 1) -------------------------------------------------------
+
+        private const string thirdName = "ReviewerMalformedThirdFace";
+
+        /// <summary>
+        /// Adds a third StandardOpaqueMaterial carrying the source Guid of <paramref name="template"/> and a copy of its face
+        /// metadata and absorptances, but its own thermal properties (9 W/mK, 1000 kg/m³, 1200 J/kgK, 20 mm), then applies
+        /// <paramref name="defect"/>: "face" (malformed face), "identity" (SAM.Guid names another material), "optic" (a
+        /// stamped optic is not a fraction), "written" (a written record disagrees with the authored face) or "thermal"
+        /// (well-formed metadata, only the thermal properties differ).
+        /// </summary>
+        private static global::OpenStudio.StandardOpaqueMaterial AddThird(global::OpenStudio.Model model, global::OpenStudio.StandardOpaqueMaterial template, string defect)
+        {
+            global::OpenStudio.StandardOpaqueMaterial result = new global::OpenStudio.StandardOpaqueMaterial(model);
+            result.setName(thirdName);
+            result.setThermalConductivity(9.0);
+            result.setDensity(1000);
+            result.setSpecificHeat(1200);
+            result.setThickness(0.02);
+            result.setThermalAbsorptance(template.thermalAbsorptance());
+            result.setSolarAbsorptance(template.solarAbsorptance());
+            result.setVisibleAbsorptance(template.visibleAbsorptance());
+
+            List<string> keys = new List<string> { Core.OpenStudio.OpenStudioIdentityKeys.MaterialGuid, Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace };
+            keys.AddRange(new[] { "ExternalEmissivity", "InternalEmissivity", "ExternalSolarReflectance", "InternalSolarReflectance", "ExternalLightReflectance", "InternalLightReflectance" }.Select(x => Core.OpenStudio.OpenStudioIdentityKeys.OpticPrefix + x));
+            keys.AddRange(new[] { "ThermalAbsorptance", "SolarAbsorptance", "VisibleAbsorptance" }.Select(x => Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + x));
+            foreach (string key in keys)
+            {
+                string value = Feature(template, key);
+                if (value != null)
+                {
+                    result.additionalProperties().setFeature(key, value);
+                }
+            }
+
+            switch (defect)
+            {
+                case "face":
+                    result.additionalProperties().setFeature(Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace, "BROKEN");
+                    break;
+                case "identity":
+                    result.additionalProperties().setFeature(Core.OpenStudio.OpenStudioIdentityKeys.Guid, Guid.NewGuid().ToString("D"));
+                    break;
+                case "optic":
+                    result.additionalProperties().setFeature(Core.OpenStudio.OpenStudioIdentityKeys.OpticPrefix + "ExternalEmissivity", "1.7");
+                    break;
+                case "written":
+                    result.additionalProperties().setFeature(Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + "ThermalAbsorptance", "0.123");
+                    break;
+            }
+
+            return result;
+        }
+
+        private static void AssertOwnThermalProperties(OpaqueMaterial material)
+        {
+            Assert.That(material.Name, Is.EqualTo(thirdName));
+            Assert.That(material.ThermalConductivity, Is.EqualTo(9.0).Within(1e-12), "the object's own conductivity, not the group's 0.25");
+            Assert.That(material.Density, Is.EqualTo(1000).Within(1e-9));
+            Assert.That(material.SpecificHeatCapacity, Is.EqualTo(1200).Within(1e-9));
+        }
+
+        /// <summary>
+        /// Review of 354e5322 (reproduction): a third object carrying the source Guid of a valid two-object Plasterboard group
+        /// but untrustworthy face metadata was aliased to the group (conductivity 0.25 instead of 9, no diagnostic). Each
+        /// object is now validated before any group result is returned: the malformed one is imported as its own material,
+        /// keeping its own physical properties, and named in a diagnostic; the valid pair still merges. Both import orders.
+        /// </summary>
+        [TestCase("face", false)]
+        [TestCase("face", true)]
+        [TestCase("identity", false)]
+        [TestCase("identity", true)]
+        [TestCase("optic", false)]
+        [TestCase("optic", true)]
+        [TestCase("written", false)]
+        [TestCase("written", true)]
+        public void AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup(string defect, bool malformedFirst)
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15).ToOpenStudio())
+            {
+                List<global::OpenStudio.StandardOpaqueMaterial> valid = conversion.Model.getStandardOpaqueMaterials().Where(x => x.nameString().Contains("Plasterboard")).ToList();
+                Assert.That(valid.Count, Is.EqualTo(2));
+                global::OpenStudio.StandardOpaqueMaterial third = AddThird(conversion.Model, valid.Single(x => !x.nameString().Contains("_Internal")), defect);
+
+                OpenStudioImportContext context = new OpenStudioImportContext(conversion.Model);
+                List<global::OpenStudio.StandardOpaqueMaterial> order = malformedFirst ? new[] { third }.Concat(valid).ToList() : valid.Concat(new[] { third }).ToList();
+                Dictionary<string, IMaterial> imported = order.ToDictionary(x => x.nameString(), x => ((global::OpenStudio.Material)x).ToSAM(context));
+
+                AssertOwnThermalProperties((OpaqueMaterial)imported[thirdName]);
+                Assert.That(context.Diagnostics.Count(d => d.Code == "SAM-OSI-ID-001" || d.Code == "SAM-OSI-MAT-001"), Is.EqualTo(1), string.Join(" | ", context.Diagnostics));
+                Core.OpenStudio.OpenStudioDiagnostic diagnostic = context.Diagnostics.Single(d => d.Code == "SAM-OSI-ID-001" || d.Code == "SAM-OSI-MAT-001");
+                Assert.That(diagnostic.OpenStudioObjectName, Does.StartWith(thirdName + " ["), "the diagnostic names the malformed object");
+                Assert.That(diagnostic.Message, Does.Contain("imported as its own material, never merged"));
+
+                IMaterial merged = imported[valid[0].nameString()];
+                Assert.That(imported[valid[1].nameString()], Is.SameAs(merged), "the valid pair still merges");
+                Assert.That(merged, Is.Not.SameAs(imported[thirdName]));
+                Assert.That(((OpaqueMaterial)merged).ThermalConductivity, Is.EqualTo(0.25).Within(1e-12));
+                AssertPlasterboardFaces((OpaqueMaterial)merged);
+            }
+        }
+
+        /// <summary>
+        /// The whole-model import of the same reproduction, with the malformed object used as the floor's single layer: the
+        /// library holds the merged Plasterboard and the malformed object as its own material.
+        /// </summary>
+        [TestCase("face")]
+        [TestCase("identity")]
+        public void AMalformedObjectOfAMergedSource_KeepsItsOwnProperties_InAWholeModelImport(string defect)
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15).ToOpenStudio())
+            {
+                global::OpenStudio.StandardOpaqueMaterial third = AddThird(conversion.Model, conversion.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("Plasterboard_15mm")), defect);
+                global::OpenStudio.Construction construction = new global::OpenStudio.Construction(conversion.Model);
+                construction.setName("Reviewer Third Floor");
+                global::OpenStudio.MaterialVector materialVector = new global::OpenStudio.MaterialVector();
+                materialVector.Add(third);
+                Assert.That(construction.setLayers(materialVector), Is.True);
+                Assert.That(conversion.Model.getSurfaces().Single(x => x.surfaceType() == "Floor").setConstruction(construction), Is.True);
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                AssertOwnThermalProperties(ImportedAll(result, thirdName).Single());
+                Assert.That(ImportedAll(result, "Plasterboard").Count, Is.EqualTo(1), "the valid pair still merges");
+                AssertPlasterboardFaces(ImportedAll(result, "Plasterboard").Single());
+                Assert.That(FaceWarnings(result).Count(d => d.OpenStudioObjectName != null && d.OpenStudioObjectName.StartsWith(thirdName + " [", StringComparison.Ordinal)), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+            }
+        }
+
+        /// <summary>
+        /// The inconsistent-member control: a third object with well-formed metadata whose thermal properties differ is a
+        /// conflict of the whole group, so no object is merged, each keeps its own properties, and the conflict is reported once.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AConsistentlyStampedObjectWithOtherThermalProperties_StopsTheMerge(bool thirdFirst)
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15).ToOpenStudio())
+            {
+                List<global::OpenStudio.StandardOpaqueMaterial> valid = conversion.Model.getStandardOpaqueMaterials().Where(x => x.nameString().Contains("Plasterboard")).ToList();
+                global::OpenStudio.StandardOpaqueMaterial third = AddThird(conversion.Model, valid.Single(x => !x.nameString().Contains("_Internal")), "thermal");
+
+                OpenStudioImportContext context = new OpenStudioImportContext(conversion.Model);
+                List<global::OpenStudio.StandardOpaqueMaterial> order = thirdFirst ? new[] { third }.Concat(valid).ToList() : valid.Concat(new[] { third }).ToList();
+                List<IMaterial> imported = order.Select(x => ((global::OpenStudio.Material)x).ToSAM(context)).ToList();
+
+                Assert.That(imported.Distinct().Count(), Is.EqualTo(3), "nothing is merged");
+                AssertOwnThermalProperties((OpaqueMaterial)imported[order.IndexOf(third)]);
+                Assert.That(context.Diagnostics.Count(d => d.Code == "SAM-OSI-ID-001" && d.Message.Contains("their thermal properties differ") && d.Message.Contains(thirdName)), Is.EqualTo(1), string.Join(" | ", context.Diagnostics));
+            }
+        }
+
+        /// <summary>The unchanged control: the valid two-object group, imported object by object in either order, merges with no diagnostic.</summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TheValidPair_MergesInEitherImportOrder(bool reversed)
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15).ToOpenStudio())
+            {
+                List<global::OpenStudio.StandardOpaqueMaterial> valid = conversion.Model.getStandardOpaqueMaterials().Where(x => x.nameString().Contains("Plasterboard")).ToList();
+                if (reversed)
+                {
+                    valid.Reverse();
+                }
+
+                OpenStudioImportContext context = new OpenStudioImportContext(conversion.Model);
+                List<IMaterial> imported = valid.Select(x => ((global::OpenStudio.Material)x).ToSAM(context)).ToList();
+                Assert.That(imported[1], Is.SameAs(imported[0]));
+                AssertPlasterboardFaces((OpaqueMaterial)imported[0]);
+                Assert.That(context.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning), Is.Empty, string.Join(" | ", context.Diagnostics));
+            }
+        }
+
+        // ---- shared equal-face objects (review of 354e5322, finding 2) ----------------------------------------------
+
+        /// <summary>A library whose <paramref name="name"/> states equal internal and external optics: ε 0.8, ρs 0.4, ρv 0.4 (absorptances 0.8 / 0.6 / 0.6).</summary>
+        private static MaterialLibrary LibraryWithEqualFaces(string name)
+        {
+            MaterialLibrary materialLibrary = Library();
+            OpaqueMaterial material = materialLibrary.GetMaterial(name) as OpaqueMaterial;
+            foreach (OpaqueMaterialParameter opaqueMaterialParameter in new[] { OpaqueMaterialParameter.InternalEmissivity, OpaqueMaterialParameter.ExternalEmissivity })
+            {
+                material.SetValue(opaqueMaterialParameter, 0.8);
+            }
+
+            foreach (OpaqueMaterialParameter opaqueMaterialParameter in new[] { OpaqueMaterialParameter.InternalSolarReflectance, OpaqueMaterialParameter.ExternalSolarReflectance, OpaqueMaterialParameter.InternalLightReflectance, OpaqueMaterialParameter.ExternalLightReflectance })
+            {
+                material.SetValue(opaqueMaterialParameter, 0.4);
+            }
+
+            materialLibrary.Add(material);
+            return materialLibrary;
+        }
+
+        /// <summary>
+        /// Review of 354e5322 (reproduction): a single-layer construction of an equal-face material shares one external-face
+        /// object for both faces. Its native edit (visible absorptance 0.6 → 0.42) was kept on the external face only, which
+        /// invented differing faces and made the re-export a SAM-OS-MAT-003 error on five outdoor surfaces. The edit is now
+        /// kept on both faces the object supplies, so the faces still agree and the re-export is valid with the edited value.
+        /// </summary>
+        [Test]
+        public void AnEditOfASharedEqualFaceSingleLayerObject_IsKeptOnBothFaces_AndReexportsValid()
+        {
+            using (OpenStudioConversionResult conversion = Box(LibraryWithEqualFaces("Insulation"), singleAgreeing).ToOpenStudio())
+            {
+                Assert.That(conversion.IsValid, Is.True, string.Join(" | ", conversion.Diagnostics));
+                global::OpenStudio.StandardOpaqueMaterial native = conversion.Model.getStandardOpaqueMaterials().Single();
+                Assert.That(native.visibleAbsorptance(), Is.EqualTo(0.6).Within(1e-12));
+                native.setVisibleAbsorptance(0.42);
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, "Insulation");
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalLightReflectance), Is.EqualTo(0.58).Within(1e-12));
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalLightReflectance), Is.EqualTo(0.58).Within(1e-12));
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalSolarReflectance), Is.EqualTo(0.4).Within(1e-12), "unedited values stay authored");
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalSolarReflectance), Is.EqualTo(0.4).Within(1e-12));
+                List<Core.OpenStudio.OpenStudioDiagnostic> notes = FaceWarnings(result).Where(d => d.Message.Contains("changed after it was written (VisibleAbsorptance written 0.6, now 0.42; its material's faces agree and this shared object supplies the zone face and the outer face)")).ToList();
+                Assert.That(notes.Select(d => d.Message.Contains("InternalLightReflectance") ? "Internal" : "External").OrderBy(x => x), Is.EqualTo(new[] { "External", "Internal" }), string.Join(" | ", result.Diagnostics));
+
+                using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
+                {
+                    Assert.That(reexport.IsValid, Is.True, string.Join(" | ", reexport.Diagnostics.Where(d => d.Code == MAT_FACE)));
+                    Assert.That(reexport.Diagnostics.Any(d => d.Code == MAT_FACE), Is.False);
+                    Assert.That(reexport.Model.getStandardOpaqueMaterials().Single().visibleAbsorptance(), Is.EqualTo(0.42).Within(1e-12), "the edited value is written again on the one shared object");
+                }
+            }
+        }
+
+        /// <summary>The unchanged control of the single-layer reproduction: no edit, no warning, equal faces and a valid re-export with the authored value.</summary>
+        [Test]
+        public void AnUnchangedSharedEqualFaceSingleLayerObject_KeepsItsAuthoredFaces_AndReexportsValid()
+        {
+            using (OpenStudioConversionResult conversion = Box(LibraryWithEqualFaces("Insulation"), singleAgreeing).ToOpenStudio())
+            {
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, "Insulation");
+                Assert.That(FaceWarnings(result), Is.Empty, string.Join(" | ", result.Diagnostics));
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalLightReflectance), Is.EqualTo(0.4).Within(1e-12));
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalLightReflectance), Is.EqualTo(0.4).Within(1e-12));
+                using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
+                {
+                    Assert.That(reexport.IsValid, Is.True, string.Join(" | ", reexport.Diagnostics));
+                    Assert.That(reexport.Model.getStandardOpaqueMaterials().Single().visibleAbsorptance(), Is.EqualTo(0.6).Within(1e-12));
+                }
+            }
+        }
+
+        /// <summary>
+        /// An interzone single-layer construction of an equal-face material: the forward and reverse constructions share the
+        /// one object, which supplies both zone faces; the edit is kept on both SAM faces and the re-export stays valid.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AnEditOfASharedEqualFaceInterzoneSingleLayerObject_IsKeptOnBothFaces(bool bFirst)
+        {
+            using (OpenStudioConversionResult conversion = TwoBoxes(LibraryWithEqualFaces("Insulation"), singleAgreeing, bFirst).ToOpenStudio())
+            {
+                Assert.That(conversion.IsValid, Is.True, string.Join(" | ", conversion.Diagnostics));
+                global::OpenStudio.StandardOpaqueMaterial native = conversion.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("Insulation"));
+                native.setSolarAbsorptance(0.45);
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, "Insulation");
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalSolarReflectance), Is.EqualTo(0.55).Within(1e-12));
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalSolarReflectance), Is.EqualTo(0.55).Within(1e-12));
+                using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
+                {
+                    Assert.That(reexport.Diagnostics.Any(d => d.Code == MAT_FACE), Is.False, string.Join(" | ", reexport.Diagnostics.Where(d => d.Code == MAT_FACE)));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Multi-layer controls (import only: the re-export of a multi-layer construction is affected by the separate,
+        /// pre-existing layer-order defect). An equal-face object supplies only the faces its layer position exposes: the
+        /// zone-face layer's edit is kept on its internal face, the outer layer's on its external face, and the other face
+        /// keeps its authored value. A middle layer supplies no exposed face, so its edit is kept on both faces.
+        /// </summary>
+        [TestCase("Plasterboard", true, false)]
+        [TestCase("Brick", false, true)]
+        [TestCase("Insulation", true, true)]
+        public void AnEditOfASharedEqualFaceMultiLayerObject_IsKeptOnTheFacesItsPositionExposes(string name, bool internalEdited, bool externalEdited)
+        {
+            MaterialLibrary materialLibrary = LibraryWithEqualFaces(name);
+            Guid source = materialLibrary.GetMaterial(name).Guid;
+            using (OpenStudioConversionResult conversion = Box(materialLibrary, AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
+            {
+                FaceObjects(conversion.Model, source, "External").Single().setVisibleAbsorptance(0.42);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, name);
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalLightReflectance), Is.EqualTo(internalEdited ? 0.58 : 0.4).Within(1e-12), "internal face");
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalLightReflectance), Is.EqualTo(externalEdited ? 0.58 : 0.4).Within(1e-12), "external face");
+                Assert.That(FaceWarnings(result).Count(d => d.Message.Contains("VisibleAbsorptance written 0.6, now 0.42")), Is.EqualTo((internalEdited ? 1 : 0) + (externalEdited ? 1 : 0)), string.Join(" | ", result.Diagnostics));
+            }
+        }
+
+        /// <summary>An interzone multi-layer construction: the reverse construction mirrors the forward one, so the zone-face layer of the first space still supplies only its internal face.</summary>
+        [Test]
+        public void AnEditOfASharedEqualFaceInterzoneMultiLayerObject_IsKeptOnItsFirstSpaceFace()
+        {
+            MaterialLibrary materialLibrary = LibraryWithEqualFaces("Insulation");
+            Guid source = materialLibrary.GetMaterial("Insulation").Guid;
+            using (OpenStudioConversionResult conversion = TwoBoxes(materialLibrary, sandwich).ToOpenStudio())
+            {
+                List<global::OpenStudio.StandardOpaqueMaterial> objects = FaceObjects(conversion.Model, source, "External").Where(x => x.nameString().Contains("100mm")).ToList();
+                Assert.That(objects.Count, Is.EqualTo(1), "one shared object for both directions and the fixture walls");
+                objects[0].setVisibleAbsorptance(0.42);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, "Insulation");
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalLightReflectance), Is.EqualTo(0.58).Within(1e-12));
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalLightReflectance), Is.EqualTo(0.4).Within(1e-12), "Insulation's other face is inside the fixture walls and the sandwich");
+            }
+        }
+
+        /// <summary>
+        /// The asymmetry control: a material whose authored faces differ keeps distinct variants, and an edit of its
+        /// external-face object stays on the external face only (the internal variant supplies the zone face).
+        /// </summary>
+        [Test]
+        public void AnEditOfADivergentMaterialsExternalObject_StaysOnTheExternalFace()
+        {
+            Guid brick = Library().GetMaterial("Brick").Guid;
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
+            {
+                FaceObjects(conversion.Model, brick, "External").Single().setVisibleAbsorptance(0.42);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, "Brick");
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalLightReflectance), Is.EqualTo(0.58).Within(1e-12));
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalLightReflectance), Is.EqualTo(0.6).Within(1e-12), "the authored internal face is kept");
+                Assert.That(FaceWarnings(result).Count(d => d.Message.Contains("VisibleAbsorptance written 0.7, now 0.42)")), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+            }
+        }
     }
 }

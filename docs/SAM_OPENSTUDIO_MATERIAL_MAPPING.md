@@ -89,16 +89,28 @@ zone face. SAM stores layers inside → outside from the panel's first space in
   - **Unchanged objects** restore exactly the authored values on both faces; an unstated value
     stays unstated (an unchanged OpenStudio default is not imported as SAM data).
   - **Edited objects** (an absorptance differing from its written value) keep the edited value
-    on the face the object carries and report it (warning SAM-OSI-MAT-001), so an edit of an
-    unstated value is not lost on re-export.
+    on every SAM face the object supplies and report it (warning SAM-OSI-MAT-001), so an edit
+    of an unstated value is not lost on re-export. An `Internal` variant supplies the zone face;
+    an `External` object of a material whose authored faces differ supplies the external face
+    (the variant supplies the zone face). An `External` object of a material whose faces agree
+    is shared by every layer position, so its faces come from the constructions using it as an
+    outermost or innermost layer: in a SAM-written (forward) opaque construction the last layer
+    is the zone face and the first the outer face; the unstamped reverse construction mirrors
+    it; any other construction's exposed position supplies both faces. A single-layer use
+    therefore keeps the edit on both faces (no differing faces are invented); an object in no
+    exposed position keeps it on the external face and each stated internal one.
   - **Merging.** All usable face and thickness objects of one source Guid become one SAM
     material (its Guid restored from the object carrying `SAM.Guid`); construction layers keep
     their own thicknesses. They merge only when thermal properties, authored optics and, per
-    face, each resolved value agree; otherwise a warning (SAM-OSI-ID-001) names the conflict and
-    each object is imported on its own. Matching is by the explicit Guid, never by name.
+    face, each resolved value of the objects supplying it agree; otherwise a warning
+    (SAM-OSI-ID-001) names the conflict and each object is imported on its own. Matching is by
+    the explicit Guid, never by name. Each object is validated before a merged material is
+    returned for it: only a validated member of the group resolves to it.
   - Malformed or inconsistent metadata is warned (SAM-OSI-ID-001 identity, SAM-OSI-MAT-001
-    values) and the single native value is imported on both faces. An object without the
-    metadata (a third-party or older OSM) imports silently as before.
+    values) and the object is imported as its own material with its own thermal properties —
+    never merged with, or aliased to, a valid group of the same source Guid — and its single
+    native value on both faces. An object without the metadata (a third-party or older OSM)
+    imports silently as before.
 - **Known round-trip limit (pre-existing).** The importer keeps OpenStudio's outside-first
   layer order (`ToSAM/Construction.cs`), while SAM stores inside → outside, so a multi-layer
   construction comes back reversed and a re-export puts its outermost layer on the zone face.
