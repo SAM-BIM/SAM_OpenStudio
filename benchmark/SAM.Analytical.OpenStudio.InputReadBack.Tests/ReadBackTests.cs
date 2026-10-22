@@ -42,7 +42,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         /// </summary>
         private static List<ReportItem> Unexplained(OsReport report)
         {
-            return report.NonPass.Where(x => !(x.Outcome == "MappingDifference" && x.Quantity == "3a" && x.Key.Contains(".internal"))).ToList();
+            return report.NonPass.Where(x => !(x.Outcome == "MappingDifference" && x.Quantity == "3a")).ToList();
         }
 
         private static readonly string[] LightingRows = { "lighting.returnAir", "lighting.radiantTotal", "lighting.visible", "lighting.radiant", "lighting.convective" };
@@ -295,81 +295,178 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                 Assert.That(report.Consistency, Is.Empty, report.FixtureId + ": " + string.Join(" | ", report.Consistency));
                 Assert.That(report.FixtureCriteria, Is.Empty, report.FixtureId);
                 Assert.That(Unexplained(report), Is.Empty, report.FixtureId + ": " + string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
-                Assert.That(report.Status, Is.EqualTo(GateStatus.NotPassAcceptedLimitation.ToString()), report.FixtureId + ": the accepted optics limitation, never PASS");
-                Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.AcceptedLimitation));
-                Assert.That(report.OwnerDecisionsNamed, Is.Empty, report.FixtureId + ": " + string.Join(" | ", report.OwnerDecisionsNamed));
-                Assert.That(report.NonPass.All(x => x.Status == GateStatus.NotPassAcceptedLimitation.ToString() && x.Reason.Contains(OwnerDecisions.SingleSidedOpaqueReference)), Is.True, report.FixtureId);
-                Assert.That(report.Supporting.Single(x => x.StartsWith(OsComparison.SingleSidedOpaque + ":", StringComparison.Ordinal)), Does.Contain("accepted by the owner for this fixture's reviewed bytes only"));
+                Assert.That(report.Status, Is.EqualTo(GateStatus.BlockedOwnerDecision.ToString()), report.FixtureId + ": never PASS while the named differences are not accepted (revision 7's acceptance is removed)");
+                Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner));
+                Assert.That(report.NonPass.All(x => x.Outcome == "MappingDifference" && x.Status == GateStatus.BlockedOwnerDecision.ToString()), Is.True, report.FixtureId);
+                Assert.That(report.Supporting.Single(x => x.StartsWith(OsComparison.SingleSidedOpaque + ":", StringComparison.Ordinal)), Does.Contain("on faces EnergyPlus does not use").And.Contain("Every used face"));
+                Assert.That(report.Unsupported, Is.Empty, report.FixtureId);
                 Assert.That(report.Series.All(x => x.Count == 8760), Is.True, "every hourly series covers the year");
             }
+        }
 
-            Assert.That(box.NonPass.Count, Is.EqualTo(69));
-            Assert.That(two.NonPass.Count, Is.EqualTo(138));
+        // ---- opaque face optics (revision 8) -------------------------------------------------------------------------
+
+        private static readonly string[] Optics = { "SolarReflectance", "LightReflectance", "Emissivity" };
+
+        /// <summary>
+        /// Each panel side's zone-face rows, derived here from the frozen fixture alone: SAM lists a construction inside →
+        /// outside from its first space in GetSpaces() order, so a side's innermost layer is SAM's first layer on the
+        /// first space's side (its internal face) and SAM's last layer on the other side (its external face).
+        /// </summary>
+        private static List<string> ZoneFaceKeys(string fixtureId)
+        {
+            AnalyticalModel model = TestSupport.Load(fixtureId);
+            AdjacencyCluster cluster = model.AdjacencyCluster;
+            List<Space> spaces = cluster.GetSpaces();
+            List<string> result = new List<string>();
+            foreach (Panel panel in cluster.GetPanels())
+            {
+                List<Space> related = cluster.GetRelatedObjects<Space>(panel).OrderBy(x => spaces.FindIndex(s => s.Guid == x.Guid)).ToList();
+                int count = panel.Construction.ConstructionLayers.Count;
+                for (int i = 0; i < related.Count; i++)
+                {
+                    string face = i == 0 ? "internal" : "external";
+                    result.AddRange(Optics.Select(x => "panel:" + panel.Guid.ToString("D") + "@space:" + related[i].Guid.ToString("D") + "#layer" + count + "." + face + x));
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>Every 3a result of a run, recomputed in this process from the run's frozen model and the fresh-process snapshot.</summary>
+        private static Dictionary<string, QuantityResult> LayerResults(string run, string fixtureId)
+        {
+            AnalyticalModel model = Core.Convert.ToSAM<AnalyticalModel>(Path.Combine(run, "frozen-model.json")).Single();
+            NativeSnapshot snapshot = NativeSnapshot.Load(Path.Combine(run, "native.json"));
+            OsComparison comparison = OsComparison.Run(model, snapshot, Path.Combine(run, "weather.epw"), fixtureId, GateRuleSet.Approved);
+            return comparison.Results.Where(x => x.Definition?.Id == "3a").ToDictionary(x => x.Input.ObjectKey, x => x);
         }
 
         /// <summary>
-        /// The optics acceptance is bound to the reviewed fixture bytes, their id and the approved rules. The unchanged box
-        /// run compared as another fixture id, or under the provisional rules, and the box with any change to its model, get
-        /// no acceptance: BLOCKED owner, exit 12, with the optics decision named.
+        /// Revision 8: every face whose optics EnergyPlus uses is now the authored one. Box: 6 zone faces; two-zone: 12 (zone
+        /// A sees SAM's internal faces, zone B the partition's external Timber face). The rows the writer could not write
+        /// before (18 / 33) all pass, and every remaining non-PASS row is on a face EnergyPlus does not use.
         /// </summary>
-        [TestCase("other-fixture-id", TestSupport.Two, "approved")]
-        [TestCase("unknown-fixture-id", "s08-fix-box-copy", "approved")]
-        [TestCase("provisional-rules", TestSupport.Box, "provisional")]
-        public void TheOpticsAcceptance_NeedsTheReviewedFixtureIdAndApprovedRules(string what, string fixtureId, string ruleSet)
+        [TestCase(TestSupport.Box, 18)]
+        [TestCase(TestSupport.Two, 36)]
+        public void EveryUsedZoneFace_HoldsTheAuthoredFace(string fixtureId, int rows)
         {
-            string output = TestSupport.NewDirectory("acceptance-" + what);
-            int exit = TestSupport.Cli(out string text, "compare", "--run", boxRun, "--fixture-id", fixtureId, "--rule-set", ruleSet, "--out", output);
-            Assert.That(exit, Is.EqualTo(ReadBackExit.BlockedOwner), what + ": " + text);
-            OsReport report = OsReport.Load(Path.Combine(output, "report.json"));
-            Assert.That(report.NonPass.Count, Is.EqualTo(box.NonPass.Count), what);
-            Assert.That(report.NonPass.All(x => x.Status == GateStatus.BlockedOwnerDecision.ToString()), Is.True, what);
-            Assert.That(report.OwnerDecisionsNamed, Is.Not.Empty, what);
-            Assert.That(report.Supporting.Single(x => x.StartsWith(OsComparison.SingleSidedOpaque + ":", StringComparison.Ordinal)), Does.EndWith("an owner decision (accept, or require a writer change)."));
+            List<string> keys = ZoneFaceKeys(fixtureId);
+            Assert.That(keys.Count, Is.EqualTo(rows));
+            Dictionary<string, QuantityResult> results = LayerResults(fixtureId == TestSupport.Box ? boxRun : twoRun, fixtureId);
+            foreach (string key in keys)
+            {
+                Assert.That(results.ContainsKey(key), Is.True, key);
+                Assert.That(results[key].IsPass, Is.True, key + ": " + results[key].Outcome + " " + results[key].Reason);
+                Assert.That(results[key].Input.Listing, Is.EqualTo(ContractListing.None), key + ": a used face is never a listed difference");
+            }
+
+            OsReport report = fixtureId == TestSupport.Box ? box : two;
+            Assert.That(report.NonPass.Select(x => x.Key).Intersect(keys), Is.Empty);
         }
 
-        [Test]
-        public void TheOpticsAcceptance_DoesNotApplyToAChangedModel()
+        /// <summary>A copy of a fixture run whose IDF is changed by <paramref name="mutate"/>, read and compared fresh.</summary>
+        private static OsReport MutatedIdf(string source, string fixtureId, string label, Func<string, AnalyticalModel, string> mutate)
         {
-            AnalyticalModel model = TestSupport.Load(TestSupport.Box);
-            TestSupport.ChangeCondition(model, TestSupport.BoxSpace, ic => ic.SetValue(InternalConditionParameter.LightingRadiantProportion, 0.37));
-            OsReport report = TestSupport.Pipeline(TestSupport.Write(model, "box-resaved"), TestSupport.Box, "box-resaved", out string _);
-            Assert.That(report.Inputs["modelSha256"], Is.Not.EqualTo(TestSupport.BoxSha256), "the same intent in other bytes");
-            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), report.Status);
-            Assert.That(report.CountByOutcome, Is.EqualTo(box.CountByOutcome));
-            Assert.That(report.NonPass.All(x => x.Status == GateStatus.BlockedOwnerDecision.ToString()), Is.True);
-        }
-
-        /// <summary>
-        /// The acceptance never hides a wrong optical value. A Plasterboard Solar Absorptance changed in the IDF fails its
-        /// external-face rows (FAIL, exit 10) while the internal-face rows keep their accepted limitation.
-        /// </summary>
-        [Test]
-        public void AWrongOpaqueOpticalValue_StillFails_UnderTheAcceptance()
-        {
-            string run = TestSupport.NewDirectory("box-plasterboard-absorptance");
+            string run = TestSupport.NewDirectory(label);
             Directory.CreateDirectory(run);
             foreach (string file in new[] { "frozen-model.json", "weather.epw", "model.osm", "in.idf", "export.json" })
             {
-                File.Copy(Path.Combine(boxRun, file), Path.Combine(run, file));
+                File.Copy(Path.Combine(source, file), Path.Combine(run, file));
             }
 
             string idfPath = Path.Combine(run, "in.idf");
             string idf = File.ReadAllText(idfPath);
-            IdfObject plasterboard = IdfText.Parse(idf).First(x => x.Type == "Material" && x.Name.Contains("Plasterboard"));
-            string mutated = Cli.Negative.SetField(idf, "Material", plasterboard.Name, "Solar Absorptance", "0.5");
+            string mutated = mutate(idf, TestSupport.Load(fixtureId));
             Assert.That(mutated, Is.Not.EqualTo(idf), "the mutation applied");
             File.WriteAllText(idfPath, mutated);
             ExportManifest manifest = ExportManifest.Load(Path.Combine(run, "export.json"));
-            manifest.Mutation = "test: Plasterboard Solar Absorptance 0.5";
+            manifest.Mutation = "test: " + label;
             manifest.IdfSha256 = Hashing.Sha256(idfPath);
             manifest.Save(Path.Combine(run, "export.json"));
+            return TestSupport.ReadAndCompare(run, fixtureId);
+        }
 
-            OsReport report = TestSupport.ReadAndCompare(run, TestSupport.Box);
+        /// <summary>
+        /// Swapped-face regression: each zone-face variant given its material's external-face optics, which is what the
+        /// writer wrote before revision 8 (and what a selector choosing the wrong face would write). The external values
+        /// come from the frozen model, never from the writer. Exactly the zone-face rows SAM needs internal FAIL.
+        /// </summary>
+        [TestCase(TestSupport.Box, 18)]
+        [TestCase(TestSupport.Two, 33)]
+        public void ASwappedZoneFace_Fails_OnExactlyTheZoneFaceRows(string fixtureId, int failingRows)
+        {
+            OsReport report = MutatedIdf(fixtureId == TestSupport.Box ? boxRun : twoRun, fixtureId, "swapped-zone-face-" + fixtureId, (idf, model) =>
+            {
+                foreach (IdfObject variant in IdfText.Parse(idf).Where(x => x.Type == "Material" && x.Name.Contains("_Internal")))
+                {
+                    Core.OpaqueMaterial material = model.MaterialLibrary.GetMaterials().OfType<Core.OpaqueMaterial>().Single(x => variant.Name.Contains("_" + x.Name + "_"));
+                    material.TryGetValue(OpaqueMaterialParameter.ExternalEmissivity, out double emissivity);
+                    material.TryGetValue(OpaqueMaterialParameter.ExternalSolarReflectance, out double solar);
+                    material.TryGetValue(OpaqueMaterialParameter.ExternalLightReflectance, out double light);
+                    idf = Cli.Negative.SetField(idf, "Material", variant.Name, "Thermal Absorptance", emissivity.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                    idf = Cli.Negative.SetField(idf, "Material", variant.Name, "Solar Absorptance", (1 - solar).ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                    idf = Cli.Negative.SetField(idf, "Material", variant.Name, "Visible Absorptance", (1 - light).ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                }
+
+                return idf;
+            });
+
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), report.Status);
+            List<ReportItem> failed = report.NonPass.Where(x => x.Status == GateStatus.Fail.ToString()).ToList();
+            List<string> zoneFaces = ZoneFaceKeys(fixtureId);
+            Assert.That(failed.Count, Is.EqualTo(failingRows), string.Join(" | ", failed.Select(x => x.Key)));
+            Assert.That(failed.All(x => x.Quantity == "3a" && zoneFaces.Contains(x.Key) && x.Key.Contains(".internal")), Is.True, string.Join(" | ", failed.Select(x => x.Key + " " + x.Reason)));
+            Assert.That(report.Consistency, Is.Empty);
+        }
+
+        /// <summary>A wrong opaque optical value that is neither authored face is never explained as the single-sided difference.</summary>
+        [Test]
+        public void AWrongOpaqueOpticalValue_Fails()
+        {
+            OsReport report = MutatedIdf(boxRun, TestSupport.Box, "box-plasterboard-absorptance", (idf, model) =>
+            {
+                IdfObject plasterboard = IdfText.Parse(idf).First(x => x.Type == "Material" && x.Name.Contains("Plasterboard"));
+                return Cli.Negative.SetField(idf, "Material", plasterboard.Name, "Solar Absorptance", "0.5");
+            });
+
             Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), report.Status);
             List<ReportItem> failed = report.NonPass.Where(x => x.Status == GateStatus.Fail.ToString()).ToList();
             Assert.That(failed, Is.Not.Empty);
-            Assert.That(failed.All(x => x.Quantity == "3a" && x.Key.Contains(".external")), Is.True, string.Join(" | ", failed.Select(x => x.Key + " " + x.Reason)));
-            Assert.That(report.NonPass.Where(x => x.Status != GateStatus.Fail.ToString()).All(x => x.Status == GateStatus.NotPassAcceptedLimitation.ToString()), Is.True, "the internal-face rows keep their accepted limitation");
+            Assert.That(failed.All(x => x.Quantity == "3a" && x.Key.Contains("SolarReflectance")), Is.True, string.Join(" | ", failed.Select(x => x.Key + " " + x.Reason)));
+        }
+
+        /// <summary>The box with its ground floor built as one Screed layer (faces differ): only the zone face is used, so the writer uses the internal face and S09 compares it exactly.</summary>
+        [Test]
+        public void ASingleLayerGroundFloor_UsesItsZoneFace()
+        {
+            OsReport report = BoxWithSingleLayer(PanelType.SlabOnGrade, "FIX_Screed", 0.065, "box-single-floor", out string run);
+            Assert.That(report.Inputs["writerDiagnostics"], Does.Not.Contain("SAM-OS-MAT-003"));
+            Assert.That(report.Unsupported, Is.Empty, string.Join(" | ", report.Unsupported));
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), report.Status);
+            Assert.That(report.NonPass.All(x => x.Outcome == "MappingDifference"), Is.True, string.Join(" | ", report.NonPass.Where(x => x.Outcome != "MappingDifference").Select(x => x.Key + " " + x.Reason)));
+        }
+
+        /// <summary>The box with its roof built as one Plasterboard layer (faces differ): the writer refuses it (SAM-OS-MAT-003) and S09 names it as unsupported; never PASS.</summary>
+        [Test]
+        public void ASingleLayerOutdoorRoof_IsRefused_AndNamedUnsupported()
+        {
+            OsReport report = BoxWithSingleLayer(PanelType.Roof, "FIX_Plasterboard", 0.015, "box-single-roof", out string run);
+            Assert.That(report.Inputs["writerDiagnostics"], Does.Contain("Error SAM-OS-MAT-003"));
+            Assert.That(report.Unsupported.Count(x => x.StartsWith("optics: ", StringComparison.Ordinal) && x.Contains("single-layer construction")), Is.EqualTo(1), string.Join(" | ", report.Unsupported));
+            Assert.That(report.ExitCode, Is.AnyOf(ReadBackExit.Fail, ReadBackExit.BlockedTechnical), report.Status);
+        }
+
+        private static OsReport BoxWithSingleLayer(PanelType panelType, string materialName, double thickness, string label, out string run)
+        {
+            AnalyticalModel model = TestSupport.Load(TestSupport.Box);
+            Construction construction = new Construction(Guid.NewGuid(), "S09_SINGLE_" + materialName, new List<ConstructionLayer> { new ConstructionLayer(materialName, thickness) });
+            AdjacencyCluster cluster = model.AdjacencyCluster;
+            Panel panel = cluster.GetPanels().Single(x => x.PanelType == panelType);
+            Assert.That(cluster.AddObject(Analytical.Create.Panel(panel, construction)), Is.True);
+            model = new AnalyticalModel(model, cluster);
+            Assert.That(model.AdjacencyCluster.GetPanels().Single(x => x.Guid == panel.Guid).Construction.Name, Is.EqualTo(construction.Name), "the panel carries the single-layer construction");
+            return TestSupport.Pipeline(TestSupport.Write(model, label), TestSupport.Box, label, out run);
         }
 
         [Test]
@@ -456,7 +553,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             string run = TestSupport.NewDirectory(caseId);
             Assert.That(TestSupport.Cli(out string output, "negative", "--run", source, "--case", caseId, "--out", run), Is.EqualTo(0), output);
             OsReport report = TestSupport.ReadAndCompare(run, fixture);
-            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), caseId + ": " + report.Status + " " + string.Join(" | ", report.NonPass.Where(x => x.Status != "BlockedOwnerDecision" && x.Status != "NotPassAcceptedLimitation").Take(3).Select(x => x.Key + " " + x.Reason)));
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), caseId + ": " + report.Status + " " + string.Join(" | ", report.NonPass.Where(x => x.Status != "BlockedOwnerDecision").Take(3).Select(x => x.Key + " " + x.Reason)));
             Assert.That(report.Inputs["mutation"], Does.StartWith(caseId));
         }
 

@@ -27,6 +27,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>Unsupported material parameter (e.g. blind flag without slat geometry).</summary>
         public const string MaterialUnsupportedParameter = "SAM-OS-MAT-002";
 
+        /// <summary>Opaque face optics a construction use cannot represent: a single-layer construction on an outdoor or interzone surface whose two faces need different optical values (EnergyPlus materials are single-sided).</summary>
+        public const string MaterialFaceOpticsUnrepresentable = "SAM-OS-MAT-003";
+
         /// <summary>Missing construction layer.</summary>
         public const string ConstructionMissingLayer = "SAM-OS-CON-001";
 

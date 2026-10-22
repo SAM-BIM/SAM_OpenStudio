@@ -171,6 +171,24 @@ namespace SAM.Analytical.OpenStudio
             return double.NaN;
         }
 
+        /// <summary>
+        /// The opaque optical properties whose SAM faces differ on a single-layer construction. Its one
+        /// material is then both the zone face (internal values) and the outer face (external values), which
+        /// a single-sided EnergyPlus material cannot hold. Empty for multi-layer constructions, non-opaque
+        /// layers and agreeing faces.
+        /// </summary>
+        internal static List<string> SingleLayerDivergentFaceOptics(Construction construction, MaterialLibrary materialLibrary)
+        {
+            List<ConstructionLayer> constructionLayers = construction?.ConstructionLayers?.FindAll(x => x != null);
+            if (constructionLayers == null || constructionLayers.Count != 1 || materialLibrary == null)
+            {
+                return new List<string>();
+            }
+
+            OpaqueMaterial opaqueMaterial = materialLibrary.GetMaterial(constructionLayers[0].Name) as OpaqueMaterial;
+            return opaqueMaterial == null ? new List<string>() : DivergentInternalOptics(opaqueMaterial);
+        }
+
         private static global::OpenStudio.Construction ToOpenStudio_Construction(SAMObject sAMObject, List<ConstructionLayer> constructionLayers, bool forward, string variant, OpenStudioMaterialUsage openStudioMaterialUsage, OpenStudioConversionContext openStudioConversionContext)
         {
             string direction = forward ? "Forward" : "Reverse";
@@ -197,6 +215,10 @@ namespace SAM.Analytical.OpenStudio
                 return null;
             }
 
+            // The face role follows SAM's own layer order, never the EnergyPlus position: SAM's first
+            // (innermost) layer faces the first space, so it carries the internal-face optics in both the
+            // forward and the reverse construction, which therefore share the same material objects.
+            ConstructionLayer firstLayer = constructionLayers.Find(x => x != null);
             List<ConstructionLayer> orderedLayers = new List<ConstructionLayer>(constructionLayers);
             if (forward)
             {
@@ -210,6 +232,8 @@ namespace SAM.Analytical.OpenStudio
                 {
                     continue;
                 }
+
+                bool internalFace = openStudioMaterialUsage == OpenStudioMaterialUsage.OpaqueConstruction && ReferenceEquals(constructionLayer, firstLayer);
 
                 IMaterial material = materialLibrary.GetMaterial(constructionLayer.Name);
                 if (material == null)
@@ -235,7 +259,7 @@ namespace SAM.Analytical.OpenStudio
                     }
                 }
 
-                global::OpenStudio.Material openStudioMaterial = material.ToOpenStudio(thickness, openStudioConversionContext, openStudioMaterialUsage);
+                global::OpenStudio.Material openStudioMaterial = ToOpenStudio_Layer(material, thickness, openStudioConversionContext, openStudioMaterialUsage, internalFace);
                 if (openStudioMaterial == null)
                 {
                     return null;

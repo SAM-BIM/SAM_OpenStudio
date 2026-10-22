@@ -71,17 +71,13 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         private AnalyticalModel model;
         private bool calendarVerified;
 
-        /// <param name="modelSha256">
-        /// The SHA-256 of the frozen model bytes, as the compare step verified it. Owner acceptances (<see cref="OwnerDecisions"/>)
-        /// apply only when it and the fixture id are a reviewed fixture's; null applies none.
-        /// </param>
-        public static OsComparison Run(AnalyticalModel model, NativeSnapshot snapshot, string epwPath, string fixtureId, GateRuleSet ruleSet, string modelSha256 = null)
+        public static OsComparison Run(AnalyticalModel model, NativeSnapshot snapshot, string epwPath, string fixtureId, GateRuleSet ruleSet)
         {
             OsComparison result = new OsComparison { FixtureId = fixtureId, RuleSet = ruleSet, model = model, native = new NativeModel(snapshot) };
             ExpectedModel expected = ReadBackExpected.Build(model, null, fixtureId);
             result.FixtureCriteria.AddRange(expected.FixtureCriteria);
             result.Required = RequiredFromModel(expected);
-            result.Configuration = new GateConfiguration { RuleSet = ruleSet, RequiredComparisons = result.Required, Acceptances = OwnerDecisions.For(fixtureId, modelSha256, ruleSet) };
+            result.Configuration = new GateConfiguration { RuleSet = ruleSet, RequiredComparisons = result.Required };
 
             result.Calendar(epwPath);
             result.Orientation();
@@ -101,10 +97,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             int singleSided = result.Results.Count(x => x.Input.Listing == ContractListing.MappingDifference);
             if (singleSided > 0)
             {
-                string decision = result.Configuration.Acceptances.Count > 0
-                    ? "accepted by the owner for this fixture's reviewed bytes only (" + OwnerDecisions.SingleSidedOpaqueReference + "): NOT PASS, accepted limitation (rank 5), never PASS."
-                    : "an owner decision (accept, or require a writer change).";
-                result.Supporting.Add(SingleSidedOpaque + ": " + singleSided + " internal-side opaque optical row(s) differ from SAM because EnergyPlus opaque materials are single-sided and the writer writes the external value (SAM-OS-MAT-002). Listed as MAPPING-DIFFERENCE by S09 from the writer's documented behaviour, not by S07: " + decision);
+                result.Supporting.Add(SingleSidedOpaque + ": " + singleSided + " opaque optical row(s) on faces EnergyPlus does not use (buried layer faces, the outside face of interzone, ground and adiabatic sides) hold the layer's other authored face, because EnergyPlus opaque materials are single-sided. Every used face (each innermost layer's zone face, each outdoor outermost face) is compared exactly. Listed as MAPPING-DIFFERENCE by S09, not by S07: an owner decision (accept, or an S07 3a scope decision).");
             }
 
             result.Gate = EQ.Gate(result.Results, result.Configuration);
@@ -474,7 +467,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             bool firstSide = panel.SpaceOrder.Count == 0 || panel.SpaceOrder[0] == space.Guid;
             List<ExpectedLayer> expectedLayers = firstSide ? Enumerable.Reverse(panel.Layers).ToList() : panel.Layers.ToList();
             List<IdfObject> nativeLayers = LayersOf(surface?.Object.Value(2, "Construction Name", out string _), side, surface != null);
-            CompareLayers(side, expectedLayers, nativeLayers, identity, false, firstSide);
+            CompareLayers(side, expectedLayers, nativeLayers, identity, false, firstSide, kind);
+            SingleLayerFaces(side, expectedLayers, kind);
 
             HeatFlowDirection direction = DirectionOf(panel, firstSide);
             string uId = kind == ElementKind.GroundOrAdiabatic ? "3b.ground" : "3b";
@@ -516,7 +510,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             return result;
         }
 
-        private void CompareLayers(string key, List<ExpectedLayer> expected, List<IdfObject> nativeLayers, IdentityStatus identity, bool transparent, bool frontIsExternal)
+        private void CompareLayers(string key, List<ExpectedLayer> expected, List<IdfObject> nativeLayers, IdentityStatus identity, bool transparent, bool frontIsExternal, ElementKind kind)
         {
             int count = Math.Max(expected.Count, nativeLayers?.Count ?? 0);
             for (int k = 0; k < count; k++)
@@ -529,12 +523,16 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                     ExpectedValue e = layer == null ? ExpectedValue.Unspecified("SAM states no layer " + (k + 1)) : ExpectedLayerValue(layer, property);
                     ReaderResult n = NativeLayerValue(nativeLayer, property, frontIsExternal);
                     ContractListing listing = ContractListing.None;
-                    if (!transparent && layer != null && property.StartsWith("internal", StringComparison.Ordinal))
+                    if (!transparent && layer != null && TryGetOpaqueFace(property, out bool internalFace, out string otherFace)
+                        && !IsExposedOpaqueFace(k, expected.Count, internalFace, frontIsExternal, kind))
                     {
-                        // EnergyPlus opaque materials have one value per property for both faces; the writer writes the
-                        // external one (SAM-OS-MAT-002). A different authored internal value is that named difference.
-                        ExpectedValue external = ExpectedLayerValue(layer, "external" + property.Substring("internal".Length));
-                        if (e.State == SamInputState.Value && external.State == SamInputState.Value && e.Value != external.Value)
+                        // EnergyPlus opaque materials hold one value per property for both faces, and only the
+                        // outermost layer's outside face (outdoors) and the innermost layer's zone face are used. On
+                        // any other face a different authored value is the named single-sided difference, but only
+                        // while the native value is this layer's other authored face: anything else is not explained.
+                        ExpectedValue other = ExpectedLayerValue(layer, otherFace);
+                        if (e.State == SamInputState.Value && other.State == SamInputState.Value && e.Value != other.Value && n.HasNumber
+                            && EQ.Compare(other.Value, n.Value, QuantityCatalog.Get("3a").Tolerance).IsWithin)
                         {
                             listing = ContractListing.MappingDifference;
                         }
@@ -542,6 +540,72 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
 
                     Results.Add(EQ.Evaluate(Input(transparent ? "3c.layer" : "3a", layerKey, e, n, identity, AlignmentStatus.Unverified, listing), Configuration));
                 }
+            }
+        }
+
+        /// <summary>The SAM face of an opaque optical layer property (<c>internal*</c> / <c>external*</c>) and the same property's other face.</summary>
+        private static bool TryGetOpaqueFace(string property, out bool internalFace, out string otherFace)
+        {
+            internalFace = property.StartsWith("internal", StringComparison.Ordinal);
+            if (internalFace)
+            {
+                otherFace = "external" + property.Substring("internal".Length);
+                return true;
+            }
+
+            if (property.StartsWith("external", StringComparison.Ordinal))
+            {
+                otherFace = "internal" + property.Substring("external".Length);
+                return true;
+            }
+
+            otherFace = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Whether SAM face <paramref name="internalFace"/> of the layer at EnergyPlus position <paramref name="index"/>
+        /// (outside first, of <paramref name="count"/>) is a face whose optics EnergyPlus uses on this side, derived
+        /// from SAM and the side alone (S07 section 1; EnergyPlus 25.1 I/O Reference, Material, Construction):
+        /// - the innermost layer's zone face. SAM lists layers inside → outside from its first space, so on the first
+        ///   space's side the zone face is SAM's internal face, and on the second space's side SAM's external face;
+        /// - the outermost layer's outside face, only on an outdoor surface (an interzone outside face is the other
+        ///   side's zone face, compared there; ground and adiabatic outside faces have no optics), which on the first
+        ///   (only) side of an outdoor surface is SAM's external face.
+        /// </summary>
+        private static bool IsExposedOpaqueFace(int index, int count, bool internalFace, bool firstSide, ElementKind kind)
+        {
+            bool zoneFace = index == count - 1 && internalFace == firstSide;
+            bool outdoorFace = index == 0 && kind == ElementKind.External && internalFace != firstSide;
+            return zoneFace || outdoorFace;
+        }
+
+        /// <summary>
+        /// A single-layer opaque construction whose SAM faces differ on an outdoor or interzone side: both faces are
+        /// used and one single-sided EnergyPlus material cannot hold both value sets. Named as unsupported (BLOCKED
+        /// technical, never PASS); ground and adiabatic sides use only the zone face and are compared as usual.
+        /// </summary>
+        private void SingleLayerFaces(string side, List<ExpectedLayer> expected, ElementKind kind)
+        {
+            if (expected.Count != 1 || kind == ElementKind.GroundOrAdiabatic || !(expected[0].Material is OpaqueMaterial))
+            {
+                return;
+            }
+
+            List<string> differing = new List<string>();
+            foreach (string property in new[] { "SolarReflectance", "LightReflectance", "Emissivity" })
+            {
+                ExpectedValue external = ExpectedLayerValue(expected[0], "external" + property);
+                ExpectedValue internalValue = ExpectedLayerValue(expected[0], "internal" + property);
+                if (external.State == SamInputState.Value && internalValue.State == SamInputState.Value && external.Value != internalValue.Value)
+                {
+                    differing.Add(property);
+                }
+            }
+
+            if (differing.Count > 0)
+            {
+                Unsupported.Add("optics: " + side + ": single-layer construction '" + expected[0].Name + "' needs different " + string.Join(", ", differing) + " on its two used faces; one single-sided EnergyPlus material cannot hold both");
             }
         }
 
@@ -748,7 +812,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
 
             List<ExpectedLayer> expectedLayers = firstSide ? Enumerable.Reverse(aperture.PaneLayers).ToList() : aperture.PaneLayers.ToList();
             List<IdfObject> nativeLayers = LayersOf(sub?.Value(2, "Construction Name", out string _), key, sub != null);
-            CompareLayers(key, expectedLayers, nativeLayers, identity, true, firstSide);
+            CompareLayers(key, expectedLayers, nativeLayers, identity, true, firstSide, ElementKind.External);
             Add("3c.U", key + ".U", EQ.ExpectedGlazingU(expectedLayers.Select(x => LayerResistance.Solid(x.Thickness, (x.Material as Core.Material)?.ThermalConductivity ?? double.NaN))), NativeU(nativeLayers, HeatFlowDirection.Horizontal, ElementKind.External), identity);
         }
 

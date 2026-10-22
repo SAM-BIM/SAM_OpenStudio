@@ -338,9 +338,9 @@ diagnostic code and/or note recorded in the manifest.
 | `OpaqueMaterialParameter.ExternalLightReflectance` | 0-1 | OS:Material Visible Absorptance = 1 - reflectance | Native | MVP | - |
 | `OpaqueMaterialParameter.ExternalSolarReflectance` | 0-1 | OS:Material Solar Absorptance = 1 - reflectance | Native | MVP | - |
 | `OpaqueMaterialParameter.IgnoreThermalTransmittanceCalculations` | - | - | NA | C0 | TAS calculation flag. |
-| `OpaqueMaterialParameter.InternalEmissivity` | 0-1 | same single-sided OS:Material fields as External* | Approximated | C3 | SAM-OS-MAT-002 info when Internal differs from External; EnergyPlus opaque materials are single-sided |
-| `OpaqueMaterialParameter.InternalLightReflectance` | 0-1 | single-sided OS:Material | Approximated | C3 | - |
-| `OpaqueMaterialParameter.InternalSolarReflectance` | 0-1 | single-sided OS:Material | Approximated | C3 | - |
+| `OpaqueMaterialParameter.InternalEmissivity` | 0-1 | OS:Material Thermal Absorptance of the zone-face (_Internal) variant of SAM's first layer | Derived | C3 | SAM's first (innermost) opaque layer is the zone face of the first space and of every single-sided surface; when its Internal* optics differ from External*, an internal-face variant carries them in both construction directions. SAM-OS-MAT-003 error for a single-layer outdoor or interzone construction whose faces differ; SAM-OS-MAT-002 info for an opaque door pane (external values govern both faces) |
+| `OpaqueMaterialParameter.InternalLightReflectance` | 0-1 | OS:Material Visible Absorptance = 1 - reflectance of the zone-face (_Internal) variant | Derived | C3 | as InternalEmissivity; unstated Internal* takes the External* value on the variant |
+| `OpaqueMaterialParameter.InternalSolarReflectance` | 0-1 | OS:Material Solar Absorptance = 1 - reflectance of the zone-face (_Internal) variant | Derived | C3 | as InternalEmissivity; unstated Internal* takes the External* value on the variant |
 
 ### Transparent material parameters (`SAM.Analytical.TransparentMaterialParameter`)
 
@@ -511,7 +511,7 @@ that behavioural semantics — not just parameter slots — are classified.
 
 ## Counts at C0 (before implementation)
 
-Generated from the manifest: 293 entries — Native 135, Derived 28, Approximated 21,
+Generated from the manifest: 293 entries — Native 135, Derived 31, Approximated 18,
 Unsupported 24, Deferred 20, NA 65. Milestones: MVP 90, C1 3, C2 37, C3 23, C4 26, C5 36,
 classification-only (C0) 78.
 

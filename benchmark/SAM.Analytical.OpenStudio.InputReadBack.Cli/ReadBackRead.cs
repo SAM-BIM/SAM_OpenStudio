@@ -65,8 +65,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Cli
             }
 
             AnalyticalModel model = Core.Convert.ToSAM<AnalyticalModel>(modelPath)?.FirstOrDefault();
-            // The model hash is verified against the run's frozen model above, so an acceptance is bound to those bytes.
-            OsComparison comparison = OsComparison.Run(model, snapshot, epwPath, fixtureId, ruleSet, manifest.ModelSha256);
+            OsComparison comparison = OsComparison.Run(model, snapshot, epwPath, fixtureId, ruleSet);
             Dictionary<string, string> inputs = new Dictionary<string, string>
             {
                 ["label"] = manifest.Label,

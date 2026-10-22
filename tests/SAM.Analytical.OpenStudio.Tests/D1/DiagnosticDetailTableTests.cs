@@ -227,7 +227,13 @@ namespace SAM.Analytical.OpenStudio.Tests
             brick.SetValue(OpaqueMaterialParameter.InternalEmissivity, 0.4);
             materialLibrary.Add(brick);
 
-            using (OpenStudioConversionResult result = DeclaredDiagnosticsTests.SingleBoxModel(materialLibrary).ToOpenStudio())
+            // Since revision 8 an opaque construction places an internal-face variant on the zone face, so the
+            // single-sided approximation line is raised only by an opaque pane of a fenestration construction
+            // (a solid door), whose external values still govern both faces.
+            ApertureConstruction door = new ApertureConstruction(new Guid("22222222-4444-4444-4444-444444444444"), "Fixture Solid Door", ApertureType.Door, new List<ConstructionLayer> { new ConstructionLayer("Brick", 0.05) });
+            Action<Panel> addDoor = panel => panel.AddAperture(SAM.Analytical.Create.Aperture(door, new Geometry.Spatial.Face3D(new Geometry.Spatial.Polygon3D(new[] { new Geometry.Spatial.Point3D(1, 0, 0.2), new Geometry.Spatial.Point3D(2, 0, 0.2), new Geometry.Spatial.Point3D(2, 0, 2.2), new Geometry.Spatial.Point3D(1, 0, 2.2) }))));
+
+            using (OpenStudioConversionResult result = DeclaredDiagnosticsTests.SingleBoxModel(materialLibrary, null, addDoor).ToOpenStudio())
             {
                 List<Core.OpenStudio.OpenStudioDiagnostic> information = Information(result).Where(x => x.Code == MAT_PARAM).ToList();
 

@@ -41,6 +41,12 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>OpenStudio material name → SAM material created for it.</summary>
         public IDictionary<string, Core.IMaterial> MaterialMap { get; } = new Dictionary<string, Core.IMaterial>();
 
+        /// <summary>
+        /// Source SAM material Guid → (first OpenStudio material name, its stamped authored face optics), so
+        /// face objects of one SAM material that disagree are reported.
+        /// </summary>
+        internal IDictionary<Guid, Tuple<string, string>> OpaqueFaceOptics { get; } = new Dictionary<Guid, Tuple<string, string>>();
+
         /// <summary>OpenStudio construction name → SAM opaque Construction created for it.</summary>
         public IDictionary<string, Construction> ConstructionMap { get; } = new Dictionary<string, Construction>();
 

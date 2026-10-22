@@ -29,5 +29,32 @@ namespace SAM.Core.OpenStudio
 
         /// <summary>Original, unsanitised SAM object name.</summary>
         public const string Name = "SAM.Name";
+
+        /// <summary>
+        /// On every opaque material written from a SAM opaque material: the source SAM material Guid,
+        /// <c>Guid.ToString("D")</c>. Unlike <see cref="Guid"/> it is written on every face object of the
+        /// material, so it never claims the object's own identity.
+        /// </summary>
+        public const string MaterialGuid = "SAM.MaterialGuid";
+
+        /// <summary>
+        /// On every opaque material written from a SAM opaque material: the SAM face whose optical values
+        /// the object's single EnergyPlus absorptance set carries, <see cref="MaterialFaceExternal"/> or
+        /// <see cref="MaterialFaceInternal"/>.
+        /// </summary>
+        public const string MaterialFace = "SAM.MaterialFace";
+
+        /// <summary><see cref="MaterialFace"/> value: the external-face values.</summary>
+        public const string MaterialFaceExternal = "External";
+
+        /// <summary><see cref="MaterialFace"/> value: the internal-face values.</summary>
+        public const string MaterialFaceInternal = "Internal";
+
+        /// <summary>
+        /// Prefix of the authored SAM opaque optical values carried on every face object of a material
+        /// (for example <c>SAM.Optic.InternalEmissivity</c>), invariant round-trip text. A value SAM does
+        /// not state is not written.
+        /// </summary>
+        public const string OpticPrefix = "SAM.Optic.";
     }
 }
