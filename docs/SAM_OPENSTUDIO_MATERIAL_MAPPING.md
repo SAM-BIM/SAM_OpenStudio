@@ -118,9 +118,19 @@ zone face. SAM stores layers inside → outside from the panel's first space in
   with a SAM Guid), also after a geometric-fallback pairing; without that stamp, from the first
   surface visited. Spaces are added in an order that puts each forward side's space first, because the
   writer takes a panel's first space from the cluster's space order. Export → import → export therefore
-  keeps every layer, thickness and used face. In a mixed (edited) model, an unstamped panel whose building
-  side is then second is re-read from its partner surface (warning SAM-OSI-APX-001): its layers are kept,
-  but a face-stamped layer material whose authored faces differ takes the new first space's face role.
+  keeps every layer, thickness and used face. A panel whose building side is then second (a mixed or edited
+  model) is re-read from its partner surface (information SAM-OSI-APX-001).
+  - **Fail closed (error SAM-OSI-CON-002).** Every imported opaque surface panel is checked against its
+    native surfaces. The checks:
+    - its first space's surface holds the SAM layers innermost first and a second side their mirror;
+    - each native StandardOpaqueMaterial layer, on both sides and in each side's direction, has the
+      thickness, conductivity, density and specific heat of the SAM layer it became (merged source names
+      alone would hide, for example, a 20 mm object on one side of a 12.5 mm wall);
+    - the absorptances the writer would put on every face EnergyPlus uses equal the native ones.
+
+    When one SAM panel cannot keep them, the import is unsuccessful (no model) instead of changing a layer
+    or a used face. Massless and air-gap layers keep their nominal-thickness import and are matched by
+    material only.
   Fenestration (glazing, gas, opaque door panes), air boundaries, non-layered constructions and
   constructions no planar surface uses keep OpenStudio's order. A construction also used by a
   subsurface or shading surface is split into an innermost-first SAM construction for the

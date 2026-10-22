@@ -267,9 +267,9 @@ namespace SAM.Analytical.OpenStudio
 
         /// <summary>
         /// Managed snapshot of an OpenStudio surface's construction, taken during the model walk (no SWIG wrapper is kept):
-        /// its space, boundary, layer names outside first and the thermal, solar and visible absorptances of its first
-        /// (outside) and last (zone) layers; null absorptances for a layer that is neither a standard nor a massless opaque
-        /// material, NaN for a value OpenStudio does not state.
+        /// its space, boundary, layer names outside first, each layer's physical signature, and the thermal, solar and visible
+        /// absorptances of its first (outside) and last (zone) layers; null absorptances for a layer that is neither a
+        /// standard nor a massless opaque material, NaN for a value OpenStudio does not state.
         /// </summary>
         private sealed class SurfaceFaces
         {
@@ -278,6 +278,13 @@ namespace SAM.Analytical.OpenStudio
             public string Boundary { get; set; }
 
             public List<string> Layers { get; set; } = new List<string>();
+
+            /// <summary>
+            /// Per layer, outside first: thickness, conductivity, density and specific heat of a StandardOpaqueMaterial (the
+            /// values a SAM-written face or thickness object of a merged source material keeps on its own), null for any other
+            /// layer kind (massless, air gap: imported at a documented nominal thickness, compared by material only).
+            /// </summary>
+            public List<double[]> Physical { get; set; } = new List<double[]>();
 
             public double[] Outside { get; set; }
 
@@ -304,6 +311,7 @@ namespace SAM.Analytical.OpenStudio
 
                 List<global::OpenStudio.Material> layers = optionalConstruction.get().layers().ToList();
                 result.Layers = layers.Select(x => x.nameString()).ToList();
+                result.Physical = layers.Select(Physical).ToList();
                 if (layers.Count > 0)
                 {
                     result.Outside = Absorptances(layers[0]);
@@ -316,6 +324,18 @@ namespace SAM.Analytical.OpenStudio
             {
                 return null;
             }
+        }
+
+        private static double[] Physical(global::OpenStudio.Material material)
+        {
+            global::OpenStudio.OptionalStandardOpaqueMaterial optionalStandardOpaqueMaterial = material.to_StandardOpaqueMaterial();
+            if (optionalStandardOpaqueMaterial == null || optionalStandardOpaqueMaterial.isNull())
+            {
+                return null;
+            }
+
+            global::OpenStudio.StandardOpaqueMaterial standardOpaqueMaterial = optionalStandardOpaqueMaterial.get();
+            return new[] { standardOpaqueMaterial.thickness(), standardOpaqueMaterial.thermalConductivity(), standardOpaqueMaterial.density(), standardOpaqueMaterial.specificHeat() };
         }
 
         private static double[] Absorptances(global::OpenStudio.Material material)
@@ -387,6 +407,50 @@ namespace SAM.Analytical.OpenStudio
             return result;
         }
 
+        /// <summary>
+        /// Compares one side's native layers, already in SAM order, with the panel's SAM layers: each StandardOpaqueMaterial
+        /// layer's thickness with the SAM layer thickness, and its conductivity, density and specific heat with the SAM
+        /// material's. Other layer kinds (massless, air gap) keep their documented nominal-thickness import and are matched
+        /// by material only. A count mismatch is left to the layer-name check.
+        /// </summary>
+        private static void ComparePhysical(List<string> problems, string space, List<string> nativeNames, List<double[]> native, List<ConstructionLayer> layers, Core.MaterialLibrary materialLibrary)
+        {
+            if (native == null || native.Count != layers.Count)
+            {
+                return;
+            }
+
+            string[] names = { "conductivity", "density", "specific heat" };
+            for (int i = 0; i < layers.Count; i++)
+            {
+                double[] signature = native[i];
+                if (signature == null)
+                {
+                    continue;
+                }
+
+                if (!Same(signature[0], layers[i].Thickness))
+                {
+                    problems.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, "layer {0} ('{1}') of the surface in space '{2}' is {3:R} m thick but the SAM layer is {4:R} m", i + 1, nativeNames[i], space, signature[0], layers[i].Thickness));
+                }
+
+                Core.OpaqueMaterial opaqueMaterial = materialLibrary?.GetMaterial(layers[i].Name) as Core.OpaqueMaterial;
+                if (opaqueMaterial == null)
+                {
+                    continue;
+                }
+
+                double[] sam = { opaqueMaterial.ThermalConductivity, opaqueMaterial.Density, opaqueMaterial.SpecificHeatCapacity };
+                for (int j = 0; j < sam.Length; j++)
+                {
+                    if (!Same(signature[j + 1], sam[j]))
+                    {
+                        problems.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, "layer {0} ('{1}') of the surface in space '{2}' has {3} {4:R} but the SAM material {5:R}", i + 1, nativeNames[i], space, names[j], signature[j + 1], sam[j]));
+                    }
+                }
+            }
+        }
+
         private static void CompareFace(List<string> problems, string face, double[] native, double[] written)
         {
             if (native == null || written == null)
@@ -406,7 +470,9 @@ namespace SAM.Analytical.OpenStudio
 
         /// <summary>
         /// Checks every imported opaque surface panel against the native surfaces it was read from: the layers of its first
-        /// space's surface must be its SAM layers innermost first, those of a second side their mirror, and the absorptances
+        /// space's surface must be its SAM layers innermost first, those of a second side their mirror, each native
+        /// StandardOpaqueMaterial layer's own thickness and thermal properties on both sides must be those of the SAM layer
+        /// it became (merged source names alone would hide a different-thickness object on one side), and the absorptances
         /// the writer would put on each face EnergyPlus uses (both zone faces of an interzone panel; the zone face, and the
         /// outdoor face of an outdoor surface) must equal the native ones. A mismatch, which only an edited or mixed model
         /// whose orientation or face roles cannot be established produces, is error SAM-OSI-CON-002 naming the panel and
@@ -492,6 +558,19 @@ namespace SAM.Analytical.OpenStudio
                     problems.Add(string.Format("the layers of the surface in space '{0}' are not the mirror of the first side", spaces[1]));
                 }
 
+                // Names alone are not enough: face and thickness objects of one source material merge into one SAM material,
+                // so each native layer's own thickness and thermal properties are compared with the SAM layer it became, on
+                // both sides and in each side's direction (innermost first for the first space, as stored for the second).
+                List<string> firstNames = new List<string>(first.Layers);
+                firstNames.Reverse();
+                List<double[]> firstPhysical = new List<double[]>(first.Physical);
+                firstPhysical.Reverse();
+                ComparePhysical(problems, spaces[0], firstNames, firstPhysical, layers, materialLibrary);
+                if (second != null && second.Layers.Count > 0)
+                {
+                    ComparePhysical(problems, spaces[1], second.Layers, second.Physical, layers, materialLibrary);
+                }
+
                 CompareFace(problems, string.Format("the zone face in space '{0}':", spaces[0]), first.Zone, WrittenAbsorptances(materialLibrary?.GetMaterial(samLayers[0]), true));
                 bool lastIsFirst = samLayers.Count == 1;
                 Core.IMaterial last = materialLibrary?.GetMaterial(samLayers[samLayers.Count - 1]);
@@ -507,7 +586,7 @@ namespace SAM.Analytical.OpenStudio
                 if (problems.Count > 0)
                 {
                     result = false;
-                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ConstructionFacesUnresolved, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Panel '{0}' with construction '{1}' cannot reproduce its native surfaces: {2}. The orientation or face roles of this (edited or mixed) model cannot be established, so the import is unsuccessful rather than changing a face EnergyPlus uses", panel.Name, panel.Construction.Name, string.Join("; ", problems)), (string)null, panel);
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ConstructionFacesUnresolved, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Panel '{0}' with construction '{1}' cannot reproduce its native surfaces: {2}. One SAM panel cannot represent these surfaces of this (edited or mixed) model, so the import is unsuccessful rather than changing a layer or a face EnergyPlus uses", panel.Name, panel.Construction.Name, string.Join("; ", problems)), (string)null, panel);
                 }
             }
 

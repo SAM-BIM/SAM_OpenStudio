@@ -586,6 +586,231 @@ namespace SAM.Analytical.OpenStudio.Tests
             }
         }
 
+        // ---- per-layer consistency of both sides (review of 89a2216) ---------------------------------------------------
+
+        /// <summary>
+        /// A copy of a SAM-written opaque object at another thickness: same thermal properties and absorptances, and the same
+        /// source-material and face metadata (so it merges with the original), but no SAM identity of its own.
+        /// </summary>
+        private static global::OpenStudio.StandardOpaqueMaterial CopyAt(global::OpenStudio.Model model, global::OpenStudio.StandardOpaqueMaterial original, double thickness, string name)
+        {
+            global::OpenStudio.StandardOpaqueMaterial copy = new global::OpenStudio.StandardOpaqueMaterial(model);
+            copy.setName(name);
+            copy.setThickness(thickness);
+            copy.setThermalConductivity(original.thermalConductivity());
+            copy.setDensity(original.density());
+            copy.setSpecificHeat(original.specificHeat());
+            copy.setThermalAbsorptance(original.thermalAbsorptance());
+            copy.setSolarAbsorptance(original.solarAbsorptance());
+            copy.setVisibleAbsorptance(original.visibleAbsorptance());
+            List<string> keys = new List<string> { Core.OpenStudio.OpenStudioIdentityKeys.MaterialGuid, Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace };
+            keys.AddRange(new[] { "InternalEmissivity", "ExternalEmissivity", "InternalSolarReflectance", "ExternalSolarReflectance", "InternalLightReflectance", "ExternalLightReflectance" }.Select(x => Core.OpenStudio.OpenStudioIdentityKeys.OpticPrefix + x));
+            keys.AddRange(new[] { "ThermalAbsorptance", "SolarAbsorptance", "VisibleAbsorptance" }.Select(x => Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + x));
+            foreach (string key in keys)
+            {
+                if (Core.OpenStudio.Query.TryGetSAMFeature(original, key, out string value))
+                {
+                    copy.additionalProperties().setFeature(key, value);
+                }
+            }
+
+            return copy;
+        }
+
+        private static global::OpenStudio.Construction InterzoneConstruction(global::OpenStudio.Model model, bool forward)
+        {
+            return model.getSurfaces().Where(x => x.outsideBoundaryCondition() == "Surface").Select(x => x.construction().get().to_Construction().get()).First(x => x.nameString().Contains(forward ? "_Forward" : "_Reverse"));
+        }
+
+        private static void ReplaceLayer(global::OpenStudio.Construction construction, int index, global::OpenStudio.Material material)
+        {
+            List<global::OpenStudio.Material> layers = construction.layers().ToList();
+            global::OpenStudio.MaterialVector materialVector = new global::OpenStudio.MaterialVector();
+            for (int i = 0; i < layers.Count; i++)
+            {
+                materialVector.Add(i == index ? material : layers[i]);
+            }
+
+            Assert.That(construction.setLayers(materialVector), Is.True);
+        }
+
+        private static void AssertFailsNamed(OpenStudioImportResult result, string fragment)
+        {
+            Assert.That(result.Successful, Is.False, "fail closed: no model");
+            List<Core.OpenStudio.OpenStudioDiagnostic> errors = result.Diagnostics.Where(d => d.Code == "SAM-OSI-CON-002").ToList();
+            Assert.That(errors.Count, Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+            Assert.That(errors[0].Severity, Is.EqualTo(Core.OpenStudio.OpenStudioDiagnosticSeverity.Error));
+            Assert.That(errors[0].Message, Does.Contain(fragment), errors[0].Message);
+        }
+
+        private static void AssertRoundTrips(OpenStudioConversionResult conversion, List<string> before)
+        {
+            OpenStudioImportResult result = conversion.Model.ToSAM();
+            Assert.That(result.Successful, Is.True, string.Join(" | ", result.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+            Assert.That(result.Diagnostics.Any(d => d.Code == "SAM-OSI-CON-002"), Is.False);
+            using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
+            {
+                Assert.That(reexport.IsValid, Is.True, string.Join(" | ", reexport.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                AssertSameSignatures(before, Signatures(reexport.Model));
+            }
+        }
+
+        /// <summary>
+        /// Review of 89a2216 (reproduction): the interzone sandwich's 12.5 mm Plasterboard replaced on one side only by a 20 mm
+        /// copy with the same source metadata. The two objects merge into one SAM material, so names alone matched and the
+        /// import succeeded, re-exporting 12.5 mm on both sides. Each side's per-layer thickness is now compared with the
+        /// panel's SAM layers: error SAM-OSI-CON-002 naming the 20 mm layer, and no model. Either side.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AnInterzoneSideWithAnotherLayerThickness_FailsNamed(bool onForwardSide)
+        {
+            using (OpenStudioConversionResult conversion = OpaqueFaceOpticsTests.TwoBoxes(OpaqueFaceOpticsTests.Library(), sandwich).ToOpenStudio())
+            {
+                global::OpenStudio.Construction construction = InterzoneConstruction(conversion.Model, onForwardSide);
+                List<global::OpenStudio.Material> layers = construction.layers().ToList();
+                Assert.That(layers[1].nameString(), Does.Contain("Plasterboard_12.5mm"));
+                ReplaceLayer(construction, 1, CopyAt(conversion.Model, layers[1].to_StandardOpaqueMaterial().get(), 0.02, "Reviewer_Plasterboard_20mm"));
+
+                // The panel is built from the forward side, so the error names the other side's layer: the 20 mm copy when it
+                // is on the reverse side, the original 12.5 mm object when the copy replaced the forward side's layer.
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                AssertFailsNamed(result, onForwardSide ? "is 0.0125 m thick but the SAM layer is 0.02 m" : "('Reviewer_Plasterboard_20mm') of the surface in space");
+                if (!onForwardSide)
+                {
+                    Assert.That(result.Diagnostics.Single(d => d.Code == "SAM-OSI-CON-002").Message, Does.Contain("is 0.02 m thick but the SAM layer is 0.0125 m"));
+                }
+            }
+        }
+
+        // SAM inside → outside: one source material twice, at two thicknesses.
+        private static readonly Construction repeated = new Construction(new Guid("66666666-0000-0000-0000-000000000005"), "Order Repeated", new List<ConstructionLayer>
+        {
+            new ConstructionLayer("Plasterboard", 0.0125),
+            new ConstructionLayer("Insulation", 0.1),
+            new ConstructionLayer("Plasterboard", 0.02),
+        });
+
+        /// <summary>
+        /// One source material twice at different thicknesses in a mirrored interzone construction: valid, so the import keeps
+        /// both thicknesses in place and round-trips, in both space orders (the equivalent-mirror control).
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ARepeatedMaterialAtTwoThicknesses_RoundTrips(bool bFirst)
+        {
+            using (OpenStudioConversionResult conversion = OpaqueFaceOpticsTests.TwoBoxes(OpaqueFaceOpticsTests.Library(), repeated, bFirst).ToOpenStudio())
+            {
+                Assert.That(conversion.IsValid, Is.True, string.Join(" | ", conversion.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                List<string> before = Signatures(conversion.Model);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(result.Successful, Is.True, string.Join(" | ", result.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                AssertLayers(SharedPanel(result.AnalyticalModel).Construction, ("Plasterboard", 0.0125), ("Insulation", 0.1), ("Plasterboard", 0.02));
+                AssertRoundTrips(conversion, before);
+            }
+        }
+
+        /// <summary>
+        /// The same repeated-material construction with the two Plasterboard objects swapped on one side only: the names (one
+        /// merged SAM material) still match in order, but the thicknesses run the wrong way, so SAM-OSI-CON-002 and no model.
+        /// </summary>
+        [Test]
+        public void ARepeatedMaterialWithSwappedThicknessesOnOneSide_FailsNamed()
+        {
+            using (OpenStudioConversionResult conversion = OpaqueFaceOpticsTests.TwoBoxes(OpaqueFaceOpticsTests.Library(), repeated).ToOpenStudio())
+            {
+                global::OpenStudio.Construction construction = InterzoneConstruction(conversion.Model, false);
+                List<global::OpenStudio.Material> layers = construction.layers().ToList();
+                Assert.That(layers[0].nameString(), Does.Contain("Plasterboard"));
+                Assert.That(layers[2].nameString(), Does.Contain("Plasterboard"));
+                global::OpenStudio.MaterialVector materialVector = new global::OpenStudio.MaterialVector();
+                materialVector.Add(layers[2]);
+                materialVector.Add(layers[1]);
+                materialVector.Add(layers[0]);
+                Assert.That(construction.setLayers(materialVector), Is.True, "the reverse side now runs 20 mm, Insulation, 12.5 mm");
+
+                AssertFailsNamed(conversion.Model.ToSAM(), "m thick but the SAM layer is");
+            }
+        }
+
+        /// <summary>
+        /// Legitimate reuse of one source material at different thicknesses in unrelated constructions: Plasterboard 12.5 mm in
+        /// the walls and 15 mm in the interzone construction (and the roof of a box) merge into one SAM material, each layer
+        /// keeps its own thickness, and the import round-trips.
+        /// </summary>
+        [TestCase("box")]
+        [TestCase("two")]
+        public void OneMaterialAtDifferentThicknessesInUnrelatedConstructions_RoundTrips(string model)
+        {
+            Construction sandwich15 = new Construction(new Guid("66666666-0000-0000-0000-000000000006"), "Order Sandwich 15", new List<ConstructionLayer>
+            {
+                new ConstructionLayer("Insulation", 0.1),
+                new ConstructionLayer("Plasterboard", 0.015),
+                new ConstructionLayer("Brick", 0.1),
+            });
+
+            AnalyticalModel analyticalModel = model == "box"
+                ? OpaqueFaceOpticsTests.Box(OpaqueFaceOpticsTests.Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15)
+                : OpaqueFaceOpticsTests.TwoBoxes(OpaqueFaceOpticsTests.Library(), sandwich15);
+            using (OpenStudioConversionResult conversion = analyticalModel.ToOpenStudio())
+            {
+                Assert.That(conversion.Model.getStandardOpaqueMaterials().Count(x => x.nameString().Contains("Plasterboard")), Is.GreaterThanOrEqualTo(2), "a 12.5 mm and a 15 mm object");
+                List<string> before = Signatures(conversion.Model);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(result.AnalyticalModel.MaterialLibrary.GetMaterials().OfType<OpaqueMaterial>().Count(x => x.Name.Contains("Plasterboard")), Is.EqualTo(1), "one merged SAM material");
+                AssertRoundTrips(conversion, before);
+            }
+        }
+
+        /// <summary>
+        /// The air-gap handling is unchanged: an interzone cavity wall (AirGap layer) imports with no consistency error, its
+        /// cavity layer between the same layers, at the thickness the importer has always given a resistance-only layer with no
+        /// recorded nominal thickness (0, `LayerThickness`). Its re-export is not asserted: that pre-existing 0 thickness is
+        /// refused by the writer (recorded in the PR record, not changed here).
+        /// </summary>
+        [Test]
+        public void AnInterzoneCavityWall_KeepsItsAirGapImport()
+        {
+            MaterialLibrary materialLibrary = OpaqueFaceOpticsTests.Library();
+            materialLibrary.Add(AnalyticalModelFixtures.CreateCavityGasMaterial());
+            using (OpenStudioConversionResult conversion = OpaqueFaceOpticsTests.TwoBoxes(materialLibrary, AnalyticalModelFixtures.CavityWallConstruction).ToOpenStudio())
+            {
+                Assert.That(conversion.IsValid, Is.True, string.Join(" | ", conversion.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                Assert.That(conversion.Model.getAirGaps().Count, Is.GreaterThan(0));
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(result.Successful, Is.True, string.Join(" | ", result.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                Assert.That(result.Diagnostics.Any(d => d.Code == "SAM-OSI-CON-002"), Is.False);
+                AssertLayers(SharedPanel(result.AnalyticalModel).Construction, ("Plasterboard", 0.0125), ("Air_Cavity", 0), ("Brick", 0.1));
+            }
+        }
+
+        /// <summary>
+        /// The documented massless handling is unchanged: one massless object on both sides of the interzone wall imports at
+        /// its nominal thickness, reported (SAM-OSI-APX-001), with no consistency error.
+        /// </summary>
+        [Test]
+        public void AMasslessInterzoneLayer_KeepsItsDocumentedImport()
+        {
+            using (OpenStudioConversionResult conversion = OpaqueFaceOpticsTests.TwoBoxes(OpaqueFaceOpticsTests.Library(), sandwich).ToOpenStudio())
+            {
+                global::OpenStudio.MasslessOpaqueMaterial massless = new global::OpenStudio.MasslessOpaqueMaterial(conversion.Model);
+                massless.setName("Order Massless");
+                Assert.That(massless.setThermalResistance(2.5), Is.True);
+                foreach (bool forward in new[] { true, false })
+                {
+                    global::OpenStudio.Construction construction = InterzoneConstruction(conversion.Model, forward);
+                    int index = construction.layers().ToList().FindIndex(x => x.nameString().Contains("Plasterboard"));
+                    ReplaceLayer(construction, index, massless);
+                }
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(result.Successful, Is.True, string.Join(" | ", result.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                Assert.That(result.Diagnostics.Any(d => d.Code == "SAM-OSI-CON-002"), Is.False);
+                Assert.That(result.Diagnostics.Any(d => d.Code == "SAM-OSI-APX-001" && d.Message.Contains("Massless material")), Is.True);
+                AssertLayers(SharedPanel(result.AnalyticalModel).Construction, ("Insulation", 0.1), ("Order Massless", 0.025), ("Brick", 0.1));
+            }
+        }
+
         // ---- unchanged paths -----------------------------------------------------------------------------------------
 
         /// <summary>Glazing keeps OpenStudio's pane order: an asymmetric window (6 mm, cavity, 4 mm panes) imports exactly as stored.</summary>
