@@ -1,0 +1,17 @@
+# The independent reviewer's machine-local artifacts (folder `s09-lighting-review`, not committed): reviewed head 31af6022 vs revision 6 225881f0
+# Each artifact copied (export.json, frozen-model.json, in.idf, model.osm, weather.epw) and read + compared fresh with the revision-6 harness; the originals are untouched.
+## control
+reviewed head: exit 12  outcomes: AcceptedTransformation 4, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 25
+revision 6:    exit 12  outcomes: AcceptedTransformation 4, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 25
+## p1-control
+reviewed head: exit 12  outcomes: AcceptedTransformation 3, MappingDifference 69, Match 221, NotApplicable 1, WithinTolerance 25
+revision 6:    exit 12  outcomes: AcceptedTransformation 3, MappingDifference 69, Match 221, NotApplicable 1, WithinTolerance 25
+## p1-invalid-sum
+reviewed head: exit 12  outcomes: AcceptedTransformation 3, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 26
+revision 6:    exit 10  outcomes: ExportDefect 5, MappingDifference 69, Match 219, NotApplicable 1, WithinTolerance 25
+## p0-negative-fraction
+reviewed head: exit 12  outcomes: AcceptedTransformation 1, MappingDifference 69, Match 221, NotApplicable 1, WithinTolerance 27
+revision 6:    exit 10  outcomes: ExportDefect 5, MappingDifference 69, Match 219, NotApplicable 1, WithinTolerance 25
+## dynamic-plenum
+reviewed head: exit 12  outcomes: AcceptedTransformation 4, MappingDifference 69, Match 220, NotApplicable 1, WithinTolerance 25
+revision 6:    exit 11  outcomes: MappingDifference 69, Match 219, NotApplicable 1, UnverifiedUnreadable 5, WithinTolerance 25

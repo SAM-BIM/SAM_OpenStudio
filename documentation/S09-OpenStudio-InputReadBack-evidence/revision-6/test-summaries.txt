@@ -1,0 +1,25 @@
+# Local test summaries at 225881f0 (Release x64); machine-local, not hosted CI
+## r6-s09
+Passed!  - Failed:     0, Passed:    88, Skipped:     0, Total:    88, Duration: 2 m 59 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+## r6-writer
+Passed!  - Failed:     0, Passed:   379, Skipped:     2, Total:   381, Duration: 2 m 26 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+## r6-bench
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 301 ms - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+## A/B: the reviewed OsComparison.cs (31af6022) restored over 225881f0, the 8 new S09 tests
+  Failed AnInvalidNativeSplit_FailsBeforeAnyTolerance(1.0d,"neg-lighting-sum-above-one","exceeds 1") [5 s]
+  Failed AnInvalidNativeSplit_FailsBeforeAnyTolerance(0.0d,"neg-lighting-radiant-to-visible","Fraction Radiant -0.0004 is outside [0, 1]") [5 s]
+  Failed APlenumCalculatedOrUninterpretableReturnAir_BlocksTechnically("neg-lighting-plenum-yes","= Yes: the return-air share follows the plenum temperature at run time") [1 s]
+  Failed APlenumCalculatedOrUninterpretableReturnAir_BlocksTechnically("neg-lighting-plenum-unknown","= 'Maybe' is neither Yes nor No (uninterpretable)") [1 s]
+  Failed APlenumCalculatedOrUninterpretableReturnAir_BlocksTechnically("neg-lighting-plenum-relabelled","is unreadable") [1 s]
+Failed!  - Failed:     5, Passed:     3, Skipped:     0, Total:     8, Duration: 25 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+  Expected: 10
+  But was:  12
+  Expected: 10
+  But was:  12
+  Expected: 11
+  But was:  12
+  Expected: 11
+  But was:  12
+  Expected: 11
+  But was:  12
+## fixture runs: report.txt byte-identical to revision-5/; in.idf sha256 36251efc… (box), 551b1274… (two), as revision 5

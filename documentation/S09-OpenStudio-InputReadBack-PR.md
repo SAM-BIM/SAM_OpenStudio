@@ -6,7 +6,9 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 5, the S07 §5.1 lighting split):** `20f8fb6` (full SHA in "Revision 5").
+- **Tested content (revision 6, the lighting read-back guards):** `225881f00971c7cab3596e94867924a11866e147`.
+- **Revision 5 (the S07 §5.1 lighting split):** tested content `20f8fb65`, reviewed head
+  `31af6022095b8367cf333da0d790dc258955acb0` (Build 39672548198 succeeded).
 - **Revision 4:** tested content `0c232875c8b872e393cd1ddb883e61f63eed30a6`; record head `6a36afb0` (Build 39622605892
   succeeded).
 - **Revision 3:** tested content `c1e53328`, reviewed head `e0a6ea1950455e04dbf086d164500fd8829867ec` (its hosted
@@ -19,6 +21,15 @@ merged.**
 
 - **S09 is BLOCKED on two owner decisions** (optics, T-VENT-INACTIVE; see "Unresolved, risks, limits"). The lighting
   visible-fraction item is withdrawn by S07 amendment L1 (SAM#217), which revision 5 implements. OD-L1 stays open.
+- **Revision 6 closes the two gaps the independent review of `31af6022` reproduced in the lighting read-back** (see
+  "Revision 6"). The writer and importer are unchanged.
+  - Native domain and energy conservation are checked before any S07 tolerance. An invalid split (a fraction outside
+    [0, 1], or a sum above 1) is a named EXPORT-DEFECT on all five lighting rows: FAIL, exit 10. The reviewed head
+    accepted p = 1 with a sum of 1.0008, and p = 0 with Fraction Radiant −0.0004 (exit 12).
+  - The plenum-calculated return-air setting is read. Blank or No stays the static split. Yes, an uninterpretable value
+    or an unreadable field blocks technically (exit 11), named, with no lighting row accepted.
+  - S09 88/88 (8 new: 5 regressions, which fail against the reviewed comparator, and 3 valid controls). The fixture
+    reports are byte-identical to revision 5.
 - **Revision 5 implements S07 §5.1 (amendment L1, SAM#217 `113873a0`)** (see "Revision 5").
   - Writer: Fraction Radiant = p·(1 − s), Fraction Visible = p·s, s = 0.2415 / 0.576, Return Air Fraction unset (0);
     the view coefficient is never read. An authored p, including 0, is preserved. An absent or NaN p takes p₀ = 0.576.
@@ -29,7 +40,8 @@ merged.**
   - Both fixtures: complete coverage (319/319, 592/592), BLOCKED owner, exit 12, on the optics rows only. 80/80 S09
     tests, 5 new negatives FAIL on both fixtures.
   - Not run under this scope: the acceptance scripts, so the committed `acc3` pack predates L1.
-- The independent review of `59036783` accepted the revision-4 code technically; revision 5 is not yet reviewed.
+- The independent review of `59036783` accepted the revision-4 code technically. The review of `31af6022` (revision 5)
+  found the two gaps revision 6 closes; revision 6 is not yet reviewed.
 - **Record correction after that review (documentation only):** the writer-test reproduction command now excludes
   `TestCategory=Simulation`, and the historical 388 passed / 2 skipped results are separated from the reviewer's filtered
   363 passed / 2 skipped (see "Writer-test scope correction").
@@ -143,6 +155,18 @@ merged.**
 - Excluded: opaque optics, reversed glazing, Ladybug mapping, duplicate SAM defaults, SAM_Tas edits, broad refactoring,
   simulation, sizing, Tas/EnergyPlus execution, S10, merge. Keep the PR draft.
 
+**Revision 6 (2026-10-22, in substance).** Correct only two reproduced fail-closed gaps; keep the writer and importer
+split.
+- In `OsComparison.LightingSplit`, validate native fraction domains and energy conservation before applying the S07
+  tolerances. Regressions: p = 1 with radiant (1 − s) + 0.0004 and visible s + 0.0004; p = 0 with radiant −0.0004 and
+  visible 0.0004. Neither may produce accepted lighting rows without a named failure. Keep valid p = 0 and p = 1, document
+  the floating-point boundary, and do not loosen S07 tolerances.
+- Read the Lights plenum-calculated return-air setting. Its blank/No default stays supported. Yes cannot receive a
+  verified static T-LIGHT-SPLIT: report a named unsupported, BLOCKED technical result. Uninterpretable settings fail
+  closed. Add CLI/report regressions, including a valid unchanged control.
+- Show that the new regressions expose the reviewed behaviour. Keep fixtures, original evidence and the OD-L1, optics
+  and ventilation decisions open. No other repository edits, simulations, sizing, engine execution or merge.
+
 ## Work completed
 
 | Commit | Change |
@@ -159,7 +183,9 @@ merged.**
 | `0c23287` | **Revision 4:** `ProcessIdentity` (id + creation time) in the export/reader/compare checks, schemas `s09-export/2` and `s09-native/2`; `TestSupport` failure evidence and `s09-diagnostics`; 4 tests; CI diagnostics upload on failure |
 | `5903678`, `6a36afb` | Revision 4 evidence (`revision-4/`: CI excerpt, A/B, id-reuse measurement), this record and its writer-test scope correction |
 | `20f8fb6` | **Revision 5:** the S07 §5.1 lighting split in the writer (`LightingSplit`, `SAM-OS-IC-002`) and the importer; the S09 T-LIGHT-SPLIT rows; 5 negatives; 18 S09 and 16 writer/importer tests; manifests and mapping documents |
-| (record commit) | Revision 5 evidence (`revision-5/`) and this record |
+| `31af602` | Revision 5 evidence (`revision-5/`) and this record |
+| `225881f` | **Revision 6:** the native-domain and plenum guards in `OsComparison.LightingSplit`, `OsQuantities.LightingFractionBoundary`, 6 CLI cases, 8 S09 tests |
+| (record commit) | Revision 6 evidence (`revision-6/`) and this record |
 
 ### Writer change (`SAM_OpenStudio/SAM.Analytical.OpenStudio/Convert/ToOpenStudio/`)
 
@@ -387,6 +413,54 @@ caused this run is likely but unproven. An exception inside `compare` is not exc
     export finished each give exit 70 and no report.
 - Not changed: the hash checks, fixtures, weather, tolerances, the shared core, the writer, and every existing negative
   and assertion. No retry was added.
+
+## Revision 6: fail-closed guards in the lighting read-back (independent review of `31af6022`)
+
+Tested content `225881f00971c7cab3596e94867924a11866e147` (tree `47600688`). Only `OsComparison.LightingSplit` and its
+regressions change; the writer, the importer, the fixtures, the tolerances and the shared core do not.
+
+**Gap 1: native domain and energy conservation** (`LightsDomainProblem`).
+- The reviewed head compared each row within its S07 tolerance only. A split shifted by 0.0004 per field passes every
+  row (the 4c tolerance is 0.001), although on p = 1 it sums to 1.0008 and on p = 0 Fraction Radiant is −0.0004. Both
+  reviewer artifacts gave exit 12 with lighting accepted.
+- Now, before any comparison: Return Air, Radiant and Visible must each lie in [0, 1], and Return Air + Radiant + Visible
+  must not exceed 1 (S07 §5.1: "A sum above 1 is an input error"; it is a negative convective share).
+- A violation is an EXPORT-DEFECT on all five lighting rows, FAIL (exit 10). The reason names the field or sum and
+  says that no tolerance applies; the rows carry no numeric comparison.
+- **Floating-point boundary:** `OsQuantities.LightingFractionBoundary` = 1e-12. A fraction passes in [−1e-12, 1 + 1e-12]
+  and a sum at most 1 + 1e-12. This absorbs only the decimal-to-double rounding of the IDF text (under 1e-15 here). It is
+  1e9 times smaller than the 4c tolerance, is applied before and never instead of the S07 comparison, and changes no
+  tolerance. The writer's p = 1 split passes.
+- Unreadable or NaN fields are left to the existing row evaluation (UNVERIFIED or EXPORT-DEFECT).
+
+**Gap 2: plenum-calculated return air** (`LightsPlenumProblem`, IDF `Lights` index 12, after End-Use Subcategory).
+- Blank, absent or `No` (the EnergyPlus default, which the writer leaves) is the static split, unchanged.
+- `Yes` makes the return-air share follow the plenum temperature at run time, so no static T-LIGHT-SPLIT can be
+  verified. Any other value is uninterpretable. A field whose own label differs is unreadable.
+- In each of those three cases, all five lighting rows read as unreadable with the reason: UNVERIFIED, BLOCKED technical.
+  The transformation is not marked verified, and `Unsupported` gets `lighting: space:<guid>: Lights '<name>' …`. The
+  result is exit 11, never PASS.
+- Precedence: an invalid domain (FAIL) outranks the plenum block; both are named.
+
+**Regressions** (S09 tests; the native mutations are new CLI `negative` cases):
+
+| Test | Case | Required |
+|---|---|---|
+| `TheBoundarySplits_PEqualOneAndZero_AreValid` (p = 1, p = 0) | writer exports, unchanged | exit 12, every lighting row passes, no Unsupported |
+| `AnInvalidNativeSplit_FailsBeforeAnyTolerance` | `neg-lighting-sum-above-one` on p = 1; `neg-lighting-radiant-to-visible` on p = 0 | exit 10; exactly the 5 lighting rows EXPORT-DEFECT with the named violation; none passes; no comparison made |
+| `APlenumCalculatedOrUninterpretableReturnAir_BlocksTechnically` | `neg-lighting-plenum-yes`, `-unknown` (`Maybe`), `-relabelled` | exit 11; one named Unsupported entry; the 5 lighting rows UNVERIFIED, BLOCKED technical; none passes |
+| `AnExplicitNoPlenumSetting_IsTheUnchangedControl` | `ctl-lighting-plenum-no` (No with coefficients) | the box's exit code and outcome counts, no Unsupported, the same lighting outcomes |
+
+- **A/B:** with the reviewed `OsComparison.cs` (`31af6022`) restored over `225881f0`, the 5 regressions fail (exit 12,
+  where 10 or 11 is required) and the 3 controls pass (`revision-6/test-summaries.txt`).
+- **Reviewer artifacts** (machine-local, copied, read and compared fresh with the revision-6 harness;
+  `revision-6/review-artifacts-ab.txt`): control and p1-control unchanged (exit 12, identical counts); p1-invalid-sum
+  and p0-negative-fraction exit 10 with 5 named EXPORT-DEFECT; dynamic-plenum exit 11 with 5 UNVERIFIED and the named
+  Unsupported entry.
+- **Fixtures:** both `report.txt` files are byte-identical to `revision-5/`, and the IDFs keep their hashes.
+- The new CLI cases are not added to `Run-S09-ReadBack.ps1 -Phase acceptance-negative`, which requires exit 10 on the
+  unchanged fixture runs. The plenum cases exit 11, and the two partition shifts are invalid only on p = 1 or p = 0
+  exports; on the fixtures they stay valid and within tolerance.
 
 ## Revision 5: the S07 §5.1 lighting split (amendment L1)
 
@@ -856,11 +930,23 @@ calculation, EnergyPlus simulation or sizing was run.
 
   No fixture, weather, tolerance, shared-core, ventilation or optics change. The committed `runs/`, `negatives/` and
   `summary-*.json` stay the acc3 pack (pre-L1).
+- Revision 6 changed:
+  - `Compare/OsComparison.cs` (`LightingSplit`, `LightsDomainProblem`, `LightsPlenumProblem`), `Compare/OsQuantities.cs`
+    (`LightingFractionBoundary`);
+  - `Cli/Negative.cs` (6 cases, `AppendFields`), `Tests/ReadBackTests.cs` (8 tests);
+  - the new `revision-6/` evidence folder and this record.
+
+  No writer, importer, report schema, shared-core, fixture, weather, tolerance, ventilation or optics change.
 
 ## Tests and validation (local, Release x64)
 
 | Check | At | Result |
 |---|---|---|
+| S09 tests | `225881f0` (revision 6; harness `a05202d0…`, library `727c08bc…`) | **88/88**: the 80 revision-5 cases, unchanged, plus 8 (5 regressions, 3 controls) |
+| The 8 new tests with the reviewed `OsComparison.cs` (`31af6022`) restored | working tree, then restored (`cmp` identical) and rebuilt | **5 failed, 3 passed**: exactly the 5 regressions fail (exit 12) |
+| The reviewer's 5 artifacts, read and compared fresh | `225881f0` harness | 2 controls unchanged (12); 2 invalid splits FAIL (10); dynamic plenum BLOCKED technical (11) |
+| `tests/SAM.Analytical.OpenStudio.Tests` with `--filter 'TestCategory!=Simulation'` | `225881f0` | 379 passed, 2 skipped (no writer or test change) |
+| Benchmark tests (not Simulation) | `225881f0` | 51/51 |
 | S09 tests | `20f8fb65` (revision 5; harness `3549e421…`, library `b4e03d5f…`) | **80/80**: the 62 revision-4 cases (2 adjusted: no lighting exception, two-zone ACCEPTED-TRANSFORMATION 14) plus 18 lighting cases. Run twice; the second run produced `revision-5/` |
 | `tests/SAM.Analytical.OpenStudio.Tests` with `--filter 'TestCategory!=Simulation'` | `20f8fb65` | **379 passed, 2 skipped** (381 = the reviewer's 365 + 16 new). An earlier working-tree run had 1 failure, the "hole" substring collision, fixed before the commit |
 | Benchmark tests (not Simulation) | `20f8fb65` | 51/51 |
@@ -965,6 +1051,12 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
     counting Information lines or `SAM-OS-*` codes sees one more code; codes are added, none renamed.
   - The Tas side is unchanged until the separate, OD-L1-gated SAM_Tas PR: for an unstated p Tas keeps its TBD value
     (S07: EXPORT-DEFECT on the S08 side), so OpenStudio and Tas differ for unstated p until then.
+- **Revision 6 limits:**
+  - A plenum-calculated return air (`Yes`) is refused as unsupported, not verified. A dynamic read-back would need its
+    own contract row.
+  - The plenum setting and the domain guard read the IDF, which EnergyPlus runs. The OSM `OS:Lights:Definition` plenum
+    field is not cross-checked against it, as no Lights field was before.
+  - The domain boundary 1e-12 is a read-back constant documented in `OsQuantities`, not an S07 tolerance.
 - **Not covered by revision 5:** the acceptance and packing scripts (not run; the committed pack is pre-L1); a
   `Lights` object written with a blank Fraction Radiant or Visible (the writer always states them; the comparator reads
   blank as 0); the LED view-coefficient value (unresolved in §5.1, not used by OpenStudio).
@@ -1000,8 +1092,9 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 ## Next step
 
 S09 stays **BLOCKED** at the owner decision gate. Do not start S10.
-- **Independent review of revision 5** (`20f8fb65` and the record head in the PR description): the §5.1 writer,
-  importer and read-back changes, the `SAM-OS-IC-002` code, and the OD-L1 reading in Decision 5.
+- **Independent review of revision 6** (`225881f0` and the record head in the PR description): the domain and plenum
+  guards and their boundary, with revision 5's §5.1 writer, importer and read-back changes, the `SAM-OS-IC-002` code
+  and the OD-L1 reading in Decision 5.
 - The owner decides the pending items above (optics, T-VENT-INACTIVE, and confirms the OD-L1 reading). An optics
   writer fix or a 3a scope change would each be a separate task.
 - Optional, if the owner wants a refreshed committed pack: an authorised acceptance run (`Run-S09-ReadBack.ps1`, both
