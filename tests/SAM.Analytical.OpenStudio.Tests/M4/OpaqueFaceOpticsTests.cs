@@ -542,9 +542,9 @@ namespace SAM.Analytical.OpenStudio.Tests
         /// Review of 901e592a (reproduction): Plasterboard light reflectance unstated on both faces, exported (OpenStudio
         /// default visible absorptance 0.7), then edited natively to 0.42. The reviewed head re-exported 0.7. The edit is
         /// now kept on the face the object carries, reported, and survives a re-export.
-        /// The re-export is read on the single-layer ground floor, whose one layer is the zone face in either layer order:
-        /// the importer keeps OpenStudio's outside-first layer order, so a multi-layer construction comes back reversed
-        /// (a separate, pre-existing round-trip defect recorded in the PR record).
+        /// The re-export is read on the single-layer ground floor, whose one layer is the zone face in either layer order
+        /// (written before revision 11 corrected the multi-layer import order; the multi-layer round trip is covered by
+        /// <see cref="OpaqueLayerOrderImportTests"/>).
         /// </summary>
         [Test]
         public void ANativeEditOfAnUnstatedValue_IsKeptAndReported_ThroughImportAndReexport()
@@ -967,8 +967,8 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         /// <summary>
-        /// Multi-layer controls (import only: the re-export of a multi-layer construction is affected by the separate,
-        /// pre-existing layer-order defect). An equal-face object supplies only the faces its layer position exposes: the
+        /// Multi-layer controls (import only; the multi-layer re-export is covered by <see cref="OpaqueLayerOrderImportTests"/>
+        /// since revision 11). An equal-face object supplies only the faces its layer position exposes: the
         /// zone-face layer's edit is kept on its internal face, the outer layer's on its external face, and the other face
         /// keeps its authored value. A middle layer supplies no exposed face, so its edit is kept on both faces.
         /// </summary>

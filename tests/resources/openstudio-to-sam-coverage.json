@@ -92,7 +92,7 @@
     { "id": "OS:WindowMaterial.GlazingRefractionExtinctionMethod", "status": "Unsupported", "diagnostic": "SAM-OSI-MAT-001" },
     { "id": "OS:MaterialProperty.PhaseChange", "status": "Unsupported", "diagnostic": "SAM-OSI-MAT-001", "notes": "SAM materials have no phase-change model." },
 
-    { "id": "OS:Construction.Opaque", "status": "Native", "target": "Construction", "notes": "Layer order preserved outside-first." },
+    { "id": "OS:Construction.Opaque", "status": "Native", "target": "Construction", "notes": "Opaque constructions used by planar surfaces are read innermost layer first (SAM inside to outside from the side the panel is built from, the SAM-written forward side when stamped); fenestration, door-pane, shading-only and unused constructions keep the outside-first order; a construction shared with a subsurface or shading surface is split (SAM-OSI-APX-001)." },
     { "id": "OS:Construction.Fenestration", "status": "Native", "target": "ApertureConstruction", "notes": "Pane layers only; frame layers are never fabricated." },
     { "id": "OS:Construction.AirBoundary", "status": "Native", "target": "PanelType.Air", "notes": "A layer-free SAM construction; the air behaviour is carried by the panel type." },
     { "id": "OS:Construction.InternalSource", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-001" },

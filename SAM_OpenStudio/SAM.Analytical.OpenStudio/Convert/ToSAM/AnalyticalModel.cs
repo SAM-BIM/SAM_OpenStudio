@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using SAM.Geometry.Spatial;
 
 namespace SAM.Analytical.OpenStudio
@@ -82,6 +83,10 @@ namespace SAM.Analytical.OpenStudio
             List<KeyValuePair<Space, List<Panel>>> spacePanels = new List<KeyValuePair<Space, List<Panel>>>();
             List<UnpairedInterzoneSurface> unpairedInterzoneSurfaces = new List<UnpairedInterzoneSurface>();
 
+            // Which surface each panel was built from: its construction is read innermost layer first from that
+            // surface's zone (Convert/ToSAM/Construction.cs), so that surface's space must be the panel's first space.
+            PanelSides panelSides = new PanelSides();
+
             if (spaceVector != null)
             {
                 foreach (global::OpenStudio.Space openStudioSpace in spaceVector)
@@ -108,7 +113,7 @@ namespace SAM.Analytical.OpenStudio
                                 continue;
                             }
 
-                            Panel panel = ResolvePanel(surface, transformation, panelBySurfaceName, unpairedInterzoneSurfaces, openStudioImportContext);
+                            Panel panel = ResolvePanel(surface, transformation, panelBySurfaceName, unpairedInterzoneSurfaces, panelSides, openStudioImportContext);
                             if (panel == null)
                             {
                                 continue;
@@ -145,15 +150,21 @@ namespace SAM.Analytical.OpenStudio
             // supersedes the second surface's panel with the first; those supersessions are
             // recorded so the captured spacePanels lists can be remapped before topology.
             Dictionary<Panel, Panel> supersededPanels = new Dictionary<Panel, Panel>();
-            ResolveUnpairedInterzoneSurfaces(unpairedInterzoneSurfaces, panelBySurfaceName, supersededPanels, openStudioImportContext);
+            ResolveUnpairedInterzoneSurfaces(unpairedInterzoneSurfaces, panelBySurfaceName, supersededPanels, panelSides, openStudioImportContext);
 
             // Pass D: topology. A shared internal panel is added once and related to BOTH spaces —
             // that relation, not a second coincident panel, is how SAM represents one physical
-            // partition between two rooms.
-            foreach (KeyValuePair<Space, List<Panel>> keyValuePair in spacePanels)
+            // partition between two rooms. SAM's first space of a panel is the earlier of its spaces
+            // in the cluster's space order (the writer's forward side), so the spaces are added in an
+            // order that puts each panel's building side first (OrderSpaces).
+            List<KeyValuePair<Space, List<Panel>>> orderedSpacePanels = OrderSpaces(spacePanels, supersededPanels, panelSides, openStudioImportContext);
+            foreach (KeyValuePair<Space, List<Panel>> keyValuePair in orderedSpacePanels)
             {
                 adjacencyCluster.AddObject(keyValuePair.Key);
+            }
 
+            foreach (KeyValuePair<Space, List<Panel>> keyValuePair in orderedSpacePanels)
+            {
                 // A geometric-fallback pairing replaced the second panel with the first after
                 // this list was captured, so resolve each panel through the supersession map
                 // (and dedupe) or the cluster would keep two coincident panels for one partition.
@@ -213,6 +224,181 @@ namespace SAM.Analytical.OpenStudio
             }
         }
 
+        /// <summary>The side each panel was built from (see <see cref="ResolvePanel"/> and <see cref="OrderSpaces"/>).</summary>
+        private sealed class PanelSides
+        {
+            /// <summary>OpenStudio name of the space of the surface the panel was built from.</summary>
+            public Dictionary<Panel, string> SpaceName { get; } = new Dictionary<Panel, string>();
+
+            /// <summary>Panels built from a surface carrying the SAM-written forward construction.</summary>
+            public HashSet<Panel> Forward { get; } = new HashSet<Panel>();
+
+            /// <summary>For a two-sided panel: the SAM construction read from the partner surface (innermost first from the partner's zone), or null.</summary>
+            public Dictionary<Panel, Construction> Partner { get; } = new Dictionary<Panel, Construction>();
+        }
+
+        /// <summary>The SAM construction a planar surface resolves to (innermost first), or null when it has none or it was not imported.</summary>
+        private static Construction SurfaceConstruction(global::OpenStudio.Surface surface, OpenStudioImportContext openStudioImportContext)
+        {
+            try
+            {
+                global::OpenStudio.OptionalConstructionBase optionalConstructionBase = surface?.construction();
+                if (optionalConstructionBase == null || optionalConstructionBase.isNull())
+                {
+                    return null;
+                }
+
+                string name = optionalConstructionBase.get().nameString();
+                return openStudioImportContext.SurfaceConstructionMap.TryGetValue(name, out Construction result) || openStudioImportContext.ConstructionMap.TryGetValue(name, out result) ? result : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The order the spaces are added to the cluster in. SAM's first space of a two-sided panel is the earlier of its two
+        /// spaces in that order (the writer gives it the forward construction), and the panel's layers are read innermost
+        /// first from the side it was built from, so that side's space must come first.
+        /// <para>
+        /// The visit order is kept wherever it allows this; a panel built from a SAM-written forward side moves its space
+        /// before the other one (a stable topological order). Should those requirements contradict each other (only an
+        /// edited model can), the remaining spaces keep their visit order and a warning names it. A panel whose building
+        /// side is then not first, and that is not SAM-written, is re-read from its partner surface's construction
+        /// (information, SAM-OSI-APX-001); a SAM-written one that cannot come first is kept and named in the warning.
+        /// Replacement panels are recorded in <paramref name="supersededPanels"/>.
+        /// </para>
+        /// </summary>
+        private static List<KeyValuePair<Space, List<Panel>>> OrderSpaces(List<KeyValuePair<Space, List<Panel>>> spacePanels, Dictionary<Panel, Panel> supersededPanels, PanelSides panelSides, OpenStudioImportContext openStudioImportContext)
+        {
+            int count = spacePanels.Count;
+            Dictionary<Panel, List<int>> panelSpaces = new Dictionary<Panel, List<int>>();
+            for (int i = 0; i < count; i++)
+            {
+                foreach (Panel panel in spacePanels[i].Value)
+                {
+                    Panel resolvedPanel = ResolveSupersededPanel(panel, supersededPanels);
+                    if (resolvedPanel == null)
+                    {
+                        continue;
+                    }
+
+                    if (!panelSpaces.TryGetValue(resolvedPanel, out List<int> indexes))
+                    {
+                        indexes = new List<int>();
+                        panelSpaces[resolvedPanel] = indexes;
+                    }
+
+                    if (!indexes.Contains(i))
+                    {
+                        indexes.Add(i);
+                    }
+                }
+            }
+
+            int SideIndex(Panel panel, List<int> indexes)
+            {
+                if (panelSides.SpaceName.TryGetValue(panel, out string name) && openStudioImportContext.SpaceMap.TryGetValue(name, out Space space) && space != null)
+                {
+                    foreach (int index in indexes)
+                    {
+                        if (ReferenceEquals(space, spacePanels[index].Key))
+                        {
+                            return index;
+                        }
+                    }
+                }
+
+                return -1;
+            }
+
+            List<HashSet<int>> before = Enumerable.Range(0, count).Select(x => new HashSet<int>()).ToList();
+            foreach (KeyValuePair<Panel, List<int>> keyValuePair in panelSpaces)
+            {
+                int side = SideIndex(keyValuePair.Key, keyValuePair.Value);
+                if (keyValuePair.Value.Count == 2 && side >= 0 && panelSides.Forward.Contains(keyValuePair.Key))
+                {
+                    before[keyValuePair.Value.Single(x => x != side)].Add(side);
+                }
+            }
+
+            List<int> order = new List<int>();
+            HashSet<int> placed = new HashSet<int>();
+            while (order.Count < count)
+            {
+                int next = Enumerable.Range(0, count).Where(x => !placed.Contains(x) && before[x].All(placed.Contains)).DefaultIfEmpty(-1).First();
+                if (next < 0)
+                {
+                    List<int> remaining = Enumerable.Range(0, count).Where(x => !placed.Contains(x)).ToList();
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The SAM-written forward sides of the interzone panels between spaces {0} cannot all come first in one space order; these spaces keep the OpenStudio order, and a panel whose forward side is then second keeps its construction as read from that side", string.Join(", ", remaining.Select(x => "'" + spacePanels[x].Key?.Name + "'"))), (string)null);
+                    order.AddRange(remaining);
+                    break;
+                }
+
+                order.Add(next);
+                placed.Add(next);
+            }
+
+            Dictionary<int, int> position = new Dictionary<int, int>();
+            for (int i = 0; i < order.Count; i++)
+            {
+                position[order[i]] = i;
+            }
+
+            foreach (KeyValuePair<Panel, List<int>> keyValuePair in panelSpaces.ToList())
+            {
+                Panel panel = keyValuePair.Key;
+                int side = SideIndex(panel, keyValuePair.Value);
+                if (keyValuePair.Value.Count != 2 || side < 0 || keyValuePair.Value.All(x => position[side] <= position[x]) || panelSides.Forward.Contains(panel))
+                {
+                    continue;
+                }
+
+                if (!panelSides.Partner.TryGetValue(panel, out Construction partner) || partner == null)
+                {
+                    continue;
+                }
+
+                Panel reoriented = Analytical.Create.Panel(panel, partner);
+                if (reoriented == null)
+                {
+                    continue;
+                }
+
+                supersededPanels[panel] = reoriented;
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Interzone panel built from the side of space '{0}' has space '{1}' first in the imported space order; its construction '{2}' is read from that space's surface instead", spacePanels[side].Key?.Name, spacePanels[keyValuePair.Value.Single(x => x != side)].Key?.Name, partner.Name), (string)null, reoriented);
+            }
+
+            return order.Select(x => spacePanels[x]).ToList();
+        }
+
+        /// <summary>
+        /// True when the surface's construction is the SAM-written forward one: an <c>OS:Construction</c> stamped with
+        /// SAM type <c>Construction</c> and a SAM Guid. The writer gives it to the panel's first space only, and the
+        /// reverse construction of the other side carries no stamp.
+        /// </summary>
+        private static bool IsSamForwardSide(global::OpenStudio.Surface surface)
+        {
+            try
+            {
+                global::OpenStudio.OptionalConstructionBase optionalConstructionBase = surface?.construction();
+                if (optionalConstructionBase == null || optionalConstructionBase.isNull())
+                {
+                    return false;
+                }
+
+                global::OpenStudio.ConstructionBase constructionBase = optionalConstructionBase.get();
+                return Core.OpenStudio.Query.TryGetSAMType(constructionBase, out string type)
+                    && string.Equals(type, typeof(Construction).Name, StringComparison.Ordinal)
+                    && Core.OpenStudio.Query.TryGetSAMGuid(constructionBase, out Guid _);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// <summary>
         /// Returns the SAM panel for an OpenStudio surface, creating it only once per physical
         /// element.
@@ -223,8 +409,15 @@ namespace SAM.Analytical.OpenStudio
         /// own adjacency handles are authoritative and are always tried first; geometry is only
         /// consulted later, for surfaces that claim a "Surface" boundary but carry no handle.
         /// </para>
+        /// <para>
+        /// Side: a pair is built from the surface whose construction is the SAM-written forward one
+        /// (<see cref="IsSamForwardSide"/>) when exactly that partner carries it, so SAM's first
+        /// space, layer order and face roles come back as they were written; otherwise from the
+        /// first surface visited, as before. The building side is recorded in
+        /// <paramref name="panelSides"/>.
+        /// </para>
         /// </summary>
-        private static Panel ResolvePanel(global::OpenStudio.Surface surface, global::OpenStudio.Transformation transformation, Dictionary<string, Panel> panelBySurfaceName, List<UnpairedInterzoneSurface> unpairedInterzoneSurfaces, OpenStudioImportContext openStudioImportContext)
+        private static Panel ResolvePanel(global::OpenStudio.Surface surface, global::OpenStudio.Transformation transformation, Dictionary<string, Panel> panelBySurfaceName, List<UnpairedInterzoneSurface> unpairedInterzoneSurfaces, PanelSides panelSides, OpenStudioImportContext openStudioImportContext)
         {
             string surfaceName = surface.nameString();
 
@@ -257,10 +450,38 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
-            Panel panel = surface.ToSAM(openStudioImportContext, transformation);
+            global::OpenStudio.Surface side = surface;
+            global::OpenStudio.Transformation sideTransformation = transformation;
+            if (hasAdjacentHandle && !IsSamForwardSide(surface) && IsSamForwardSide(optionalAdjacentSurface.get()))
+            {
+                global::OpenStudio.OptionalSpace optionalSpace = optionalAdjacentSurface.get().space();
+                if (optionalSpace != null && !optionalSpace.isNull())
+                {
+                    side = optionalAdjacentSurface.get();
+                    sideTransformation = SpaceTransformation(optionalSpace.get());
+                }
+            }
+
+            Panel panel = side.ToSAM(openStudioImportContext, sideTransformation);
             if (panel == null)
             {
                 return null;
+            }
+
+            global::OpenStudio.OptionalSpace sideSpace = side.space();
+            if (sideSpace != null && !sideSpace.isNull())
+            {
+                panelSides.SpaceName[panel] = sideSpace.get().nameString();
+            }
+
+            if (IsSamForwardSide(side))
+            {
+                panelSides.Forward.Add(panel);
+            }
+
+            if (hasAdjacentHandle)
+            {
+                panelSides.Partner[panel] = SurfaceConstruction(ReferenceEquals(side, surface) ? optionalAdjacentSurface.get() : surface, openStudioImportContext);
             }
 
             panelBySurfaceName[surfaceName] = panel;
@@ -276,7 +497,7 @@ namespace SAM.Analytical.OpenStudio
                 // and dereferenced after the model walk: doing so aborts the process with an
                 // unmanaged AccessViolationException. The name is the key back into
                 // panelBySurfaceName; the label is all the diagnostics need.
-                unpairedInterzoneSurfaces.Add(new UnpairedInterzoneSurface(surfaceName, OpenStudioImportContext.OpenStudioObjectLabel(surface)));
+                unpairedInterzoneSurfaces.Add(new UnpairedInterzoneSurface(surfaceName, OpenStudioImportContext.OpenStudioObjectLabel(surface), IsSamForwardSide(surface)));
             }
 
             return panel;
@@ -298,7 +519,7 @@ namespace SAM.Analytical.OpenStudio
         /// exactly what the forward direction does with the mirror-image case.
         /// </para>
         /// </summary>
-        private static void ResolveUnpairedInterzoneSurfaces(List<UnpairedInterzoneSurface> surfaces, Dictionary<string, Panel> panelBySurfaceName, Dictionary<Panel, Panel> supersededPanels, OpenStudioImportContext openStudioImportContext)
+        private static void ResolveUnpairedInterzoneSurfaces(List<UnpairedInterzoneSurface> surfaces, Dictionary<string, Panel> panelBySurfaceName, Dictionary<Panel, Panel> supersededPanels, PanelSides panelSides, OpenStudioImportContext openStudioImportContext)
         {
             if (surfaces == null || surfaces.Count == 0)
             {
@@ -343,15 +564,22 @@ namespace SAM.Analytical.OpenStudio
                             continue;
                         }
 
-                        // Both surfaces now resolve to the first panel; the second panel is
-                        // superseded. Record the supersession so the topology pass can rewrite
-                        // the already-captured space→panel list, and repoint the name ledger too.
-                        panelBySurfaceName[nameJ] = panelI;
-                        supersededPanels[panelJ] = panelI;
+                        // Both surfaces now resolve to one panel and the other is superseded:
+                        // the first panel, unless only the second was built from the SAM-written
+                        // forward side, which keeps SAM's first space and layer order. Record the
+                        // supersession so the topology pass can rewrite the already-captured
+                        // space→panel list, and repoint the name ledger too.
+                        bool keepSecond = surfaces[j].SamForwardSide && !surfaces[i].SamForwardSide;
+                        Panel kept = keepSecond ? panelJ : panelI;
+                        Panel superseded = keepSecond ? panelI : panelJ;
+                        panelBySurfaceName[nameI] = kept;
+                        panelBySurfaceName[nameJ] = kept;
+                        supersededPanels[superseded] = kept;
+                        panelSides.Partner[kept] = superseded.Construction;
                         paired.Add(nameI);
                         paired.Add(nameJ);
 
-                        openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyGeometricFallback, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Surfaces '{0}' and '{1}' declare an interzone boundary but carry no OpenStudio adjacency handle; they were paired into one SAM panel by validated geometric matching (coincident centroids, comparable areas, opposed normals) - verify the source model's adjacency", nameI, nameJ), surfaces[i].Label, panelI);
+                        openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.AdjacencyGeometricFallback, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Surfaces '{0}' and '{1}' declare an interzone boundary but carry no OpenStudio adjacency handle; they were paired into one SAM panel by validated geometric matching (coincident centroids, comparable areas, opposed normals) - verify the source model's adjacency", nameI, nameJ), surfaces[i].Label, kept);
                         break;
                     }
                 }
@@ -403,11 +631,15 @@ namespace SAM.Analytical.OpenStudio
         /// </summary>
         private struct UnpairedInterzoneSurface
         {
-            public UnpairedInterzoneSurface(string name, string label)
+            public UnpairedInterzoneSurface(string name, string label, bool samForwardSide)
             {
                 Name = name;
                 Label = label;
+                SamForwardSide = samForwardSide;
             }
+
+            /// <summary>True when the surface's construction is the SAM-written forward one (see <c>IsSamForwardSide</c>).</summary>
+            public bool SamForwardSide { get; }
 
             /// <summary>OpenStudio surface name; the key into <c>panelBySurfaceName</c>.</summary>
             public string Name { get; }

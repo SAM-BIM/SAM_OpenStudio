@@ -111,9 +111,22 @@ zone face. SAM stores layers inside → outside from the panel's first space in
     never merged with, or aliased to, a valid group of the same source Guid — and its single
     native value on both faces. An object without the metadata (a third-party or older OSM)
     imports silently as before.
-- **Known round-trip limit (pre-existing).** The importer keeps OpenStudio's outside-first
-  layer order (`ToSAM/Construction.cs`), while SAM stores inside → outside, so a multi-layer
-  construction comes back reversed and a re-export puts its outermost layer on the zone face.
+- **Import layer order (since SAM_OpenStudio#33 revision 11).** An opaque layered construction
+  used by a planar surface is read innermost layer first (`ToSAM/Construction.cs`), so SAM's
+  first layer is the one facing the surface's zone. An interzone panel is built from, and first
+  related to, the side carrying the SAM-written forward construction (SAM type `Construction`
+  with a SAM Guid), also after a geometric-fallback pairing; without that stamp, from the first
+  surface visited. Export → import → export therefore keeps every layer, thickness and used face.
+  Fenestration (glazing, gas, opaque door panes), air boundaries, non-layered constructions and
+  constructions no planar surface uses keep OpenStudio's order. A construction also used by a
+  subsurface or shading surface is split into an innermost-first SAM construction for the
+  surfaces (SAM Guid restored) and one in OpenStudio's order for the other uses (own Guid;
+  SAM-OSI-APX-001 information).
+  - **Compatibility.** Every multi-layer opaque import now has the opposite SAM layer order to
+    imports made before revision 11 (U-value unchanged; layer positions, thermal-mass position
+    and exposed faces change, which is the correction). SAM models imported earlier keep their
+    reversed constructions; nothing identifies them, and no automatic migration is made. Re-import
+    the source OSM to correct such a model.
 
 ## TransparentMaterial → OS:WindowMaterial:Glazing (StandardGlazing)
 

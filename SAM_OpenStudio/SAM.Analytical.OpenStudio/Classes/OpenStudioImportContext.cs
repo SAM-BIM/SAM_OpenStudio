@@ -51,6 +51,16 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>OpenStudio construction name → SAM opaque Construction created for it.</summary>
         public IDictionary<string, Construction> ConstructionMap { get; } = new Dictionary<string, Construction>();
 
+        /// <summary>
+        /// OpenStudio construction name → the innermost-first SAM Construction for the planar surfaces using it, when the
+        /// same OpenStudio construction is also used by a subsurface or shading surface (which keep the OpenStudio order
+        /// through <see cref="ConstructionMap"/>). Surfaces resolve here first.
+        /// </summary>
+        internal IDictionary<string, Construction> SurfaceConstructionMap { get; } = new Dictionary<string, Construction>();
+
+        /// <summary>OpenStudio construction handle → whether planar surfaces, and whether subsurfaces or shading surfaces, use it; read once from <see cref="Source"/>.</summary>
+        internal IDictionary<string, (bool Surface, bool Other)> ConstructionUses { get; set; }
+
         /// <summary>OpenStudio construction name → SAM ApertureConstruction created for it.</summary>
         public IDictionary<string, ApertureConstruction> ApertureConstructionMap { get; } = new Dictionary<string, ApertureConstruction>();
 

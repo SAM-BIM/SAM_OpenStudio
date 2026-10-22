@@ -155,7 +155,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 
 | OpenStudio concept | SAM target | Status | Diagnostic | Conversion / policy |
 |---|---|---|---|---|
-| `OS:Construction.Opaque` | `Construction` | **Native** | - | Layer order preserved outside-first. |
+| `OS:Construction.Opaque` | `Construction` | **Native** | - | Opaque constructions used by planar surfaces are read innermost layer first (SAM inside to outside from the side the panel is built from, the SAM-written forward side when stamped); fenestration, door-pane, shading-only and unused constructions keep the outside-first order; a construction shared with a subsurface or shading surface is split (SAM-OSI-APX-001). |
 | `OS:Construction.Fenestration` | `ApertureConstruction` | **Native** | - | Pane layers only; frame layers are never fabricated. |
 | `OS:Construction.AirBoundary` | `PanelType.Air` | **Native** | - | A layer-free SAM construction; the air behaviour is carried by the panel type. |
 | `OS:Construction.InternalSource` | - | **Unsupported** | `SAM-OSI-CON-001` |  |
