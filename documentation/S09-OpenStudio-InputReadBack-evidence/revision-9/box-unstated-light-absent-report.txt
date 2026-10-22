@@ -1,0 +1,23 @@
+S09 OpenStudio read-back: s08-fix-box -> Fail (exit 10); rule set Approved; gate Fail; coverage Complete (319 required, 319 results)
+outcomes: AcceptedTransformation 4, ExportDefect 5, MappingDifference 64, Match 213, NotApplicable 1, WithinTolerance 32
+D-F2 space:5080c000-0000-0000-0000-00000000c001: V2
+NOT PASS ExportDefect / Fail: 5
+  3a panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance: SAM states no value (S-UNSPEC) and the native holds a non-zero value that is not the contract-listed default.
+  3a panel:5e4a7125-c77a-4911-9084-7cbfa9b0786c@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance: SAM states no value (S-UNSPEC) and the native holds a non-zero value that is not the contract-listed default.
+  3a panel:78af8769-1ba0-43bc-844e-f1ca72fa447e@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance: SAM states no value (S-UNSPEC) and the native holds a non-zero value that is not the contract-listed default.
+  3a panel:0a4398eb-cdab-43d8-bcba-736116a2a029@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance: SAM states no value (S-UNSPEC) and the native holds a non-zero value that is not the contract-listed default.
+  3a panel:18cb687b-53ce-4282-be8e-6ba267a6ae2b@space:5080c000-0000-0000-0000-00000000c001#layer4.internalLightReflectance: SAM states no value (S-UNSPEC) and the native holds a non-zero value that is not the contract-listed default.
+NOT PASS MappingDifference / BlockedOwnerDecision: 64
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer2.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.externalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.externalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:b07106b3-da42-40de-a8de-b1284bc3d785@space:5080c000-0000-0000-0000-00000000c001#layer3.externalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalSolarReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalLightReflectance: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  3a panel:285a1884-d494-47a6-9541-942946ea00a7@space:5080c000-0000-0000-0000-00000000c001#layer1.internalEmissivity: The native value differs from SAM by a contract-listed MappingDifference. Not accepted by the owner.
+  ... 52 more in report.json
