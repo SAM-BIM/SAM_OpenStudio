@@ -116,7 +116,11 @@ zone face. SAM stores layers inside → outside from the panel's first space in
   first layer is the one facing the surface's zone. An interzone panel is built from, and first
   related to, the side carrying the SAM-written forward construction (SAM type `Construction`
   with a SAM Guid), also after a geometric-fallback pairing; without that stamp, from the first
-  surface visited. Export → import → export therefore keeps every layer, thickness and used face.
+  surface visited. Spaces are added in an order that puts each forward side's space first, because the
+  writer takes a panel's first space from the cluster's space order. Export → import → export therefore
+  keeps every layer, thickness and used face. In a mixed (edited) model, an unstamped panel whose building
+  side is then second is re-read from its partner surface (warning SAM-OSI-APX-001): its layers are kept,
+  but a face-stamped layer material whose authored faces differ takes the new first space's face role.
   Fenestration (glazing, gas, opaque door panes), air boundaries, non-layered constructions and
   constructions no planar surface uses keep OpenStudio's order. A construction also used by a
   subsurface or shading surface is split into an innermost-first SAM construction for the

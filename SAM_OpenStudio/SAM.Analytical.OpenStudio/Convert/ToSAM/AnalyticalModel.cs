@@ -266,7 +266,8 @@ namespace SAM.Analytical.OpenStudio
         /// before the other one (a stable topological order). Should those requirements contradict each other (only an
         /// edited model can), the remaining spaces keep their visit order and a warning names it. A panel whose building
         /// side is then not first, and that is not SAM-written, is re-read from its partner surface's construction
-        /// (information, SAM-OSI-APX-001); a SAM-written one that cannot come first is kept and named in the warning.
+        /// (warning, SAM-OSI-APX-001: its layers are kept, but a face-stamped layer material whose faces differ takes the
+        /// new first space's face role); a SAM-written one that cannot come first is kept and named in the warning.
         /// Replacement panels are recorded in <paramref name="supersededPanels"/>.
         /// </para>
         /// </summary>
@@ -367,7 +368,7 @@ namespace SAM.Analytical.OpenStudio
                 }
 
                 supersededPanels[panel] = reoriented;
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Interzone panel built from the side of space '{0}' has space '{1}' first in the imported space order; its construction '{2}' is read from that space's surface instead", spacePanels[side].Key?.Name, spacePanels[keyValuePair.Value.Single(x => x != side)].Key?.Name, partner.Name), (string)null, reoriented);
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Interzone panel built from the side of space '{0}' has space '{1}' first in the imported space order; its construction '{2}' is read from that space's surface instead - its layers are kept, but a layer material with SAM face metadata whose two faces differ takes the face role of the new first space", spacePanels[side].Key?.Name, spacePanels[keyValuePair.Value.Single(x => x != side)].Key?.Name, partner.Name), (string)null, reoriented);
             }
 
             return order.Select(x => spacePanels[x]).ToList();
