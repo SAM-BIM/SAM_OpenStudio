@@ -71,13 +71,17 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         private AnalyticalModel model;
         private bool calendarVerified;
 
-        public static OsComparison Run(AnalyticalModel model, NativeSnapshot snapshot, string epwPath, string fixtureId, GateRuleSet ruleSet)
+        /// <param name="modelSha256">
+        /// The SHA-256 of the frozen model bytes, as the compare step verified it. Owner acceptances (<see cref="OwnerDecisions"/>)
+        /// apply only when it and the fixture id are a reviewed fixture's; null applies none.
+        /// </param>
+        public static OsComparison Run(AnalyticalModel model, NativeSnapshot snapshot, string epwPath, string fixtureId, GateRuleSet ruleSet, string modelSha256 = null)
         {
             OsComparison result = new OsComparison { FixtureId = fixtureId, RuleSet = ruleSet, model = model, native = new NativeModel(snapshot) };
             ExpectedModel expected = ReadBackExpected.Build(model, null, fixtureId);
             result.FixtureCriteria.AddRange(expected.FixtureCriteria);
             result.Required = RequiredFromModel(expected);
-            result.Configuration = new GateConfiguration { RuleSet = ruleSet, RequiredComparisons = result.Required };
+            result.Configuration = new GateConfiguration { RuleSet = ruleSet, RequiredComparisons = result.Required, Acceptances = OwnerDecisions.For(fixtureId, modelSha256, ruleSet) };
 
             result.Calendar(epwPath);
             result.Orientation();
@@ -97,7 +101,10 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             int singleSided = result.Results.Count(x => x.Input.Listing == ContractListing.MappingDifference);
             if (singleSided > 0)
             {
-                result.Supporting.Add(SingleSidedOpaque + ": " + singleSided + " internal-side opaque optical row(s) differ from SAM because EnergyPlus opaque materials are single-sided and the writer writes the external value (SAM-OS-MAT-002). Listed as MAPPING-DIFFERENCE by S09 from the writer's documented behaviour, not by S07: an owner decision (accept, or require a writer change).");
+                string decision = result.Configuration.Acceptances.Count > 0
+                    ? "accepted by the owner for this fixture's reviewed bytes only (" + OwnerDecisions.SingleSidedOpaqueReference + "): NOT PASS, accepted limitation (rank 5), never PASS."
+                    : "an owner decision (accept, or require a writer change).";
+                result.Supporting.Add(SingleSidedOpaque + ": " + singleSided + " internal-side opaque optical row(s) differ from SAM because EnergyPlus opaque materials are single-sided and the writer writes the external value (SAM-OS-MAT-002). Listed as MAPPING-DIFFERENCE by S09 from the writer's documented behaviour, not by S07: " + decision);
             }
 
             result.Gate = EQ.Gate(result.Results, result.Configuration);

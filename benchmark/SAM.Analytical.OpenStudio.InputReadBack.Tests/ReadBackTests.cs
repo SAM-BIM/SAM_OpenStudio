@@ -13,8 +13,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
 {
     /// <summary>
     /// The S09 read-back end to end, offline: export, fresh-process read and compare on the S08 signed-off fixtures with the
-    /// Budapest EPW. Each fixture has complete S07 coverage, and every non-PASS item is the named owner decision on
-    /// single-sided opaque optics. The lighting split is the S07 §5.1 T-LIGHT-SPLIT of the authored p. The ventilation
+    /// Budapest EPW. Each fixture has complete S07 coverage, and every non-PASS item is single-sided opaque optics, which
+    /// the owner accepted for the reviewed fixture bytes only (NOT PASS, accepted limitation, exit 14). The lighting split is the S07 §5.1 T-LIGHT-SPLIT of the authored p. The ventilation
     /// policy holds hour by hour, and every targeted mutation is refused.
     /// </summary>
     [TestFixture]
@@ -96,7 +96,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             TestSupport.ChangeCondition(model, TestSupport.BoxSpace, ic => ic.SetValue(InternalConditionParameter.LightingRadiantProportion, 0.0));
             OsReport report = TestSupport.Pipeline(TestSupport.Write(model, "box-p0-zero"), TestSupport.Box, "box-p-zero", out string run);
             Assert.That(Unexplained(report), Is.Empty, string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
-            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), "the optics decision only");
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), "the optics only, not accepted: the model bytes are not the reviewed fixture's");
 
             Dictionary<string, QuantityResult> rows = LightingResults(run, TestSupport.Box, TestSupport.BoxSpace);
             foreach (string row in new[] { "lighting.returnAir", "lighting.radiantTotal", "lighting.visible", "lighting.radiant" })
@@ -295,10 +295,81 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                 Assert.That(report.Consistency, Is.Empty, report.FixtureId + ": " + string.Join(" | ", report.Consistency));
                 Assert.That(report.FixtureCriteria, Is.Empty, report.FixtureId);
                 Assert.That(Unexplained(report), Is.Empty, report.FixtureId + ": " + string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
-                Assert.That(report.Status, Is.EqualTo(GateStatus.BlockedOwnerDecision.ToString()), report.FixtureId + ": never PASS while the named differences are not accepted");
-                Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner));
+                Assert.That(report.Status, Is.EqualTo(GateStatus.NotPassAcceptedLimitation.ToString()), report.FixtureId + ": the accepted optics limitation, never PASS");
+                Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.AcceptedLimitation));
+                Assert.That(report.OwnerDecisionsNamed, Is.Empty, report.FixtureId + ": " + string.Join(" | ", report.OwnerDecisionsNamed));
+                Assert.That(report.NonPass.All(x => x.Status == GateStatus.NotPassAcceptedLimitation.ToString() && x.Reason.Contains(OwnerDecisions.SingleSidedOpaqueReference)), Is.True, report.FixtureId);
+                Assert.That(report.Supporting.Single(x => x.StartsWith(OsComparison.SingleSidedOpaque + ":", StringComparison.Ordinal)), Does.Contain("accepted by the owner for this fixture's reviewed bytes only"));
                 Assert.That(report.Series.All(x => x.Count == 8760), Is.True, "every hourly series covers the year");
             }
+
+            Assert.That(box.NonPass.Count, Is.EqualTo(69));
+            Assert.That(two.NonPass.Count, Is.EqualTo(138));
+        }
+
+        /// <summary>
+        /// The optics acceptance is bound to the reviewed fixture bytes, their id and the approved rules. The unchanged box
+        /// run compared as another fixture id, or under the provisional rules, and the box with any change to its model, get
+        /// no acceptance: BLOCKED owner, exit 12, with the optics decision named.
+        /// </summary>
+        [TestCase("other-fixture-id", TestSupport.Two, "approved")]
+        [TestCase("unknown-fixture-id", "s08-fix-box-copy", "approved")]
+        [TestCase("provisional-rules", TestSupport.Box, "provisional")]
+        public void TheOpticsAcceptance_NeedsTheReviewedFixtureIdAndApprovedRules(string what, string fixtureId, string ruleSet)
+        {
+            string output = TestSupport.NewDirectory("acceptance-" + what);
+            int exit = TestSupport.Cli(out string text, "compare", "--run", boxRun, "--fixture-id", fixtureId, "--rule-set", ruleSet, "--out", output);
+            Assert.That(exit, Is.EqualTo(ReadBackExit.BlockedOwner), what + ": " + text);
+            OsReport report = OsReport.Load(Path.Combine(output, "report.json"));
+            Assert.That(report.NonPass.Count, Is.EqualTo(box.NonPass.Count), what);
+            Assert.That(report.NonPass.All(x => x.Status == GateStatus.BlockedOwnerDecision.ToString()), Is.True, what);
+            Assert.That(report.OwnerDecisionsNamed, Is.Not.Empty, what);
+            Assert.That(report.Supporting.Single(x => x.StartsWith(OsComparison.SingleSidedOpaque + ":", StringComparison.Ordinal)), Does.EndWith("an owner decision (accept, or require a writer change)."));
+        }
+
+        [Test]
+        public void TheOpticsAcceptance_DoesNotApplyToAChangedModel()
+        {
+            AnalyticalModel model = TestSupport.Load(TestSupport.Box);
+            TestSupport.ChangeCondition(model, TestSupport.BoxSpace, ic => ic.SetValue(InternalConditionParameter.LightingRadiantProportion, 0.37));
+            OsReport report = TestSupport.Pipeline(TestSupport.Write(model, "box-resaved"), TestSupport.Box, "box-resaved", out string _);
+            Assert.That(report.Inputs["modelSha256"], Is.Not.EqualTo(TestSupport.BoxSha256), "the same intent in other bytes");
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), report.Status);
+            Assert.That(report.CountByOutcome, Is.EqualTo(box.CountByOutcome));
+            Assert.That(report.NonPass.All(x => x.Status == GateStatus.BlockedOwnerDecision.ToString()), Is.True);
+        }
+
+        /// <summary>
+        /// The acceptance never hides a wrong optical value. A Plasterboard Solar Absorptance changed in the IDF fails its
+        /// external-face rows (FAIL, exit 10) while the internal-face rows keep their accepted limitation.
+        /// </summary>
+        [Test]
+        public void AWrongOpaqueOpticalValue_StillFails_UnderTheAcceptance()
+        {
+            string run = TestSupport.NewDirectory("box-plasterboard-absorptance");
+            Directory.CreateDirectory(run);
+            foreach (string file in new[] { "frozen-model.json", "weather.epw", "model.osm", "in.idf", "export.json" })
+            {
+                File.Copy(Path.Combine(boxRun, file), Path.Combine(run, file));
+            }
+
+            string idfPath = Path.Combine(run, "in.idf");
+            string idf = File.ReadAllText(idfPath);
+            IdfObject plasterboard = IdfText.Parse(idf).First(x => x.Type == "Material" && x.Name.Contains("Plasterboard"));
+            string mutated = Cli.Negative.SetField(idf, "Material", plasterboard.Name, "Solar Absorptance", "0.5");
+            Assert.That(mutated, Is.Not.EqualTo(idf), "the mutation applied");
+            File.WriteAllText(idfPath, mutated);
+            ExportManifest manifest = ExportManifest.Load(Path.Combine(run, "export.json"));
+            manifest.Mutation = "test: Plasterboard Solar Absorptance 0.5";
+            manifest.IdfSha256 = Hashing.Sha256(idfPath);
+            manifest.Save(Path.Combine(run, "export.json"));
+
+            OsReport report = TestSupport.ReadAndCompare(run, TestSupport.Box);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), report.Status);
+            List<ReportItem> failed = report.NonPass.Where(x => x.Status == GateStatus.Fail.ToString()).ToList();
+            Assert.That(failed, Is.Not.Empty);
+            Assert.That(failed.All(x => x.Quantity == "3a" && x.Key.Contains(".external")), Is.True, string.Join(" | ", failed.Select(x => x.Key + " " + x.Reason)));
+            Assert.That(report.NonPass.Where(x => x.Status != GateStatus.Fail.ToString()).All(x => x.Status == GateStatus.NotPassAcceptedLimitation.ToString()), Is.True, "the internal-face rows keep their accepted limitation");
         }
 
         [Test]
@@ -385,7 +456,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             string run = TestSupport.NewDirectory(caseId);
             Assert.That(TestSupport.Cli(out string output, "negative", "--run", source, "--case", caseId, "--out", run), Is.EqualTo(0), output);
             OsReport report = TestSupport.ReadAndCompare(run, fixture);
-            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), caseId + ": " + report.Status + " " + string.Join(" | ", report.NonPass.Where(x => x.Status != "BlockedOwnerDecision").Take(3).Select(x => x.Key + " " + x.Reason)));
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), caseId + ": " + report.Status + " " + string.Join(" | ", report.NonPass.Where(x => x.Status != "BlockedOwnerDecision" && x.Status != "NotPassAcceptedLimitation").Take(3).Select(x => x.Key + " " + x.Reason)));
             Assert.That(report.Inputs["mutation"], Does.StartWith(caseId));
         }
 
