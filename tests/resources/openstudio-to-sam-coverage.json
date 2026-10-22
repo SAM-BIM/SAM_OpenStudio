@@ -100,6 +100,7 @@
     { "id": "OS:Construction.FfactorGroundFloor", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-001" },
     { "id": "OS:Construction.WindowDataFile", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-001" },
     { "id": "OS:Construction.Missing", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-001", "notes": "A surface with no construction gets a named, layer-free placeholder - never a default build-up." },
+    { "id": "OS:Construction.FacesUnresolved", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-002", "notes": "An opaque surface construction that cannot reproduce its native layer order or the absorptances of a face EnergyPlus uses (an edited or mixed model whose orientation or face roles cannot be established) is an error, and the import is unsuccessful." },
     { "id": "OS:Construction.UnreferencedPruning", "status": "Native", "notes": "Materials and profiles the imported topology does not reference are removed." },
 
     { "id": "OS:People", "status": "Derived", "target": "InternalConditionParameter.AreaPerPerson + Occupancy*GainPerPerson", "formula": "areaPerPerson = 1 / peopleperSpaceFloorArea; sensible = activityLevel * sensibleHeatFraction; latent = activityLevel * (1 - sensibleHeatFraction)", "diagnostic": "SAM-OSI-LOAD-001" },

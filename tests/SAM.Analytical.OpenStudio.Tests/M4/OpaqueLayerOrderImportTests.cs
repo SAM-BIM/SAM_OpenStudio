@@ -350,12 +350,14 @@ namespace SAM.Analytical.OpenStudio.Tests
             return new Geometry.Spatial.Face3D(new Geometry.Spatial.Polygon3D(point3Ds));
         }
 
-        /// <summary>Two boxes whose shared wall is two halves: the south half of <see cref="sandwich"/>, the north half of a copy with its own Guid.</summary>
-        private static AnalyticalModel TwoBoxesWithTwoSharedHalves(Construction northHalf, bool bFirst)
+        /// <summary>
+        /// Two boxes whose shared wall is two halves: the south half of <see cref="sandwich"/>, the north half of
+        /// <see cref="northHalf"/> (the same layers, its own Guid). <paramref name="divergent"/>: the optics library, whose
+        /// Plasterboard and Brick faces differ; otherwise the fixture library, whose faces agree.
+        /// </summary>
+        private static AnalyticalModel TwoBoxesWithTwoSharedHalves(bool bFirst, bool divergent)
         {
-            // Equal faces (the fixture library states no internal values): a re-read panel's face roles change with its first
-            // space, which only a material whose authored faces differ would show (a recorded limit of the re-read).
-            AnalyticalModel analyticalModel = OpaqueFaceOpticsTests.TwoBoxes(OpaqueFaceOpticsTests.Library(false), sandwich, bFirst);
+            AnalyticalModel analyticalModel = OpaqueFaceOpticsTests.TwoBoxes(OpaqueFaceOpticsTests.Library(divergent), sandwich, bFirst);
             AdjacencyCluster adjacencyCluster = analyticalModel.AdjacencyCluster;
             Panel shared = SharedPanel(analyticalModel);
             List<Space> spaces = adjacencyCluster.GetSpaces(shared);
@@ -377,67 +379,191 @@ namespace SAM.Analytical.OpenStudio.Tests
             return new AnalyticalModel(analyticalModel, adjacencyCluster);
         }
 
+        private static readonly Construction northHalf = new Construction(new Guid("66666666-0000-0000-0000-000000000004"), "Order Sandwich North", sandwich.ConstructionLayers);
+
         /// <summary>
-        /// A mixed model: one shared half SAM-written, the other with its SAM stamps removed. The stamped (south) half's two
-        /// constructions are placed so its forward side is the space OpenStudio visits second; the unstamped (north) half is
-        /// built from the space visited first. The stamped half puts its forward space first in the space order, so the
-        /// unstamped half is re-read from its partner surface in that space (warning SAM-OSI-APX-001), and both halves
-        /// round-trip. Deterministic: the placement follows the visit order of the exported model, whatever it is. The
-        /// materials' faces agree; with differing authored faces the re-read half's exposed faces would take the new first
-        /// space's face roles (recorded limit, an edited model only).
+        /// Places one shared half's two native constructions: its SAM-written forward construction on the surface in the space
+        /// OpenStudio visits second when <paramref name="forwardOnSecond"/>, else first, and the unstamped reverse on the other
+        /// side; then removes the forward construction's SAM stamp when <paramref name="unstamp"/>. Every placement is a mirror
+        /// pair, as the writer makes them.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void AnUnstampedHalfBuiltFromTheSecondSpace_IsReReadFromItsPartner(bool bFirst)
+        private static void Place(global::OpenStudio.Model model, Guid half, bool forwardOnSecond, bool unstamp)
         {
-            Construction northHalf = new Construction(new Guid("66666666-0000-0000-0000-000000000004"), "Order Sandwich North", sandwich.ConstructionLayers);
-            using (OpenStudioConversionResult conversion = TwoBoxesWithTwoSharedHalves(northHalf, bFirst).ToOpenStudio())
+            string second = model.getSpaces().ToList()[1].nameString();
+            bool south = half == sandwich.Guid;
+            List<global::OpenStudio.Surface> surfaces = model.getSurfaces().Where(x => x.outsideBoundaryCondition() == "Surface" && (x.vertices().Average(y => y.y()) < 2) == south).ToList();
+            Assert.That(surfaces.Count, Is.EqualTo(2));
+            global::OpenStudio.ConstructionBase forward = surfaces.Select(x => x.construction().get()).Single(x => Core.OpenStudio.Query.TryGetSAMGuid(x, out Guid guid) && guid == half);
+            global::OpenStudio.ConstructionBase reverse = surfaces.Select(x => x.construction().get()).Single(x => !Core.OpenStudio.Query.TryGetSAMGuid(x, out Guid _));
+            foreach (global::OpenStudio.Surface surface in surfaces)
+            {
+                bool inSecond = surface.space().get().nameString() == second;
+                Assert.That(surface.setConstruction(inSecond == forwardOnSecond ? forward : reverse), Is.True);
+            }
+
+            if (unstamp)
+            {
+                forward.additionalProperties().remove();
+            }
+        }
+
+        private static string SecondVisited(global::OpenStudio.Model model)
+        {
+            return model.getSpaces().ToList()[1].nameString().Contains("Space_B") ? "Space B" : "Space A";
+        }
+
+        private static int Count(OpenStudioImportResult result, string code, string fragment)
+        {
+            return result.Diagnostics.Count(d => d.Code == code && d.Message.Contains(fragment));
+        }
+
+        /// <summary>
+        /// A mixed model, deterministic whatever order OpenStudio visits the spaces in: the stamped south half's forward
+        /// construction is on the space visited second, so that space comes first in the imported order; the north half has no
+        /// stamp and is built from the space visited first, so it is re-read from its partner (SAM-OSI-APX-001).
+        /// <list type="bullet">
+        /// <item><description>North reverse construction on the new first space, materials with differing faces: the re-read
+        /// would put Brick's internal face where the native model has Brick's external-face object (0.9 / 0.7 / 0.7 written as
+        /// 0.5 / 0.4 / 0.4), so the import fails with SAM-OSI-CON-002 naming the north half and returns no model.</description></item>
+        /// <item><description>North forward construction on the new first space with differing faces, or equal faces: the
+        /// re-read keeps every layer and used face, the import succeeds and the re-export reproduces every surface.</description></item>
+        /// </list>
+        /// </summary>
+        [TestCase(false, true, false, false)]
+        [TestCase(true, true, false, false)]
+        [TestCase(false, true, true, true)]
+        [TestCase(true, true, true, true)]
+        [TestCase(false, false, false, true)]
+        [TestCase(true, false, false, true)]
+        public void AMixedModelWhoseUnstampedHalfIsReRead_KeepsItsUsedFaces_OrFailsNamed(bool bFirst, bool divergent, bool northForwardOnSecond, bool succeeds)
+        {
+            using (OpenStudioConversionResult conversion = TwoBoxesWithTwoSharedHalves(bFirst, divergent).ToOpenStudio())
             {
                 Assert.That(conversion.IsValid, Is.True, string.Join(" | ", conversion.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
-                List<global::OpenStudio.Space> visit = conversion.Model.getSpaces().ToList();
-                Assert.That(visit.Count, Is.EqualTo(2));
-                string second = visit[1].nameString();
-
-                List<global::OpenStudio.Surface> interzone = conversion.Model.getSurfaces().Where(x => x.outsideBoundaryCondition() == "Surface").ToList();
-                bool South(global::OpenStudio.Surface surface) => surface.vertices().Average(x => x.y()) < 2;
-                bool InSecond(global::OpenStudio.Surface surface) => surface.space().get().nameString() == second;
-
-                // South half: the stamped forward construction on the second-visited space's surface, the reverse on the other.
-                global::OpenStudio.Surface southSecond = interzone.Single(x => South(x) && InSecond(x));
-                global::OpenStudio.Surface southFirst = interzone.Single(x => South(x) && !InSecond(x));
-                global::OpenStudio.ConstructionBase forward = new[] { southSecond, southFirst }.Select(x => x.construction().get()).Single(x => Core.OpenStudio.Query.TryGetSAMGuid(x, out Guid guid) && guid == sandwich.Guid);
-                global::OpenStudio.ConstructionBase reverse = new[] { southSecond, southFirst }.Select(x => x.construction().get()).Single(x => !Core.OpenStudio.Query.TryGetSAMGuid(x, out Guid _));
-                Assert.That(southSecond.setConstruction(forward), Is.True);
-                Assert.That(southFirst.setConstruction(reverse), Is.True);
-
-                // North half: no SAM stamp at all.
-                conversion.Model.getConstructions().Single(x => Core.OpenStudio.Query.TryGetSAMGuid(x, out Guid guid) && guid == northHalf.Guid).additionalProperties().remove();
-                global::OpenStudio.Surface northSecond = interzone.Single(x => !South(x) && InSecond(x));
-                string Fragment(string name) => new[] { "Insulation", "Plasterboard", "Brick" }.Single(name.Contains);
-                List<string> expectedNorth = northSecond.construction().get().to_Construction().get().layers().Select(x => Fragment(x.nameString())).Reverse().ToList();
+                Place(conversion.Model, sandwich.Guid, true, false);
+                Place(conversion.Model, northHalf.Guid, northForwardOnSecond, true);
+                string expectedFirst = SecondVisited(conversion.Model);
                 List<string> before = Signatures(conversion.Model);
 
                 OpenStudioImportResult result = conversion.Model.ToSAM();
-                AdjacencyCluster adjacencyCluster = result.AnalyticalModel.AdjacencyCluster;
-                string expectedFirst = second.Contains("Space_B") ? "Space B" : "Space A";
-                Assert.That(adjacencyCluster.GetSpaces()[0].Name, Is.EqualTo(expectedFirst), "the stamped half's forward side decides the space order");
-                Assert.That(result.Diagnostics.Count(d => d.Code == "SAM-OSI-APX-001" && d.Message.Contains("is read from that space's surface instead")), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
-
-                List<Panel> halves = adjacencyCluster.GetPanels().Where(x => adjacencyCluster.GetSpaces(x)?.Count == 2).ToList();
-                Assert.That(halves.Count, Is.EqualTo(2));
-                foreach (Panel half in halves)
+                Assert.That(Count(result, "SAM-OSI-APX-001", "is read from that space's surface instead"), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                List<Core.OpenStudio.OpenStudioDiagnostic> errors = result.Diagnostics.Where(d => d.Code == "SAM-OSI-CON-002").ToList();
+                if (!succeeds)
                 {
-                    Assert.That(adjacencyCluster.GetSpaces(half)[0].Name, Is.EqualTo(expectedFirst));
+                    Assert.That(result.Successful, Is.False, "fail closed: no model when a used face cannot be kept");
+                    Assert.That(result.AnalyticalModel, Is.Null);
+                    Assert.That(errors.Count, Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                    Assert.That(errors[0].Severity, Is.EqualTo(Core.OpenStudio.OpenStudioDiagnosticSeverity.Error));
+                    Assert.That(errors[0].Message, Does.Contain("Order_Sandwich_North").And.Contain("zone face"), errors[0].Message);
+                    return;
                 }
 
-                Panel southPanel = halves.Single(x => x.Construction.Guid == sandwich.Guid);
-                AssertLayers(southPanel.Construction, ("Insulation", 0.1), ("Plasterboard", 0.0125), ("Brick", 0.1));
-                Panel northPanel = halves.Single(x => !ReferenceEquals(x, southPanel));
-                Assert.That(LayerNames(northPanel.Construction).Select(Fragment), Is.EqualTo(expectedNorth), "innermost first from the first space's own surface");
+                Assert.That(result.Successful, Is.True, string.Join(" | ", result.Diagnostics));
+                Assert.That(errors, Is.Empty, string.Join(" | ", errors));
+                AdjacencyCluster adjacencyCluster = result.AnalyticalModel.AdjacencyCluster;
+                Assert.That(adjacencyCluster.GetSpaces()[0].Name, Is.EqualTo(expectedFirst), "the stamped half's forward side decides the space order");
+                List<Panel> halves = adjacencyCluster.GetPanels().Where(x => adjacencyCluster.GetSpaces(x)?.Count == 2).ToList();
+                Assert.That(halves.Count, Is.EqualTo(2));
+                Assert.That(halves.Select(x => adjacencyCluster.GetSpaces(x)[0].Name), Has.All.EqualTo(expectedFirst));
 
                 using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
                 {
                     Assert.That(reexport.IsValid, Is.True, string.Join(" | ", reexport.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                    AssertSameSignatures(before, Signatures(reexport.Model));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Contradictory forward sides: both halves SAM-written, the south forward on the space visited second and the north
+        /// forward on the space visited first, so no space order puts both first (a warning). The visit order is kept and the
+        /// south half is read from its other side: with differing faces that would move Brick's internal face onto a zone face,
+        /// so the import fails with SAM-OSI-CON-002; with equal faces it keeps every used face and succeeds.
+        /// </summary>
+        [TestCase(false, true, false)]
+        [TestCase(true, true, false)]
+        [TestCase(false, false, true)]
+        [TestCase(true, false, true)]
+        public void ContradictoryForwardSides_KeepTheUsedFaces_OrFailNamed(bool bFirst, bool divergent, bool succeeds)
+        {
+            using (OpenStudioConversionResult conversion = TwoBoxesWithTwoSharedHalves(bFirst, divergent).ToOpenStudio())
+            {
+                Place(conversion.Model, sandwich.Guid, true, false);
+                Place(conversion.Model, northHalf.Guid, false, false);
+                List<string> before = Signatures(conversion.Model);
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(Count(result, "SAM-OSI-APX-001", "cannot all come first in one space order"), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                Assert.That(Count(result, "SAM-OSI-APX-001", "is read from that space's surface instead"), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                List<Core.OpenStudio.OpenStudioDiagnostic> errors = result.Diagnostics.Where(d => d.Code == "SAM-OSI-CON-002").ToList();
+                if (!succeeds)
+                {
+                    Assert.That(result.Successful, Is.False, "fail closed");
+                    Assert.That(errors.Count, Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                    Assert.That(errors[0].Message, Does.Contain("Order_Sandwich_Reverse").And.Contain("zone face"), errors[0].Message);
+                    return;
+                }
+
+                Assert.That(result.Successful, Is.True, string.Join(" | ", result.Diagnostics));
+                Assert.That(errors, Is.Empty);
+                using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
+                {
+                    Assert.That(reexport.IsValid, Is.True, string.Join(" | ", reexport.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                    AssertSameSignatures(before, Signatures(reexport.Model));
+                }
+            }
+        }
+
+        /// <summary>
+        /// An edited single-sided wall: an unstamped construction puts Brick's external-face object on the zone face, a role
+        /// the writer would fill with Brick's internal face (0.5 / 0.4 / 0.4 instead of 0.9 / 0.7 / 0.7), so the import
+        /// fails with SAM-OSI-CON-002 rather than change that zone face.
+        /// </summary>
+        [Test]
+        public void AnUnstampedConstructionWithAFaceObjectInTheOtherRole_FailsNamed()
+        {
+            using (OpenStudioConversionResult conversion = OpaqueFaceOpticsTests.Box(OpaqueFaceOpticsTests.Library(), AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
+            {
+                global::OpenStudio.Surface wall = OutdoorWall(conversion.Model);
+                List<global::OpenStudio.StandardOpaqueMaterial> layers = Layers(wall);
+                global::OpenStudio.Construction edited = new global::OpenStudio.Construction(conversion.Model);
+                edited.setName("Order Edited Wall");
+                global::OpenStudio.MaterialVector materialVector = new global::OpenStudio.MaterialVector();
+                materialVector.Add(layers[1]);
+                materialVector.Add(layers[0]);
+                Assert.That(edited.setLayers(materialVector), Is.True, "Insulation outside, Brick's external-face object on the zone face");
+                Assert.That(wall.setConstruction(edited), Is.True);
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(result.Successful, Is.False);
+                List<Core.OpenStudio.OpenStudioDiagnostic> errors = result.Diagnostics.Where(d => d.Code == "SAM-OSI-CON-002").ToList();
+                Assert.That(errors.Count, Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                Assert.That(errors[0].Message, Does.Contain("Order Edited Wall").And.Contain("zone face"), errors[0].Message);
+            }
+        }
+
+        /// <summary>The same edit with the fixture library, whose faces agree: every role writes the same value, so the import succeeds and round-trips.</summary>
+        [Test]
+        public void AnUnstampedConstructionWithEqualFaceObjects_Succeeds()
+        {
+            using (OpenStudioConversionResult conversion = OpaqueFaceOpticsTests.Box(OpaqueFaceOpticsTests.Library(false), AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
+            {
+                global::OpenStudio.Surface wall = OutdoorWall(conversion.Model);
+                List<global::OpenStudio.StandardOpaqueMaterial> layers = Layers(wall);
+                global::OpenStudio.Construction edited = new global::OpenStudio.Construction(conversion.Model);
+                edited.setName("Order Edited Wall");
+                global::OpenStudio.MaterialVector materialVector = new global::OpenStudio.MaterialVector();
+                materialVector.Add(layers[1]);
+                materialVector.Add(layers[0]);
+                Assert.That(edited.setLayers(materialVector), Is.True);
+                Assert.That(wall.setConstruction(edited), Is.True);
+                List<string> before = Signatures(conversion.Model);
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(result.Successful, Is.True, string.Join(" | ", result.Diagnostics.Where(d => d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Error)));
+                Assert.That(result.Diagnostics.Any(d => d.Code == "SAM-OSI-CON-002"), Is.False);
+                using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
+                {
                     AssertSameSignatures(before, Signatures(reexport.Model));
                 }
             }

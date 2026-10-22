@@ -30,10 +30,10 @@ independent: a concept can be Native one way and Unsupported the other.
 | Native | 56 |
 | Derived | 12 |
 | Approximated | 16 |
-| Unsupported | 45 |
+| Unsupported | 46 |
 | Deferred | 9 |
 | NotApplicable | 6 |
-| **Total** | **144** |
+| **Total** | **145** |
 
 ## Explicitly deferred domains
 
@@ -163,6 +163,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 | `OS:Construction.FfactorGroundFloor` | - | **Unsupported** | `SAM-OSI-CON-001` |  |
 | `OS:Construction.WindowDataFile` | - | **Unsupported** | `SAM-OSI-CON-001` |  |
 | `OS:Construction.Missing` | - | **Unsupported** | `SAM-OSI-CON-001` | A surface with no construction gets a named, layer-free placeholder - never a default build-up. |
+| `OS:Construction.FacesUnresolved` | - | **Unsupported** | `SAM-OSI-CON-002` | An opaque surface construction that cannot reproduce its native layer order or the absorptances of a face EnergyPlus uses (an edited or mixed model whose orientation or face roles cannot be established) is an error, and the import is unsuccessful. |
 | `OS:Construction.UnreferencedPruning` | - | **Native** | - | Materials and profiles the imported topology does not reference are removed. |
 
 ### Loads and controls

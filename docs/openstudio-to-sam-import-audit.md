@@ -250,6 +250,7 @@ All reverse-only codes live in `SAM.Core.OpenStudio.OpenStudioImportDiagnosticCo
 | `SAM-OSI-SUB-001` | Unsupported subsurface type |
 | `SAM-OSI-MAT-001` | Unsupported material |
 | `SAM-OSI-CON-001` | Unsupported construction |
+| `SAM-OSI-CON-002` | Opaque surface construction cannot reproduce its native layers or used faces (error; unsuccessful import) |
 | `SAM-OSI-SCH-001` | Unsupported schedule |
 | `SAM-OSI-LOAD-001` | Unsupported load or control |
 | `SAM-OSI-LOAD-002` | Conflicting space-type / space-level load assignment |

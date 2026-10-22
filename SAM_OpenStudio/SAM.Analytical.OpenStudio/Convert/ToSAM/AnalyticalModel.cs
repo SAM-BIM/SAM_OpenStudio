@@ -158,6 +158,15 @@ namespace SAM.Analytical.OpenStudio
             // in the cluster's space order (the writer's forward side), so the spaces are added in an
             // order that puts each panel's building side first (OrderSpaces).
             List<KeyValuePair<Space, List<Panel>>> orderedSpacePanels = OrderSpaces(spacePanels, supersededPanels, panelSides, openStudioImportContext);
+
+            // Fail closed: a successful import keeps every opaque surface's native layer order and the absorptances of
+            // every face EnergyPlus uses. When an edited or mixed model's orientation or face roles cannot reproduce them,
+            // the import is unsuccessful (SAM-OSI-CON-002) instead of silently changing a used face.
+            if (!VerifySurfaceFaces(orderedSpacePanels, supersededPanels, panelSides, materialLibrary, openStudioImportContext))
+            {
+                return null;
+            }
+
             foreach (KeyValuePair<Space, List<Panel>> keyValuePair in orderedSpacePanels)
             {
                 adjacencyCluster.AddObject(keyValuePair.Key);
@@ -235,6 +244,274 @@ namespace SAM.Analytical.OpenStudio
 
             /// <summary>For a two-sided panel: the SAM construction read from the partner surface (innermost first from the partner's zone), or null.</summary>
             public Dictionary<Panel, Construction> Partner { get; } = new Dictionary<Panel, Construction>();
+
+            /// <summary>The native layers and used-face absorptances of the surfaces of each panel (its building surface and partner).</summary>
+            public Dictionary<Panel, List<SurfaceFaces>> Faces { get; } = new Dictionary<Panel, List<SurfaceFaces>>();
+
+            public void AddFaces(Panel panel, SurfaceFaces surfaceFaces)
+            {
+                if (surfaceFaces == null)
+                {
+                    return;
+                }
+
+                if (!Faces.TryGetValue(panel, out List<SurfaceFaces> list))
+                {
+                    list = new List<SurfaceFaces>();
+                    Faces[panel] = list;
+                }
+
+                list.Add(surfaceFaces);
+            }
+        }
+
+        /// <summary>
+        /// Managed snapshot of an OpenStudio surface's construction, taken during the model walk (no SWIG wrapper is kept):
+        /// its space, boundary, layer names outside first and the thermal, solar and visible absorptances of its first
+        /// (outside) and last (zone) layers; null absorptances for a layer that is neither a standard nor a massless opaque
+        /// material, NaN for a value OpenStudio does not state.
+        /// </summary>
+        private sealed class SurfaceFaces
+        {
+            public string Space { get; set; }
+
+            public string Boundary { get; set; }
+
+            public List<string> Layers { get; set; } = new List<string>();
+
+            public double[] Outside { get; set; }
+
+            public double[] Zone { get; set; }
+        }
+
+        private static SurfaceFaces Snapshot(global::OpenStudio.Surface surface)
+        {
+            try
+            {
+                global::OpenStudio.OptionalSpace optionalSpace = surface.space();
+                SurfaceFaces result = new SurfaceFaces { Space = optionalSpace == null || optionalSpace.isNull() ? null : optionalSpace.get().nameString(), Boundary = surface.outsideBoundaryCondition() };
+                global::OpenStudio.OptionalConstructionBase optionalConstructionBase = surface.construction();
+                if (optionalConstructionBase == null || optionalConstructionBase.isNull())
+                {
+                    return result;
+                }
+
+                global::OpenStudio.OptionalConstruction optionalConstruction = optionalConstructionBase.get().to_Construction();
+                if (optionalConstruction == null || optionalConstruction.isNull())
+                {
+                    return result;
+                }
+
+                List<global::OpenStudio.Material> layers = optionalConstruction.get().layers().ToList();
+                result.Layers = layers.Select(x => x.nameString()).ToList();
+                if (layers.Count > 0)
+                {
+                    result.Outside = Absorptances(layers[0]);
+                    result.Zone = Absorptances(layers[layers.Count - 1]);
+                }
+
+                return result;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static double[] Absorptances(global::OpenStudio.Material material)
+        {
+            global::OpenStudio.OptionalStandardOpaqueMaterial optionalStandardOpaqueMaterial = material.to_StandardOpaqueMaterial();
+            if (optionalStandardOpaqueMaterial != null && !optionalStandardOpaqueMaterial.isNull())
+            {
+                global::OpenStudio.StandardOpaqueMaterial standardOpaqueMaterial = optionalStandardOpaqueMaterial.get();
+                return new[] { standardOpaqueMaterial.thermalAbsorptance(), standardOpaqueMaterial.solarAbsorptance(), standardOpaqueMaterial.visibleAbsorptance() };
+            }
+
+            global::OpenStudio.OptionalMasslessOpaqueMaterial optionalMasslessOpaqueMaterial = material.to_MasslessOpaqueMaterial();
+            if (optionalMasslessOpaqueMaterial != null && !optionalMasslessOpaqueMaterial.isNull())
+            {
+                global::OpenStudio.MasslessOpaqueMaterial masslessOpaqueMaterial = optionalMasslessOpaqueMaterial.get();
+                return new[] { Value(masslessOpaqueMaterial.thermalAbsorptance()), Value(masslessOpaqueMaterial.solarAbsorptance()), Value(masslessOpaqueMaterial.visibleAbsorptance()) };
+            }
+
+            return null;
+        }
+
+        private static double Value(double value)
+        {
+            return value;
+        }
+
+        private static double Value(global::OpenStudio.OptionalDouble optionalDouble)
+        {
+            return optionalDouble == null || optionalDouble.isNull() ? double.NaN : optionalDouble.get();
+        }
+
+        /// <summary>OpenStudio's StandardOpaqueMaterial thermal, solar and visible absorptance defaults: what the writer leaves for an optic SAM does not state.</summary>
+        private static readonly double[] openStudioDefaultAbsorptances = { 0.9, 0.7, 0.7 };
+
+        /// <summary>
+        /// The thermal, solar and visible absorptances the writer puts on a face from SAM material <paramref name="material"/>
+        /// (Convert/ToOpenStudio/Material.cs): in the zone-face role of SAM's first layer the Internal* value where stated,
+        /// otherwise, and in every other role, the External* value; OpenStudio's default where neither is stated. Null for a
+        /// material that is not opaque.
+        /// </summary>
+        private static double[] WrittenAbsorptances(Core.IMaterial material, bool zoneFaceRole)
+        {
+            Core.OpaqueMaterial opaqueMaterial = material as Core.OpaqueMaterial;
+            if (opaqueMaterial == null)
+            {
+                return null;
+            }
+
+            (OpaqueMaterialParameter Internal, OpaqueMaterialParameter External, bool Direct)[] properties =
+            {
+                (OpaqueMaterialParameter.InternalEmissivity, OpaqueMaterialParameter.ExternalEmissivity, true),
+                (OpaqueMaterialParameter.InternalSolarReflectance, OpaqueMaterialParameter.ExternalSolarReflectance, false),
+                (OpaqueMaterialParameter.InternalLightReflectance, OpaqueMaterialParameter.ExternalLightReflectance, false),
+            };
+
+            double[] result = new double[properties.Length];
+            for (int i = 0; i < properties.Length; i++)
+            {
+                double value = double.NaN;
+                bool stated = zoneFaceRole && opaqueMaterial.TryGetValue(properties[i].Internal, out value) && !double.IsNaN(value);
+                if (!stated)
+                {
+                    stated = opaqueMaterial.TryGetValue(properties[i].External, out value) && !double.IsNaN(value);
+                }
+
+                result[i] = !stated ? openStudioDefaultAbsorptances[i] : properties[i].Direct ? value : 1.0 - value;
+            }
+
+            return result;
+        }
+
+        private static void CompareFace(List<string> problems, string face, double[] native, double[] written)
+        {
+            if (native == null || written == null)
+            {
+                return;
+            }
+
+            string[] names = { "thermal", "solar", "visible" };
+            for (int i = 0; i < native.Length; i++)
+            {
+                if (!double.IsNaN(native[i]) && Math.Abs(native[i] - written[i]) > 1e-9)
+                {
+                    problems.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0} {1} absorptance would be {2:R} instead of the native {3:R}", face, names[i], written[i], native[i]));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Checks every imported opaque surface panel against the native surfaces it was read from: the layers of its first
+        /// space's surface must be its SAM layers innermost first, those of a second side their mirror, and the absorptances
+        /// the writer would put on each face EnergyPlus uses (both zone faces of an interzone panel; the zone face, and the
+        /// outdoor face of an outdoor surface) must equal the native ones. A mismatch, which only an edited or mixed model
+        /// whose orientation or face roles cannot be established produces, is error SAM-OSI-CON-002 naming the panel and
+        /// faces, and the import returns no model. Layers whose native material is neither a standard nor a massless opaque
+        /// material carry their own diagnostics and are not compared.
+        /// </summary>
+        private static bool VerifySurfaceFaces(List<KeyValuePair<Space, List<Panel>>> orderedSpacePanels, Dictionary<Panel, Panel> supersededPanels, PanelSides panelSides, Core.MaterialLibrary materialLibrary, OpenStudioImportContext openStudioImportContext)
+        {
+            Dictionary<Space, string> spaceNames = new Dictionary<Space, string>();
+            foreach (KeyValuePair<string, Space> keyValuePair in openStudioImportContext.SpaceMap)
+            {
+                if (keyValuePair.Value != null)
+                {
+                    spaceNames[keyValuePair.Value] = keyValuePair.Key;
+                }
+            }
+
+            Dictionary<Panel, List<string>> panelSpaceNames = new Dictionary<Panel, List<string>>();
+            List<Panel> panels = new List<Panel>();
+            foreach (KeyValuePair<Space, List<Panel>> keyValuePair in orderedSpacePanels)
+            {
+                if (keyValuePair.Key == null || !spaceNames.TryGetValue(keyValuePair.Key, out string spaceName))
+                {
+                    continue;
+                }
+
+                foreach (Panel panel in keyValuePair.Value)
+                {
+                    Panel resolvedPanel = ResolveSupersededPanel(panel, supersededPanels);
+                    if (resolvedPanel == null)
+                    {
+                        continue;
+                    }
+
+                    if (!panelSpaceNames.TryGetValue(resolvedPanel, out List<string> names))
+                    {
+                        names = new List<string>();
+                        panelSpaceNames[resolvedPanel] = names;
+                        panels.Add(resolvedPanel);
+                    }
+
+                    if (!names.Contains(spaceName))
+                    {
+                        names.Add(spaceName);
+                    }
+                }
+            }
+
+            string SamName(string openStudioName)
+            {
+                return openStudioName != null && openStudioImportContext.MaterialMap.TryGetValue(openStudioName, out Core.IMaterial iMaterial) ? iMaterial?.Name : null;
+            }
+
+            bool result = true;
+            foreach (Panel panel in panels)
+            {
+                List<ConstructionLayer> layers = panel.PanelType == PanelType.Air ? null : panel.Construction?.ConstructionLayers?.FindAll(x => x != null);
+                if (layers == null || layers.Count == 0 || !panelSides.Faces.TryGetValue(panel, out List<SurfaceFaces> faces))
+                {
+                    continue;
+                }
+
+                List<string> spaces = panelSpaceNames[panel];
+                SurfaceFaces first = faces.FirstOrDefault(x => x.Space == spaces[0]);
+                if (first == null || first.Layers.Count == 0)
+                {
+                    continue;
+                }
+
+                SurfaceFaces second = spaces.Count > 1 ? faces.FirstOrDefault(x => x.Space == spaces[1]) : null;
+                List<string> samLayers = layers.Select(x => x.Name).ToList();
+                List<string> problems = new List<string>();
+
+                List<string> firstAsSam = first.Layers.Select(SamName).ToList();
+                firstAsSam.Reverse();
+                if (!firstAsSam.SequenceEqual(samLayers))
+                {
+                    problems.Add(string.Format("the layers of the surface in space '{0}' are not the SAM layers innermost first", spaces[0]));
+                }
+
+                if (second != null && second.Layers.Count > 0 && !second.Layers.Select(SamName).SequenceEqual(samLayers))
+                {
+                    problems.Add(string.Format("the layers of the surface in space '{0}' are not the mirror of the first side", spaces[1]));
+                }
+
+                CompareFace(problems, string.Format("the zone face in space '{0}':", spaces[0]), first.Zone, WrittenAbsorptances(materialLibrary?.GetMaterial(samLayers[0]), true));
+                bool lastIsFirst = samLayers.Count == 1;
+                Core.IMaterial last = materialLibrary?.GetMaterial(samLayers[samLayers.Count - 1]);
+                if (second != null)
+                {
+                    CompareFace(problems, string.Format("the zone face in space '{0}':", spaces[1]), second.Zone, WrittenAbsorptances(last, lastIsFirst));
+                }
+                else if (string.Equals(first.Boundary, "Outdoors", StringComparison.OrdinalIgnoreCase))
+                {
+                    CompareFace(problems, "the outdoor face:", first.Outside, WrittenAbsorptances(last, lastIsFirst));
+                }
+
+                if (problems.Count > 0)
+                {
+                    result = false;
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ConstructionFacesUnresolved, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Panel '{0}' with construction '{1}' cannot reproduce its native surfaces: {2}. The orientation or face roles of this (edited or mixed) model cannot be established, so the import is unsuccessful rather than changing a face EnergyPlus uses", panel.Name, panel.Construction.Name, string.Join("; ", problems)), (string)null, panel);
+                }
+            }
+
+            return result;
         }
 
         /// <summary>The SAM construction a planar surface resolves to (innermost first), or null when it has none or it was not imported.</summary>
@@ -265,9 +542,9 @@ namespace SAM.Analytical.OpenStudio
         /// The visit order is kept wherever it allows this; a panel built from a SAM-written forward side moves its space
         /// before the other one (a stable topological order). Should those requirements contradict each other (only an
         /// edited model can), the remaining spaces keep their visit order and a warning names it. A panel whose building
-        /// side is then not first, and that is not SAM-written, is re-read from its partner surface's construction
-        /// (warning, SAM-OSI-APX-001: its layers are kept, but a face-stamped layer material whose faces differ takes the
-        /// new first space's face role); a SAM-written one that cannot come first is kept and named in the warning.
+        /// side is then not first (an unstamped panel of a mixed model, or a forward side lost to such a contradiction) is
+        /// re-read from its partner surface's construction (information, SAM-OSI-APX-001). Whether that keeps the native
+        /// layers and used faces is not assumed: <see cref="VerifySurfaceFaces"/> checks it and fails the import otherwise.
         /// Replacement panels are recorded in <paramref name="supersededPanels"/>.
         /// </para>
         /// </summary>
@@ -332,7 +609,7 @@ namespace SAM.Analytical.OpenStudio
                 if (next < 0)
                 {
                     List<int> remaining = Enumerable.Range(0, count).Where(x => !placed.Contains(x)).ToList();
-                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The SAM-written forward sides of the interzone panels between spaces {0} cannot all come first in one space order; these spaces keep the OpenStudio order, and a panel whose forward side is then second keeps its construction as read from that side", string.Join(", ", remaining.Select(x => "'" + spacePanels[x].Key?.Name + "'"))), (string)null);
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The SAM-written forward sides of the interzone panels between spaces {0} cannot all come first in one space order; these spaces keep the OpenStudio order, a panel whose forward side is then second is read from its other side, and the import goes on only if that keeps the native layers and used faces (otherwise SAM-OSI-CON-002)",string.Join(", ", remaining.Select(x => "'" + spacePanels[x].Key?.Name + "'"))), (string)null);
                     order.AddRange(remaining);
                     break;
                 }
@@ -351,11 +628,12 @@ namespace SAM.Analytical.OpenStudio
             {
                 Panel panel = keyValuePair.Key;
                 int side = SideIndex(panel, keyValuePair.Value);
-                if (keyValuePair.Value.Count != 2 || side < 0 || keyValuePair.Value.All(x => position[side] <= position[x]) || panelSides.Forward.Contains(panel))
+                if (keyValuePair.Value.Count != 2 || side < 0 || keyValuePair.Value.All(x => position[side] <= position[x]))
                 {
                     continue;
                 }
 
+                // Left as built when the partner construction is unknown: VerifySurfaceFaces then fails the import.
                 if (!panelSides.Partner.TryGetValue(panel, out Construction partner) || partner == null)
                 {
                     continue;
@@ -367,8 +645,14 @@ namespace SAM.Analytical.OpenStudio
                     continue;
                 }
 
+                int other = keyValuePair.Value.Single(x => x != side);
                 supersededPanels[panel] = reoriented;
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Interzone panel built from the side of space '{0}' has space '{1}' first in the imported space order; its construction '{2}' is read from that space's surface instead - its layers are kept, but a layer material with SAM face metadata whose two faces differ takes the face role of the new first space", spacePanels[side].Key?.Name, spacePanels[keyValuePair.Value.Single(x => x != side)].Key?.Name, partner.Name), (string)null, reoriented);
+                if (panelSides.Faces.TryGetValue(panel, out List<SurfaceFaces> faces))
+                {
+                    panelSides.Faces[reoriented] = faces;
+                }
+
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Interzone panel built from the side of space '{0}' has space '{1}' first in the imported space order; its construction '{2}' is read from that space's surface instead, and the import goes on only if this keeps the native layers and used faces (otherwise SAM-OSI-CON-002)", spacePanels[side].Key?.Name, spacePanels[other].Key?.Name, partner.Name), (string)null, reoriented);
             }
 
             return order.Select(x => spacePanels[x]).ToList();
@@ -480,9 +764,12 @@ namespace SAM.Analytical.OpenStudio
                 panelSides.Forward.Add(panel);
             }
 
+            panelSides.AddFaces(panel, Snapshot(side));
             if (hasAdjacentHandle)
             {
-                panelSides.Partner[panel] = SurfaceConstruction(ReferenceEquals(side, surface) ? optionalAdjacentSurface.get() : surface, openStudioImportContext);
+                global::OpenStudio.Surface partner = ReferenceEquals(side, surface) ? optionalAdjacentSurface.get() : surface;
+                panelSides.Partner[panel] = SurfaceConstruction(partner, openStudioImportContext);
+                panelSides.AddFaces(panel, Snapshot(partner));
             }
 
             panelBySurfaceName[surfaceName] = panel;
@@ -577,6 +864,10 @@ namespace SAM.Analytical.OpenStudio
                         panelBySurfaceName[nameJ] = kept;
                         supersededPanels[superseded] = kept;
                         panelSides.Partner[kept] = superseded.Construction;
+                        if (panelSides.Faces.TryGetValue(superseded, out List<SurfaceFaces> supersededFaces))
+                        {
+                            supersededFaces.ForEach(x => panelSides.AddFaces(kept, x));
+                        }
                         paired.Add(nameI);
                         paired.Add(nameJ);
 
