@@ -38,7 +38,7 @@ OpaqueFaceOpticsTests: 53 total, 37 passed, 16 failed. Failing (the regressions)
   Failed AnEditOfASharedEqualFaceMultiLayerObject_IsKeptOnTheFacesItsPositionExposes("Insulation",True,True)
   Failed AnEditOfASharedEqualFaceSingleLayerObject_IsKeptOnBothFaces_AndReexportsValid
 Passing under both (the 7 new controls): AConsistentlyStampedObjectWithOtherThermalProperties_StopsTheMerge(False, True),
-TheValidPair_MergesInEitherImportOrder(False, True), AnUnchangedSharedEqualFaceSingleLayerObject_..., 
+TheValidPair_MergesInEitherImportOrder(False, True), AnUnchangedSharedEqualFaceSingleLayerObject_...,
 AnEditOfASharedEqualFaceMultiLayerObject_...("Brick",False,True), AnEditOfADivergentMaterialsExternalObject_...;
 and the 30 revision-9 tests.
 The two files were restored from the working copy afterwards, rebuilt, and the final runs above use that build.
