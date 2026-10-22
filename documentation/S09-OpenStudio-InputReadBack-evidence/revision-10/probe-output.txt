@@ -1,0 +1,15 @@
+Reviewer revision-9 probe (Program.cs and Probe.csproj byte-identical to the review's revision-9-probe), run against
+the revision-10 binaries built from 78f1014 (tests/SAM.Analytical.OpenStudio.Tests/bin/x64/Release/net8.0, SAM.Analytical.OpenStudio.dll sha256 5286c4ad...).
+Command: dotnet run --project Probe.csproj -c Release -p:Platform=x64 (exit 0). ROUNDTRIP is the unchanged multi-layer layer-order defect.
+
+ROUNDTRIP before=SAM_OpaqueMaterial_Brick_100mm_33333333 -> SAM_OpaqueMaterial_Insulation_100mm_33333333 -> SAM_OpaqueMaterial_Plasterboard_12.5mm_Internal_33333333
+ROUNDTRIP importedInternalLight=0.5800000000000001
+ROUNDTRIP exportValid=True after=SAM_OpaqueMaterial_SAM_OpaqueMaterial_Plasterboard_12.5mm_Internal_33333333_12.5mm_33333333 -> SAM_OpaqueMaterial_SAM_OpaqueMaterial_Insulation_100mm_33333333_100mm_33333333 -> SAM_OpaqueMaterial_SAM_OpaqueMaterial_Brick_100mm_33333333_100mm_Internal_33333333
+ROUNDTRIP plasterboardVisibleAbs=0.7
+FALLBACK note=Zone face: InternalLightReflectance not stated (absent or NaN); the external-side value is written on the zone face and the internal value stays unspecified
+MERGE plasterboardCount=1
+MALFORMED nativeName=ReviewerMalformedThirdFace nativeConductivity=9 importedName=ReviewerMalformedThirdFace importedConductivity=9
+MALFORMED diagnostics=SAM-OSI-ID-001:SAM face metadata is malformed (source material '33333333-0000-0000-0000-000000000003', face 'BROKEN'); the object is imported as its own material, never merged with others of its source, and its single EnergyPlus value is imported on both faces
+EQUAL_FACE beforeValid=True beforeVisibleAbs=0.6
+EQUAL_FACE nativeVisibleAbs=0.42 internalReflectance=0.5800000000000001 externalReflectance=0.5800000000000001
+EQUAL_FACE afterValid=True errors=

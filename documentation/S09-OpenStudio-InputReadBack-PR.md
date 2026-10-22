@@ -6,7 +6,10 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 9, the review of revision 8: native edits, merging, inherited faces):** `354e5322fa3a4c31a984de911c48534e768c40e4`.
+- **Tested content (revision 10, the review of revision 9: group membership, shared equal-face edits):**
+  `78f10146481dbd4fe46af8761813fa4f9d58d357`.
+- **Revision 9 (native edits, merging, inherited faces):** tested content `354e5322fa3a4c31a984de911c48534e768c40e4`,
+  reviewed head `806d5449ef02bafa2dada3283a1aa00808ce5fad` (Build 39761623252 and SPDX 39761623127 succeeded).
 - **Revision 8 (the opaque face-optics correction):** tested content `fc83a6df1f843f82a043353616a2b4e42a94e6d6`, reviewed head
   `901e592ada5728db9f413f6cd96665f5210cf5a7` (Build 39755063548 and SPDX 39755063557 succeeded).
 - **Revision 7 (the owner decisions and acceptance reporting; its optics acceptance is removed by revision 8):** tested
@@ -27,7 +30,19 @@ merged.**
 
 ## Status
 
-- **Revision 9 addresses the independent review of `901e592a`** (see "Revision 9"). Not yet independently reviewed.
+- **Revision 10 addresses the independent review of `806d5449`** (see "Revision 10"). Importer only. Not yet
+  independently reviewed; optics acceptance is not renewed and Phase B is not claimed.
+  - Every face object is validated before a merged material is returned for it, and only a validated group member
+    resolves to it. The reviewer's malformed third object now keeps its own conductivity 9 and is named in a warning;
+    the valid pair still merges. Order-independent.
+  - A native edit is kept on every SAM face the object supplies. The reviewer's equal-face single-layer edit now
+    imports on both faces and re-exports valid (no SAM-OS-MAT-003). Distinct variants keep genuine asymmetry; the
+    single-layer differing-face refusal is unchanged.
+  - Tests: see "Tests and validation". A/B: revision 9 fails the 16 new regressions; the 7 new controls pass under both.
+  - **Still open:** the confirmed pre-existing multi-layer layer-order defect on import. An opaque-only correction is
+    proposed below and not implemented; the multi-layer re-export requirement is not closed.
+- **Revision 9 addresses the independent review of `901e592a`** (see "Revision 9"). Its review confirmed the three
+  corrections and found the two importer defects revision 10 fixes.
   - Import keeps a native optical edit made after export, on the face its object carries, with a warning; an unchanged
     OpenStudio default stays unstated. The review's reproduction (light reflectance unstated, visible absorptance
     0.7 → 0.42) now re-exports 0.42; revision 8 lost the edit.
@@ -275,7 +290,114 @@ split.
 | `fc83a6d` | **Revision 8:** face-specific opaque variants, the single-layer error SAM-OS-MAT-003, the forward-side check, face metadata and its import; S09 used-face comparison; revision 7's `OwnerDecisions` removed; writer/importer and S09 tests; docs |
 | `901e592` | Revision 8 evidence (`revision-8/`) and this record |
 | `354e532` | **Revision 9:** written-value stamps and SAM-OS-MAT-004 in the writer; edit detection and merging by source Guid in the importer; NaN as unstated in S09; 11 writer/importer and 2 S09 tests; docs |
-| (record commit) | Revision 9 evidence (`revision-9/`) and this record |
+| `806d544` | Revision 9 evidence (`revision-9/`) and this record |
+| `78f1014` | **Revision 10:** importer only: each face object validated before a merged result and only group members resolve to it; edits kept on every face the object supplies; 23 writer/importer test cases; mapping doc |
+| (record commit) | Revision 10 evidence (`revision-10/`), the layer-order proposal and this record |
+
+## Revision 10: group membership and shared equal-face edits (review of `806d5449`)
+
+Tested content `78f10146481dbd4fe46af8761813fa4f9d58d357`. Importer only (`ToSAM/MaterialLibrary.cs`,
+`Classes/OpenStudioImportContext.cs`); the writer, SAM-OS-MAT-003, S09 and glazing are unchanged. The review
+(`REVISION-9-REVIEW.md`, machine-local with its `revision-9-probe`) confirmed revision 9's corrections and reproduced two
+P1 importer defects.
+
+**1. A malformed member silently inherited a valid group's material** (`Convert.ToSAM(Material)`, `MergedOpaqueMaterial`):
+- Before: an object carrying a group's `SAM.MaterialGuid` and any `SAM.MaterialFace` value was mapped to the group's
+  merged material without being validated; the group itself had silently dropped it. The reviewer's third object
+  (face `BROKEN`, conductivity 9) imported with the Plasterboard group's 0.25 and no diagnostic.
+- Now the object is validated (`ReadFaceObject`, silent) before any group lookup, and the merged material is returned
+  only when the object's OpenStudio handle is one of the group's validated members (`OpaqueMaterialGroups` holds
+  `(Material, Members)`). A malformed or inconsistent object takes the independent path: its own thermal properties, its
+  single native value on both faces, and its own warning (SAM-OSI-ID-001 identity, SAM-OSI-MAT-001 values), which now says
+  it "is imported as its own material, never merged with others of its source". The result does not depend on import
+  order. A well-formed object with other thermal properties is a conflict of the whole group, as in revision 9.
+
+**2. A shared equal-face edit was kept on one face** (`FaceObject.Faces`, `Carries`, `ServedFaces`, `DivergentAuthoredOptics`):
+- Before: an edit was kept only on the face stamped on the object. The writer writes no internal variant for a material
+  whose faces agree, so one `External` object supplies every layer position, including both faces of a single-layer
+  construction; the reviewer's edit (visible absorptance 0.6 → 0.42) imported as internal 0.4 / external 0.58 and made
+  the re-export a SAM-OS-MAT-003 error on five outdoor surfaces.
+- Now an edit is kept on every SAM face the object supplies. The writer's contract decides where it can: an `Internal`
+  variant supplies the zone face; an `External` object of a material whose authored faces differ (an internal variant
+  exists for its zone faces) supplies the external face. For an `External` object of a material whose faces agree, the
+  faces come from the constructions using it as outermost or innermost layer: a SAM-written opaque construction (SAM type
+  `Construction`, the forward one) has the zone face last and the outer face first; an unstamped construction that
+  mirrors a SAM-written one is its reverse and adds nothing; a SAM-written fenestration construction (door pane) supplies
+  the external face; any other construction's direction is unknown, so its exposed position supplies both. An object in
+  no exposed position keeps the edit on the external face and on each internal face SAM states, so no asymmetry is
+  invented and an unstated internal value keeps inheriting.
+- The merge compares, per face, the objects that supply it. The edit warning says why a shared object's edit reaches the
+  zone face ("its material's faces agree and this shared object supplies the zone face and the outer face").
+- Not changed: the single-layer differing-face refusal, distinct variants of differing faces, unedited imports.
+
+**Tests** (`M4/OpaqueFaceOpticsTests.cs`, 53 cases, was 30):
+
+| Test | Required |
+|---|---|
+| `AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup` (face / identity / optic / written × both orders; review reproduction) | third object: own name, conductivity 9, density 1000, specific heat 1200; exactly one warning, naming it, "never merged"; the valid pair still one material (0.25, both faces) |
+| `AMalformedObjectOfAMergedSource_KeepsItsOwnProperties_InAWholeModelImport` (face, identity) | the third object used as the floor's single layer; whole-model import keeps it separate with its own properties; one Plasterboard |
+| `AConsistentlyStampedObjectWithOtherThermalProperties_StopsTheMerge` (both orders) | three materials; one "thermal properties differ" warning naming the third; conductivity 9 kept |
+| `TheValidPair_MergesInEitherImportOrder` (control) | one material, both faces, no warning |
+| `AnEditOfASharedEqualFaceSingleLayerObject_IsKeptOnBothFaces_AndReexportsValid` (review reproduction) | internal and external light reflectance 0.58; solar unchanged 0.4; two warnings; re-export valid, no SAM-OS-MAT-003, visible absorptance 0.42 |
+| `AnUnchangedSharedEqualFaceSingleLayerObject_KeepsItsAuthoredFaces_AndReexportsValid` (control) | no warning; 0.4 / 0.4; re-export valid, 0.6 |
+| `AnEditOfASharedEqualFaceInterzoneSingleLayerObject_IsKeptOnBothFaces` (both space orders) | both solar reflectances 0.55; no SAM-OS-MAT-003 on re-export |
+| `AnEditOfASharedEqualFaceMultiLayerObject_IsKeptOnTheFacesItsPositionExposes` (Plasterboard zone face, Brick outer face, Insulation middle) | internal only / external only (other face 0.4) / both; one warning per face |
+| `AnEditOfASharedEqualFaceInterzoneMultiLayerObject_IsKeptOnItsFirstSpaceFace` | the first space's zone-face layer: internal 0.58, external 0.4 (reverse construction mirrored) |
+| `AnEditOfADivergentMaterialsExternalObject_StaysOnTheExternalFace` (asymmetry control) | Brick external 0.58, internal authored 0.6 |
+
+The multi-layer cases assert the import only: their re-export is affected by the layer-order defect below.
+
+**A/B** (`revision-10/test-summaries.txt`): with `ToSAM/MaterialLibrary.cs` and `OpenStudioImportContext.cs` of
+`806d544` restored, exactly the 16 defect regressions fail and the 7 control cases pass (Brick outer face, valid pair,
+thermal conflict, unchanged, divergent). The reviewer's probe, run unchanged against the revision-10 binaries
+(`revision-10/probe-output.txt`), gives `MALFORMED importedConductivity=9` with the named warning and
+`EQUAL_FACE afterValid=True`; its `ROUNDTRIP` lines are unchanged (the layer-order defect).
+
+**Still open (confirmed, not changed):** the multi-layer layer order on import (below). The original multi-layer
+re-export requirement is **not** closed by the single-layer controls.
+
+## Opaque multi-layer layer order on import: correction proposal (not implemented)
+
+**Defect (pre-existing, confirmed by the review of `806d5449`).** `ToSAM/Construction.cs:25-27` says outside-first import
+preserves a round trip; the loop at `:161` appends the native layers in OpenStudio order. SAM stores layers inside →
+outside and the writer reverses them for the forward construction, so an imported multi-layer opaque construction is
+reversed. The reviewer's probe: Brick → Insulation → Plasterboard_Internal (outside → zone) re-exports as
+Plasterboard → Insulation → Brick_Internal; the edited zone face (visible absorptance 0.42) is lost and Plasterboard is
+back to 0.7. Single-layer constructions are unaffected.
+
+**Proposed change (one revision, opaque only, owner approval needed first):**
+1. In `ToSAM_Construction`, for an opaque layered `OS:Construction` only, build the SAM layers from the native layers in
+   reverse order (innermost first). Fenestration constructions (glazing or gas layers, or SAM type `ApertureConstruction`,
+   which includes opaque door panes), air boundaries and non-layered constructions keep today's path. Correct the
+   comment at `:25-27`.
+2. Orientation: SAM's first layer faces the panel's first space, and a native construction's last layer faces the zone
+   of the surface using it. The importer builds a panel and resolves its construction from the first-visited surface,
+   and relates spaces in visit order (`ToSAM/AnalyticalModel.cs` pass D), so the panel's first space is that surface's
+   space. The change relies on this; a test pins it. No geometry, normal or space-order change is proposed; the
+   geometric-fallback pairing keeps the first surface's panel and must be covered by the same test.
+3. Both interzone sides: the forward and reverse native constructions already import as two SAM constructions; after
+   the reversal each reads correctly from its own surface, and the panel uses the one of its constructing surface. For a
+   SAM-written model the panel is built from the first space's surface (forward construction, SAM Guid restored), so the
+   re-export writes the same forward/reverse pair. The duplicate reverse SAM construction is pre-existing and not changed.
+4. Layer references and face metadata: the zone-face object (`_Internal` variant or shared object, native last) becomes
+   SAM layer 0 again, so the writer puts it back on the zone face. Material import and revision 10's served faces read
+   native positions and are unaffected. Layer thicknesses stay per layer.
+5. Native third-party models: EnergyPlus layer order is outside-first for every construction, so the reversal is
+   correct for them too; models without SAM metadata change in the same way.
+6. Compatibility: every multi-layer opaque import changes layer order (U-value unchanged; layer position, thermal
+   mass position and face optics change, which is the fix). SAM models imported before the fix hold reversed
+   constructions and cannot be identified afterwards; no migration is proposed. Consumers that re-export imported
+   models (OpenStudio or Tas) change accordingly. A Summary information diagnostic is not proposed.
+7. Unchanged exclusions: glazing and pane constructions (StandardGlazing, Gas, SimpleGlazing, door panes) go through the
+   same layer loop and may share the reversal; their Front/Back mapping and pane order are excluded here and need their
+   own review and decision. Shading constructions, S09, the writer, Tas and the roadmap are not touched.
+8. Tests: the reviewer's multi-layer round trip (layers and the 0.42 zone face survive); two boxes in both space orders
+   (both sides of the shared multi-layer wall); an unstamped native multi-layer OSM (SAM innermost first, re-export
+   identical native order); single-layer and fenestration/door unchanged controls; the S09, writer/importer and benchmark
+   suites (Simulation excluded). No engine is needed.
+
+Recommended: Opus, high effort, a separate revision or PR after owner approval, Build mode (the design above is bounded;
+the risk is in orientation edge cases, which the tests pin).
 
 ## Revision 9: native edits, merging by source identity, inherited faces (review of `901e592a`)
 
@@ -339,6 +461,7 @@ outside-first layer order and says this survives a round trip, but the writer re
 an imported multi-layer construction is reversed and a re-export puts its outermost layer on the zone face. Fixing it
 changes import orientation for every model and needs its own decision and task.
 
+## Revision 8: the opaque face-optics correction
 
 Tested content `fc83a6df1f843f82a043353616a2b4e42a94e6d6`. Revision 7's commits and evidence stay in history; its acceptance code is removed.
 
@@ -1269,11 +1392,26 @@ calculation, EnergyPlus simulation or sizing was run.
 
   No fixture, weather, tolerance, report schema, shared-core, SAM_Tas, ventilation, lighting, glazing, single-layer or
   exposed-face change.
+- Revision 10 changed:
+  - importer: `OS/Convert/ToSAM/MaterialLibrary.cs` (`ToSAM` membership check, `FaceObject.Faces`/`Carries`,
+    `ServedFaces`, `DivergentAuthoredOptics`, `Handle`, `MergedOpaqueMaterial` members and per-face supply, warning
+    text), `OS/Classes/OpenStudioImportContext.cs` (`OpaqueMaterialGroups` value);
+  - writer tests: `M4/OpaqueFaceOpticsTests.cs` (23 cases);
+  - `docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md` (import identity);
+  - the new `revision-10/` evidence folder and this record (the layer-order proposal).
+
+  No writer, S09, construction import, fixture, weather, tolerance, report schema, shared-core, SAM_Tas, ventilation,
+  lighting, glazing or roadmap change.
 
 ## Tests and validation (local, Release x64)
 
 | Check | At | Result |
 |---|---|---|
+| S09 tests | `78f1014` (revision 10, `78f10146481dbd4fe46af8761813fa4f9d58d357`; harness `3589bc9c…`, library `40ee4c7d…`, writer `5286c4ad…`) | **97/97**; both fixture `report.txt` byte-identical to `revision-9/` (S09 does not use the OpenStudio importer) |
+| Writer/importer, `--filter 'TestCategory!=Simulation'` | `78f1014` | **432 passed, 2 skipped** (409 + 23 face-optics cases; face-optics 53) |
+| Benchmark, `--filter TestCategory!=Simulation` | `78f1014` | 51/51 |
+| A/B: `ToSAM/MaterialLibrary.cs`, `OpenStudioImportContext.cs` of `806d544` restored | working tree, then restored and rebuilt | face-optics **16 of 53 fail** (exactly the new regressions); the 7 new controls and the 30 revision-9 tests pass |
+| The review's `revision-9-probe`, unchanged | revision-10 binaries | `MALFORMED importedConductivity=9` with the named warning; `EQUAL_FACE afterValid=True`; `ROUNDTRIP` unchanged (layer order) |
 | S09 tests | `354e532` (revision 9; harness `4edf422b…`, library `1c4408f7…`) | **97/97** (95 + 2 provenance cases); both fixture `report.txt` byte-identical to `revision-8/` |
 | Writer/importer, `--filter 'TestCategory!=Simulation'` | `354e532` | **409 passed, 2 skipped** (face-optics tests 30, was 21) |
 | Benchmark, `--filter TestCategory!=Simulation` | `354e532` | 51/51 |
@@ -1390,8 +1528,15 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
   - An unstated Internal* takes the External* value on a zone face; since revision 9 this is reported
     (SAM-OS-MAT-004, Summary) and S09 reports those rows as S-UNSPEC EXPORT-DEFECT. Accepting the inheritance would
     need an S07 default for internal faces (an S07 decision), not a writer change.
-  - **Round-trip layer order (pre-existing, found in revision 9):** the importer keeps OpenStudio's outside-first order,
-    so a multi-layer construction comes back reversed. Separate task and decision.
+  - **Round-trip layer order (pre-existing, found in revision 9, confirmed by the review of `806d5449`):** the importer
+    keeps OpenStudio's outside-first order, so a multi-layer opaque construction comes back reversed and its re-export
+    loses the zone face. Not fixed; the opaque-only proposal is under "Opaque multi-layer layer order on import". The
+    multi-layer round trip is not closed.
+  - **Revision 10 served faces:** a construction with no SAM identity that is not the mirror of a SAM-written one is of
+    unknown direction, so an equal-face object at its exposed position takes an edit on both faces. Construction
+    positions are read, not whether a surface uses the construction. An opaque door-pane position counts as the
+    external face only (the writer's door rule). Served faces are computed only for edited objects (a scan of the
+    model's constructions).
   - Import merging uses only `SAM.MaterialGuid`; objects written before revision 9 lack `SAM.Written.*`, so an unstated
     value on them is kept as an edit of unknown provenance (reported).
   - Opaque door panes keep the external values on both faces (SAM-OS-MAT-002 information), outside this scope.
@@ -1455,10 +1600,11 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 ## Next step
 
 Both fixtures report BLOCKED owner, exit 12, with only unused-face rows left. Do not start S10.
-- **Independent review of revision 9** (`354e5322fa3a4c31a984de911c48534e768c40e4` and the record head in the PR
-  description): edit detection against the written values, the merge rules and their conflicts, SAM-OS-MAT-004 and the
-  NaN-as-unstated reading, the regressions, controls and A/B. The review of revision 8 raised these three findings.
-- The owner decides whether the pre-existing import layer-order defect becomes its own task.
+- **Independent review of revision 10** (`78f1014` and the record head in the PR description): the membership check and
+  its controls, the served-face rules (writer contract, construction positions, mirrors, unknown direction, no exposed
+  face), the merge per face, the regressions, controls and A/B, and the layer-order proposal. The review of revision 9
+  raised the two findings.
+- The owner decides the layer-order proposal (approve it as its own revision or task, or change its scope).
 - Then the owner decides the unused-face rows (accept, or an S07 3a scope decision through a separate SAM PR).
 - Optional, if the owner wants a refreshed committed pack: an authorised acceptance run (`Run-S09-ReadBack.ps1`, both
   phases, then `Pack-S09-Evidence.ps1`) at the reviewed head. It exports and translates with the OpenStudio SDK only.
