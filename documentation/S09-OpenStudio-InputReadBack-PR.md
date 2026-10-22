@@ -6,7 +6,10 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 7, the owner decisions and acceptance reporting):** `614a7a8d70b6a70c5628a0ef3b57eaec0c5ec794`.
+- **Tested content (revision 8, the opaque face-optics correction):** `fc83a6df1f843f82a043353616a2b4e42a94e6d6`.
+- **Revision 7 (the owner decisions and acceptance reporting; its optics acceptance is removed by revision 8):** tested
+  content `614a7a8d70b6a70c5628a0ef3b57eaec0c5ec794`, head `7fccdccb2420bfcc4ad79761d1eee7f547c54d57` (Build
+  39744024838 and SPDX 39744024866 succeeded).
 - **Revision 6 (the lighting read-back guards):** tested content `225881f00971c7cab3596e94867924a11866e147`, reviewed head
   `8fd0ffc2e7a4d0c1e8463305d74f476e198e4ea7` (Build 39726520323 succeeded). It passed independent technical review
   (owner statement, 2026-10-22).
@@ -22,21 +25,32 @@ merged.**
 
 ## Status
 
-- **The owner took the three S09 decisions on 2026-10-22** (see "Revision 7"):
-  - optics option 1: OS-MAT-SINGLE-SIDED accepted as a limitation for the two reviewed fixtures only, with its effect on
-    results unmeasured;
-  - ventilation A: the T-VENT-INACTIVE extension to OpenStudio confirmed (Decision 1);
-  - lighting B1: the Decision 5 reading confirmed. **OD-L1 stays open**, and the Tas side needs separate approval.
-- **Revision 7 reports the optics acceptance.** Both fixtures are now **NOT PASS, accepted limitation (rank 5), exit 14**,
+- **Revision 8 corrects the opaque-material mismatch instead of accepting it** (owner, 2026-10-22; see "Revision 8").
+  - Writer: SAM's first layer carries its internal-face optics (an `_Internal` variant where its faces differ), every
+    other layer its external ones, so every face EnergyPlus uses holds the authored value. Forward and reverse
+    constructions stay exact mirrors.
+  - A single-layer outdoor or interzone construction whose faces differ is a named error, SAM-OS-MAT-003, with no
+    construction and an unsuccessful conversion. Ground and adiabatic single layers use the zone face.
+  - The forward construction follows the panel's first space; a missing first side is a named error, never a swap.
+  - Import recovers both authored face sets from explicit per-object metadata and diagnoses inconsistent metadata.
+  - S09 derives the used faces itself and compares them exactly; a swapped zone face FAILs.
+  - **Revision 7's optics acceptance is removed.** Both fixtures are **BLOCKED owner, exit 12**, complete (319/319,
+    592/592). Every remaining non-PASS row (69 / 138) is on a face EnergyPlus does not use.
+  - Tests: S09 95/95, writer/importer 400 passed / 2 skipped (Simulation excluded), benchmark 51/51. Not yet independently
+    reviewed.
+- **Still recorded from 2026-10-22:** ventilation A (T-VENT-INACTIVE extended, Decision 1) and lighting B1 (the
+  Decision 5 reading; **OD-L1 stays open**, the Tas side needs separate approval). The optics option-1 acceptance is
+  superseded by the owner's instruction to investigate and correct.
+- **Revision 7 reported the optics acceptance (superseded by revision 8).** Both fixtures are now **NOT PASS, accepted limitation (rank 5), exit 14**,
   with complete coverage (319/319, 592/592) and unchanged outcome counts. They are never PASS.
   - The acceptance applies only under the approved rules, to a fixture whose id and frozen-model SHA-256 are both a
     reviewed fixture's, and only to the 3a MAPPING-DIFFERENCE rows. Any other model, fixture id or rule set stays
     BLOCKED owner, exit 12.
   - Every failure check is kept: a wrong opaque optical value still FAILs (exit 10) under the acceptance, and all
     existing negatives still FAIL.
-  - S09 93/93 (5 new). Revision 7 is not yet independently reviewed.
-- **Not a Phase B PASS.** The roadmap Phase B gate needs S08-S11 PASS. An S09 closed with an accepted limitation does
-  not meet that wording; no roadmap exception is requested or made here.
+  - S09 93/93 (5 new). Its final-head CI succeeded; it was not independently reviewed before revision 8 replaced it.
+- **Not a Phase B PASS.** The roadmap Phase B gate needs S08-S11 PASS. Exit 12 is not PASS, and neither would an
+  accepted limitation be; no roadmap exception is requested or made here.
 - Revision 6 (below) passed independent technical review. It had left S09 BLOCKED on the optics and T-VENT-INACTIVE
   decisions; the lighting visible-fraction item was withdrawn by S07 amendment L1 (SAM#217), which revision 5 implements.
 - **Revision 6 closes the two gaps the independent review of `31af6022` reproduced in the lighting read-back** (see
@@ -101,13 +115,13 @@ merged.**
 - **All 16 targeted negatives FAIL** (exit 10): the original 8, the 6 of revision 2 and the 2 of revision 3. Revision 5
   adds 5 lighting negatives, which FAIL on both fixtures in the S09 tests.
 - **The optics decision table for OS-MAT-SINGLE-SIDED is below.** It separates exposed-face differences (18 box rows /
-  33 two-zone rows) from buried-layer metadata (51 / 105). The owner accepted option 1 on 2026-10-22 for the two
-  reviewed fixtures only (revision 7).
+  33 two-zone rows) from buried-layer metadata (51 / 105). Revision 7 recorded option 1 (acceptance); revision 8 replaces
+  it with option 2 (construction-aware variants), so every exposed face now matches.
 - **Construction-performance calculation methods are assessed below.** This is an assessment only; nothing is
   implemented. Revision 3 corrects its wording only.
-- On this evidence the S09 roadmap criterion ("as S08, for OpenStudio") is met **with an accepted limitation**, subject
-  to the independent review of revision 7: "Not PASS — accepted limitation", never PASS. PASS would need a writer change
-  for the optics item (and, for the buried rows, a 3a scope decision).
+- On this evidence every S07 quantity matches except the rows on faces EnergyPlus does not use (69 / 138), which keep
+  both fixtures BLOCKED owner, exit 12, subject to the independent review of revision 8. Clearing them needs an owner
+  decision: accept those unused-face rows, or an S07 3a scope decision (compare only used faces).
 
 ## Owner instructions applied
 
@@ -187,6 +201,22 @@ split.
 - Show that the new regressions expose the reviewed behaviour. Keep fixtures, original evidence and the OD-L1, optics
   and ventilation decisions open. No other repository edits, simulations, sizing, engine execution or merge.
 
+**Revision 8 (2026-10-22, in substance).** Approved in this PR with conditions.
+- Preserve revision 7 in history; do not merge or close S09. Investigate, then correct, the opaque-material mismatch
+  before accepting it.
+- Single-layer outdoor or interzone constructions needing different face optics: a named error and an unsuccessful
+  conversion, never External values as a substitute. Ground and adiabatic cases use the zone-face properties. Check per
+  construction use, before cache reuse. No averaging or artificial layer splitting.
+- Preserve enough explicit source information to recover both authored face sets on import, even when only an Internal
+  variant is referenced. Do not merge by name or invent missing values. Diagnose inconsistent identity or properties.
+- S09 derives the expected exposed-face properties from raw SAM data and orientation, without the writer's selector,
+  with a swapped-face regression.
+- Implement the orientation checks, remove revision 7's optics acceptance and keep its history.
+- Run S09, writer/importer and benchmark tests, excluding `TestCategory=Simulation` from the writer and benchmark
+  suites. Obtain final-head CI and return for independent review.
+- Excluded: engines, acceptance scripts, Tas or roadmap changes, merge, S10. Keep zero-delivery ventilation and the
+  reviewed lighting corrections; no glazing work.
+
 **Owner decisions and revision 7 (2026-10-22, in substance).**
 - Revision 6 at `8fd0ffc2` passed independent technical review.
 - The owner approved the three recommendations of the advisory note: optics option 1, ventilation A, lighting B1.
@@ -215,7 +245,89 @@ split.
 | `225881f` | **Revision 6:** the native-domain and plenum guards in `OsComparison.LightingSplit`, `OsQuantities.LightingFractionBoundary`, 6 CLI cases, 8 S09 tests |
 | `8fd0ffc` | Revision 6 evidence (`revision-6/`) and this record |
 | `614a7a8` | **Revision 7:** `Compare/OwnerDecisions.cs` (new), the acceptance in `OsComparison.Run` and its Supporting line, the model hash passed by `compare`; 5 S09 tests |
-| (record commit) | Revision 7 evidence (`revision-7/`) and this record |
+| `7fccdcc` | Revision 7 evidence (`revision-7/`) and this record |
+| `fc83a6d` | **Revision 8:** face-specific opaque variants, the single-layer error SAM-OS-MAT-003, the forward-side check, face metadata and its import; S09 used-face comparison; revision 7's `OwnerDecisions` removed; writer/importer and S09 tests; docs |
+| (record commit) | Revision 8 evidence (`revision-8/`) and this record |
+
+## Revision 8: the opaque face-optics correction
+
+Tested content `fc83a6df1f843f82a043353616a2b4e42a94e6d6`. Revision 7's commits and evidence stay in history; its acceptance code is removed.
+
+**Verified findings (code and the revision-7 IDF; no engine run):**
+- SAM stores layers inside → outside. The writer gave every opaque layer the External values, and one material object
+  per (material, thickness) served every construction and position.
+- The forward construction goes to the first space's side of an internal panel (and every single-sided surface), the
+  reverse to the second; in the IDF they share material objects in mirror order. OpenStudio translation adds nothing.
+- The writer and S09 both take "first space" from `AdjacencyCluster.GetSpaces()` order (S07 section 1).
+- EnergyPlus uses only the outermost layer's outside face and the innermost layer's zone face; an interzone outside face
+  is the other zone's inside face, and ground/adiabatic outside faces carry no optics (I/O Reference, as cited in the
+  optics table; not run).
+- Before revision 8, only one opaque object per SAM Guid carried `SAM.Guid`, and import wrote the single value on both
+  faces.
+
+**Writer** (`Material.cs`, `Construction.cs`, `AnalyticalModel.cs`; codes and keys in `SAM.Core.OpenStudio`):
+- SAM's first opaque-construction layer is built with `internalFace`: when the material's Internal* optics differ, an
+  internal-face variant (cache key `Guid:thickness:Internal`, name `…_Internal`) carries them; an unstated Internal*
+  keeps the External* value. Every other layer is the external-face object. The face follows SAM layer position, so
+  forward and reverse constructions share objects.
+- Single layer (checked in pass D for each panel use before any construction is converted or reused): differing faces
+  on any boundary other than ground/adiabatic, or on a two-sided panel, raise **error SAM-OS-MAT-003** naming the
+  construction, boundary and properties; no construction is assigned, so `IsValid` is false. No substitute is written.
+- Orientation: `ForwardSideProblem` refuses a panel whose first converted surface is not its first space's side (error
+  SAM-OS-ADJ-001, no construction, never swapped).
+- Every opaque object from a SAM opaque material carries `SAM.MaterialGuid`, `SAM.MaterialFace` and each stated
+  `SAM.Optic.<parameter>` in `OS:AdditionalProperties` (no EnergyPlus input changes).
+- The SAM-OS-MAT-002 "external values govern both sides" line now appears only for opaque door panes.
+
+**Importer** (`ToSAM/MaterialLibrary.cs`): with face metadata, exactly the stamped authored values are set on both
+faces (unstated ones stay unset). The metadata is trusted only if well formed, consistent with any `SAM.Guid` on the
+object, matching the object's own absorptances for its declared face, and identical across face objects of the same
+source Guid; otherwise a warning (SAM-OSI-ID-001 identity, SAM-OSI-MAT-001 values) and the single native value on both
+faces. No metadata: unchanged behaviour, silent.
+
+**S09** (`OsComparison.CompareLayers`, `IsExposedOpaqueFace`, `SingleLayerFaces`): the used faces are derived from SAM
+and the side alone (innermost layer: SAM internal on the first space's side, SAM external on the other; outermost layer
+of an outdoor side: SAM external). A used face is never listed, so a wrong value FAILs. Any other face is listed
+MAPPING-DIFFERENCE only when SAM's two faces differ **and** the native value is the layer's other authored face. A
+single-layer outdoor or interzone side with differing faces adds a named `Unsupported` entry (BLOCKED technical).
+`OwnerDecisions` and the model-hash wiring are removed; `Run` and `compare` are as at revision 6.
+
+**Fixture results (S09 test runs at `fc83a6d`; `revision-8/`):**
+
+| Fixture | Status (exit) | Coverage | Outcomes |
+|---|---|---|---|
+| `s08-fix-box` | BLOCKED owner (12) | 319/319 | Match 213, WithinTolerance 32, AcceptedTransformation 4, NotApplicable 1, MappingDifference 69 |
+| `s08-fix-two` | BLOCKED owner (12) | 592/592 | Match 379, WithinTolerance 60, AcceptedTransformation 14, NotApplicable 1, MappingDifference 138 |
+
+- The MAPPING-DIFFERENCE count is unchanged (69 / 138) but every row is now on a face EnergyPlus does not use: the
+  18 / 33 exposed rows pass (WithinTolerance where `1 − (1 − ρ)` is not bit-exact), and the zone-face variants' buried
+  external rows are listed instead.
+- The IDFs differ from revision 7 only in the `_Internal` material names and absorptances and the construction layers
+  that name them (`revision-8/idf-diff-rev7.txt`).
+
+**Tests** (writer/importer `M4/OpaqueFaceOpticsTests.cs`, 21; S09 9 new/changed):
+
+| Test | Required |
+|---|---|
+| zone face / interzone mirror / first-space order | `_Internal` innermost on every single-sided surface; B side = A side reversed with B's zone face external; space B first → B forward |
+| missing first side (unit) | `ForwardSideProblem` names the first space and "never swapped"; null when the first side is present |
+| reuse / agreeing faces / metadata | two thermally identical Plasterboard objects; no variant when faces agree; every object stamped |
+| single layer | ground and adiabatic use internal values; outdoor (4 walls) and interzone raise SAM-OS-MAT-003, invalid, no construction; per use in both conversion orders; agreeing faces written |
+| import | both faces from the variant alone (Guid restored); base and variant; unstated value not invented; edited object, disagreeing objects and mismatched identity each warned; no metadata unchanged |
+| S09 `EveryUsedZoneFace_HoldsTheAuthoredFace` | box 18 / two-zone 36 zone-face rows pass, unlisted, none non-PASS |
+| S09 `ASwappedZoneFace_Fails_OnExactlyTheZoneFaceRows` | external values on each variant (the old writer): FAIL, exactly 18 / 33 internal zone-face rows |
+| S09 `AWrongOpaqueOpticalValue_Fails`, single-layer ground / outdoor roof | FAIL; ground exit 12 with only listed rows; roof SAM-OS-MAT-003, named Unsupported, FAIL |
+
+**A/B** (8 optics tests; `revision-8/test-summaries.txt`):
+- Writer files of `7fccdcc` restored: all 8 fail. The fixtures FAIL (exit 10) with the zone faces OUT-OF-TOLERANCE, no
+  SAM-OS-MAT-003 is raised, and there is no `_Internal` material to swap. The revision-8 comparator rejects the old
+  writer on its own.
+- Comparator of `8fd0ffc` (revision 6) restored with the revision-8 writer: all 8 fail. It lists used zone faces as
+  MAPPING-DIFFERENCE, a swapped zone face stays BLOCKED owner (exit 12, hidden), and no single-layer entry is named.
+
+**Untested or unverified:** EnergyPlus acceptance of the variants and of the missing construction left by
+SAM-OS-MAT-003 (no engine run); a realistic model that drops only the first space's side (covered at unit level only);
+massless and door-pane opaque layers (unchanged path); the effect on results (nothing simulated).
 
 ## Revision 7: the owner decisions and acceptance reporting
 
@@ -661,12 +773,12 @@ because `FenestrationTests.Holes_...` takes the first diagnostic containing "hol
    requirement is its flow and the other bases are S-ZERO. Tas ignores `OutsideSupplyAirFlow`, so a model with an
    override diverges between the engines. The fixtures have none.
 4. **Single-sided opaque optics (OS-MAT-SINGLE-SIDED):**
-   - EnergyPlus `Material` has one solar, visible and thermal absorptance for both faces, and the writer writes the
-     external value (`SAM-OS-MAT-002`, `OS/Material.cs:92-116`).
-   - Each internal-side row whose SAM value differs is listed MAPPING-DIFFERENCE by S09, from the writer's documented
-     behaviour, not by S07. Rank 3.
-   - **Accepted by the owner on 2026-10-22 (option 1) for the two reviewed fixtures only**, with its effect on results
-     unmeasured; reported as rank 5, exit 14, by revision 7. The decision table and options are below.
+   - EnergyPlus `Material` has one solar, visible and thermal absorptance for both faces. Until revision 7 the writer
+     wrote the external value everywhere; revision 8 writes SAM's first layer with its internal face (see "Revision 8").
+   - S09 compares every used face exactly and lists a row MAPPING-DIFFERENCE only on a face EnergyPlus does not use,
+     and only while the native value is the layer's other authored face. Rank 3; listed by S09, not by S07.
+   - Revision 7 recorded the owner's option-1 acceptance (exit 14); revision 8 removes it on the owner's instruction to
+     correct the mismatch. The remaining unused-face rows need an owner decision (accept, or an S07 3a scope decision).
 5. **Lighting split (revision 5; supersedes the "lighting visible fraction" item of revisions 1–4):** S07 amendment L1
    withdrew the view coefficient ↔ Fraction Visible identity, so that item is no longer an owner decision. The fixtures
    author p and pass T-LIGHT-SPLIT.
@@ -1038,11 +1150,31 @@ calculation, EnergyPlus simulation or sizing was run.
 
   No writer, importer, report schema, exit code, shared-core, SAM_Tas, fixture, weather, tolerance, ventilation or
   lighting change.
+- Revision 8 changed:
+  - writer: `OS/Convert/ToOpenStudio/Material.cs` (`ToOpenStudio_Layer`, face variants, metadata),
+    `Construction.cs` (face by SAM layer position, `SingleLayerDivergentFaceOptics`), `AnalyticalModel.cs` (per-use
+    single-layer error, `ForwardSideProblem`, `IsZoneFaceOnlyBoundary`); `SAM.Core.OpenStudio`
+    `OpenStudioDiagnosticCodes.cs` (`SAM-OS-MAT-003`), `OpenStudioIdentityKeys.cs` (face keys);
+  - importer: `OS/Convert/ToSAM/MaterialLibrary.cs` (`StampedFaceOptics`), `OS/Classes/OpenStudioImportContext.cs`;
+  - S09: `Compare/OsComparison.cs` (used-face comparison, `SingleLayerFaces`; `Run` as at revision 6),
+    `Cli/ReadBackRead.cs` (as at revision 6), `Compare/OwnerDecisions.cs` deleted, `Tests/ReadBackTests.cs`;
+  - writer tests: `M4/OpaqueFaceOpticsTests.cs` (new, 21), `C7/DeclaredDiagnosticsTests.cs`,
+    `D1/DiagnosticDetailTableTests.cs`, `D1/DiagnosticsAdapterTests.cs`;
+  - `docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md`, `docs/SAM_OPENSTUDIO_ANALYTICAL_COVERAGE.md` (Derived 31, Approximated
+    18), `tests/resources/openstudio-analytical-coverage.json`;
+  - the new `revision-8/` evidence folder and this record.
+
+  No fixture, weather, tolerance, report schema, shared-core, SAM_Tas, ventilation, lighting or glazing change.
 
 ## Tests and validation (local, Release x64)
 
 | Check | At | Result |
 |---|---|---|
+| S09 tests | `fc83a6d` (revision 8; harness `44cb7177…`, library `1a4a03df…`) | **95/95**: the revision-7 cases minus its 5 acceptance tests and with the fixture test requiring exit 12, plus 7 optics tests |
+| Writer/importer `tests/SAM.Analytical.OpenStudio.Tests`, `--filter 'TestCategory!=Simulation'` | `fc83a6d` | **400 passed, 2 skipped** (379 + 21 new; 2 changed) |
+| Benchmark `--filter TestCategory!=Simulation` | `fc83a6d` | 51/51 |
+| A/B: writer of `7fccdcc` restored | working tree, then restored and rebuilt | 8 optics tests: **8 failed** (fixtures exit 10, zone faces out of tolerance) |
+| A/B: comparator of `8fd0ffc` restored | working tree, then restored and rebuilt | 8 optics tests: **8 failed** (used faces listed; swapped face exit 12, hidden) |
 | S09 tests | `614a7a8` (revision 7; harness `e41b13ee…`, library `afc9920c…`) | **93/93**: the 88 revision-6 cases (1 changed to require exit 14) plus 5 |
 | The new and changed tests with `Cli/ReadBackRead.cs` of `8fd0ffc2` restored | working tree, then restored and rebuilt | **2 failed, 5 passed**: the two acceptance tests fail (exit 12); the binding and plenum controls pass |
 | S09 tests | `225881f0` (revision 6; harness `a05202d0…`, library `727c08bc…`) | **88/88**: the 80 revision-5 cases, unchanged, plus 8 (5 regressions, 3 controls) |
@@ -1135,16 +1267,22 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 ## Unresolved, risks, limits
 
-- **Owner decisions taken 2026-10-22** (see "Revision 7"): optics option 1 for the two reviewed fixtures only; the
-  T-VENT-INACTIVE extension (ventilation A); the Decision 5 reading (lighting B1).
-- **Limits of those decisions:**
-  - The optics acceptance covers only the reviewed fixture bytes under the approved rules. Any other model is BLOCKED
-    owner, exit 12, until accepted separately. Single-layer constructions are untested.
-  - **The effect of the optics difference on results is unmeasured**; nothing was simulated.
-  - The writer fix for exposed faces (option 2) and a 3a scope decision (option 3) remain separate, unauthorised tasks.
-  - Recorded acceptance gives "Not PASS — accepted limitation" (exit 14), never PASS. The roadmap Phase B gate needs
-    S08-S11 PASS; treating this as meeting it would need an explicit owner exception through a separate SAM PR, which
-    is not requested here.
+- **Owner decisions in force (2026-10-22):** the T-VENT-INACTIVE extension (ventilation A) and the Decision 5 reading
+  (lighting B1). The optics option-1 acceptance (revision 7) is superseded: revision 8 corrects the writer instead.
+- **Revision 8 limits and open items:**
+  - **Owner decision pending:** the 69 / 138 rows on faces EnergyPlus does not use keep both fixtures BLOCKED owner
+    (exit 12): accept them, or an S07 3a scope decision (separate SAM PR). Neither is PASS until then; exit 12 is not
+    a Phase B PASS, and no roadmap exception is requested.
+  - **Behaviour change:** every SAM model whose first-layer materials have differing faces now exports `_Internal`
+    variants with different zone-face absorptances. **The effect on results is unmeasured**; nothing was simulated.
+  - A single-layer outdoor or interzone construction with differing faces now makes the conversion invalid
+    (SAM-OS-MAT-003); such models stopped converting cleanly. The S09 test shows the writer still saves the OSM with
+    that surface unconstructed; whether EnergyPlus accepts such a model is not checked (no engine run).
+  - The missing-first-side error is verified at unit level only (no realistic model found that drops only that side).
+  - An unstated Internal* takes the External* value on the variant (stated in the mapping doc, no diagnostic).
+  - Opaque door panes keep the external values on both faces (SAM-OS-MAT-002 information), outside this scope.
+  - Import: a variant without `SAM.Guid` (when the external-face object took it) is imported as its own material with
+    a new Guid and both faces, as thickness duplicates already were; no merge across objects.
 - **Still open:**
   - **OD-L1 (S07 §8):** suitability of p₀ outside suspended LED office lighting, and whether a writer may replace a
     template-prescribed value with it. The confirmed reading lets OpenStudio apply p₀ to an unstated p, stated and
@@ -1179,7 +1317,7 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
   - Rotated models (a stated SAM North Angle) are refused as unsupported, not compared. World coordinates are
     supported (absolute vertices, no zone origin or rotation), and only World with a non-zero north axis or zone
     relative north is refused. No compared model uses World; only that refusal is tested.
-  - Single-layer opaque constructions are absent, so the single-layer optics constraint is untested.
+  - Single-layer opaque constructions are absent from the fixtures; revision 8 tests them on modified copies only.
   - The reader reports each of these as unreadable, unsupported or not applicable, never as a match.
 - **S08 record discrepancy (record only; SAM_Tas not changed):** SAM_Tas
   `Documentation/S08-PRC-FixturesAcceptance-PR.md:78` lists the two-zone openings as "A framed south; B framed north,
@@ -1202,11 +1340,11 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 ## Next step
 
-The owner decisions are taken; both fixtures report NOT PASS, accepted limitation, exit 14. Do not start S10.
-- **Independent review of revision 7** (`614a7a8d70b6a70c5628a0ef3b57eaec0c5ec794` and the record head in the PR description): `OwnerDecisions` and its
-  binding (approved rules, fixture id and frozen-model SHA-256), that only 3a MAPPING-DIFFERENCE rows move to rank 5,
-  that every failure and OD-L1 limit is kept, and the five tests and A/B.
-- An optics writer fix or a 3a scope change would each be a separate task.
+Both fixtures report BLOCKED owner, exit 12, with only unused-face rows left. Do not start S10.
+- **Independent review of revision 8** (`fc83a6df1f843f82a043353616a2b4e42a94e6d6` and the record head in the PR description): the face rule and its
+  mirror property, the per-use single-layer error, the forward-side check, the face metadata and import trust rules,
+  the S09 used-face derivation and its listing guard, the removal of revision 7's acceptance, the tests and both A/Bs.
+- Then the owner decides the unused-face rows (accept, or an S07 3a scope decision through a separate SAM PR).
 - Optional, if the owner wants a refreshed committed pack: an authorised acceptance run (`Run-S09-ReadBack.ps1`, both
   phases, then `Pack-S09-Evidence.ps1`) at the reviewed head. It exports and translates with the OpenStudio SDK only.
 - Then the owner's merge decision, the known-SHA `PROJECT_PROGRESS.md` closeout and guarded branch cleanup.

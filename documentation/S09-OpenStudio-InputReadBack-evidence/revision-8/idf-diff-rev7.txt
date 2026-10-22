@@ -1,0 +1,86 @@
+﻿== box : revision 7 run box-3b6b3b vs revision 8 run box-024131
+@@ -29309 +29309 @@ Material,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_5abe47a0, !- Name
++  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_Internal_5abe47a0, !- Name
+@@ -29315,3 +29315,3 @@ Material,
+-  0.9,                                    !- Thermal Absorptance
+-  0.38,                                   !- Solar Absorptance
+-  0.36;                                   !- Visible Absorptance
++  0.91,                                   !- Thermal Absorptance
++  0.32,                                   !- Solar Absorptance
++  0.3;                                    !- Visible Absorptance
+@@ -29320 +29320 @@ Material,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_15mm_5abe47a0, !- Name
++  SAM_OpaqueMaterial_FIX_Plasterboard_15mm_Internal_5abe47a0, !- Name
+@@ -29326,3 +29326,3 @@ Material,
+-  0.9,                                    !- Thermal Absorptance
+-  0.38,                                   !- Solar Absorptance
+-  0.36;                                   !- Visible Absorptance
++  0.91,                                   !- Thermal Absorptance
++  0.32,                                   !- Solar Absorptance
++  0.3;                                    !- Visible Absorptance
+@@ -29342 +29342 @@ Material,
+-  SAM_OpaqueMaterial_FIX_Screed_65mm_47d4de1a, !- Name
++  SAM_OpaqueMaterial_FIX_Screed_65mm_Internal_47d4de1a, !- Name
+@@ -29348,3 +29348,3 @@ Material,
+-  0.94,                                   !- Thermal Absorptance
+-  0.73,                                   !- Solar Absorptance
+-  0.72;                                   !- Visible Absorptance
++  0.9,                                    !- Thermal Absorptance
++  0.67,                                   !- Solar Absorptance
++  0.66;                                   !- Visible Absorptance
+@@ -29403 +29403 @@ Construction,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_5abe47a0; !- Layer 4
++  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_Internal_5abe47a0; !- Layer 4
+@@ -29409 +29409 @@ Construction,
+-  SAM_OpaqueMaterial_FIX_Screed_65mm_47d4de1a; !- Layer 3
++  SAM_OpaqueMaterial_FIX_Screed_65mm_Internal_47d4de1a; !- Layer 3
+@@ -29416 +29416 @@ Construction,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_15mm_5abe47a0; !- Layer 4
++  SAM_OpaqueMaterial_FIX_Plasterboard_15mm_Internal_5abe47a0; !- Layer 4
+== two : revision 7 run two-845d96 vs revision 8 run two-99d596
+@@ -59463 +59463 @@ Material,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_37d096dc, !- Name
++  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_Internal_37d096dc, !- Name
+@@ -59469,3 +59469,3 @@ Material,
+-  0.9,                                    !- Thermal Absorptance
+-  0.38,                                   !- Solar Absorptance
+-  0.36;                                   !- Visible Absorptance
++  0.91,                                   !- Thermal Absorptance
++  0.32,                                   !- Solar Absorptance
++  0.3;                                    !- Visible Absorptance
+@@ -59474 +59474 @@ Material,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_15mm_37d096dc, !- Name
++  SAM_OpaqueMaterial_FIX_Plasterboard_15mm_Internal_37d096dc, !- Name
+@@ -59480,3 +59480,3 @@ Material,
+-  0.9,                                    !- Thermal Absorptance
+-  0.38,                                   !- Solar Absorptance
+-  0.36;                                   !- Visible Absorptance
++  0.91,                                   !- Thermal Absorptance
++  0.32,                                   !- Solar Absorptance
++  0.3;                                    !- Visible Absorptance
+@@ -59496 +59496 @@ Material,
+-  SAM_OpaqueMaterial_FIX_Screed_65mm_ba808960, !- Name
++  SAM_OpaqueMaterial_FIX_Screed_65mm_Internal_ba808960, !- Name
+@@ -59502,3 +59502,3 @@ Material,
+-  0.94,                                   !- Thermal Absorptance
+-  0.73,                                   !- Solar Absorptance
+-  0.72;                                   !- Visible Absorptance
++  0.9,                                    !- Thermal Absorptance
++  0.67,                                   !- Solar Absorptance
++  0.66;                                   !- Visible Absorptance
+@@ -59579 +59579 @@ Construction,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_37d096dc; !- Layer 4
++  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_Internal_37d096dc; !- Layer 4
+@@ -59585 +59585 @@ Construction,
+-  SAM_OpaqueMaterial_FIX_Screed_65mm_ba808960; !- Layer 3
++  SAM_OpaqueMaterial_FIX_Screed_65mm_Internal_ba808960; !- Layer 3
+@@ -59592 +59592 @@ Construction,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_37d096dc; !- Layer 4
++  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_Internal_37d096dc; !- Layer 4
+@@ -59596 +59596 @@ Construction,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_37d096dc, !- Layer 1
++  SAM_OpaqueMaterial_FIX_Plasterboard_12.5mm_Internal_37d096dc, !- Layer 1
+@@ -59606 +59606 @@ Construction,
+-  SAM_OpaqueMaterial_FIX_Plasterboard_15mm_37d096dc; !- Layer 4
++  SAM_OpaqueMaterial_FIX_Plasterboard_15mm_Internal_37d096dc; !- Layer 4

@@ -1,0 +1,36 @@
+S09 revision 8 local test summaries (Release x64, SDK 10.0.401, SAM_Tas sow/2026-Q4 c50e9169)
+Tested content fc83a6df1f843f82a043353616a2b4e42a94e6d6. No engine, acceptance or packing script was run.
+
+== S09 tests at fc83a6d (committed content, rebuilt after the A/B)
+harness os-input-readback.dll 44cb71779b916c2020008534219a4ae6eb152c390598d27742f1e9e323bab40b
+library SAM.Analytical.OpenStudio.InputReadBack.dll 1a4a03dfb9d8108b200407d9773d456ec209356db018323ba8126694610b2d9f
+writer  SAM.Analytical.OpenStudio.dll bc29f2332fb62c77f6ce6305d60b59d155e74dbc392887c0669d0ca7ef8ff92a
+Passed!  - Failed:     0, Passed:    95, Skipped:     0, Total:    95 - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+(Also 95/95 before the A/B on the same source; box-report-approved.txt and two-report-approved.txt are byte-identical
+between the two runs. An earlier working-tree run gave 94/95: the single-layer test helper changed a copy of the
+adjacency cluster, so its model kept the fixture roof; fixed before the commit.)
+
+== Writer/importer tests/SAM.Analytical.OpenStudio.Tests --filter 'TestCategory!=Simulation' at fc83a6d
+Passed!  - Failed:     0, Passed:   400, Skipped:     2, Total:   402 - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+
+== Benchmark benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests --filter TestCategory!=Simulation at fc83a6d
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51 - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+
+== A/B 1: writer files of 7fccdcc (Material.cs, Construction.cs, AnalyticalModel.cs) restored over fc83a6d
+filter: EveryUsedZoneFace | BothFixtures_HaveCompleteCoverage | ASwappedZoneFace | ASingleLayer | AWrongOpaque  (8 tests)
+  Failed ASingleLayerGroundFloor_UsesItsZoneFace                        exit 10, expected 12 (the zone face is external)
+  Failed ASingleLayerOutdoorRoof_IsRefused_AndNamedUnsupported          no SAM-OS-MAT-003 raised
+  Failed ASwappedZoneFace_Fails_OnExactlyTheZoneFaceRows(box, two)      no _Internal material to swap
+  Failed AWrongOpaqueOpticalValue_Fails                                 zone-face rows fail as well (out of tolerance)
+  Failed BothFixtures_HaveCompleteCoverage_...                          layer3.internalSolarReflectance OutOfTolerance
+  Failed EveryUsedZoneFace_HoldsTheAuthoredFace(box, two)               layer3.internalSolarReflectance OutOfTolerance
+Total 8: Failed 8. The revision-8 comparator FAILs the old writer's fixtures (exit 10) on the zone faces.
+
+== A/B 2: Compare/OsComparison.cs of 8fd0ffc (revision 6) restored over fc83a6d (revision-8 writer)
+  Failed ASingleLayerGroundFloor_UsesItsZoneFace                        exit 10, expected 12 (variant's buried rows unlisted)
+  Failed ASingleLayerOutdoorRoof_IsRefused_AndNamedUnsupported          no named single-layer Unsupported entry
+  Failed ASwappedZoneFace_Fails_OnExactlyTheZoneFaceRows(box, two)      exit 12, expected 10: the swapped zone face was hidden
+  Failed AWrongOpaqueOpticalValue_Fails                                 external rows fail as well
+  Failed BothFixtures_HaveCompleteCoverage_...                          layer3.externalSolarReflectance OutOfTolerance
+  Failed EveryUsedZoneFace_HoldsTheAuthoredFace(box, two)               used zone face listed MappingDifference
+Total 8: Failed 8. Both files were restored with git, touched and rebuilt before the final run above.
