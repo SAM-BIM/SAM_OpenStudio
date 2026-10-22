@@ -79,7 +79,7 @@
     { "id": "OS:ShadingSurfaceGroup.Identity", "status": "Native", "target": "OpenStudioSourceParameter.ShadingGroupType/Name" },
     { "id": "OS:ShadingSurfaceGroup.ShadedSurface", "status": "Approximated", "diagnostic": "SAM-OSI-APX-001", "notes": "SAM shade panels are free-standing; the association is metadata only." },
 
-    { "id": "OS:Material.StandardOpaqueMaterial", "status": "Native", "target": "Core.OpaqueMaterial" },
+    { "id": "OS:Material.StandardOpaqueMaterial", "status": "Native", "target": "Core.OpaqueMaterial", "notes": "SAM-written face and thickness objects of one source Guid merge into one SAM material with both authored faces; an edit made after export is kept on its face (SAM-OSI-MAT-001); conflicts are not merged (SAM-OSI-ID-001); never matched by name." },
     { "id": "OS:Material.MasslessOpaqueMaterial", "status": "Approximated", "target": "Core.OpaqueMaterial", "diagnostic": "SAM-OSI-APX-001", "formula": "conductivity = 0.025 m / R; resistance preserved exactly, near-zero thermal mass assigned" },
     { "id": "OS:Material.AirGap", "status": "Derived", "target": "Core.GasMaterial", "formula": "HeatTransferCoefficient = 1 / thermalResistance (exact inverse of the forward R = 1/h)" },
     { "id": "OS:WindowMaterial.Glazing", "status": "Native", "target": "Core.TransparentMaterial", "notes": "EnergyPlus Front/Back map to SAM External/Internal, matching the forward direction." },

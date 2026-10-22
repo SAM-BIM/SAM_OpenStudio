@@ -109,11 +109,29 @@ namespace SAM.Analytical.OpenStudio
             }
 
             string label = OpenStudioImportContext.OpenStudioObjectLabel(material);
+            global::OpenStudio.OptionalStandardOpaqueMaterial optionalStandardOpaqueMaterial = global::OpenStudio.OpenStudioModelResources.toStandardOpaqueMaterial(material);
+
+            // SAM-written face and thickness objects of one source material become one SAM material, matched by the
+            // explicit source Guid only (never by name). Null when there is nothing to merge or they conflict.
+            if (optionalStandardOpaqueMaterial != null && !optionalStandardOpaqueMaterial.isNull() && TryGetSourceMaterialGuid(optionalStandardOpaqueMaterial.get(), out Guid sourceGuid))
+            {
+                if (!openStudioImportContext.OpaqueMaterialGroups.TryGetValue(sourceGuid, out IMaterial merged))
+                {
+                    merged = MergedOpaqueMaterial(sourceGuid, openStudioImportContext);
+                    openStudioImportContext.OpaqueMaterialGroups[sourceGuid] = merged;
+                }
+
+                if (merged != null)
+                {
+                    openStudioImportContext.MaterialMap[name] = merged;
+                    return merged;
+                }
+            }
+
             Guid guid = openStudioImportContext.ResolveGuid(material);
 
             IMaterial result = null;
 
-            global::OpenStudio.OptionalStandardOpaqueMaterial optionalStandardOpaqueMaterial = global::OpenStudio.OpenStudioModelResources.toStandardOpaqueMaterial(material);
             if (optionalStandardOpaqueMaterial != null && !optionalStandardOpaqueMaterial.isNull())
             {
                 result = ToSAM_OpaqueMaterial(optionalStandardOpaqueMaterial.get(), guid, name, openStudioImportContext, label);
@@ -203,16 +221,18 @@ namespace SAM.Analytical.OpenStudio
             double visibleReflectance = 1.0 - standardOpaqueMaterial.visibleAbsorptance();
 
             // A SAM-written object carries both authored face sets explicitly (the forward converter
-            // writes an internal-face variant for a zone face). When that metadata is present and agrees
-            // with the object, exactly the authored values are restored - nothing unstated is filled in.
-            Dictionary<OpaqueMaterialParameter, double> stampedFaceOptics = StampedFaceOptics(standardOpaqueMaterial, thermalAbsorptance, solarReflectance, visibleReflectance, openStudioImportContext, label);
-            if (stampedFaceOptics != null)
+            // writes an internal-face variant for a zone face). When that metadata is usable, exactly the
+            // authored values are restored - nothing unstated is filled in - and an edit made to the object
+            // after it was written is kept on the face it carries, reported.
+            FaceObject faceObject = ReadFaceObject(standardOpaqueMaterial, openStudioImportContext, label, true);
+            if (faceObject != null)
             {
-                foreach (KeyValuePair<OpaqueMaterialParameter, double> keyValuePair in stampedFaceOptics)
+                foreach (KeyValuePair<OpaqueMaterialParameter, double> keyValuePair in faceObject.Authored)
                 {
                     result.SetValue(keyValuePair.Key, keyValuePair.Value);
                 }
 
+                ApplyEdits(result, new[] { faceObject }, faceObject.Edits, openStudioImportContext);
                 return result;
             }
 
@@ -236,40 +256,74 @@ namespace SAM.Analytical.OpenStudio
             OpaqueMaterialParameter.ExternalLightReflectance, OpaqueMaterialParameter.InternalLightReflectance,
         };
 
+        /// <summary>One SAM-written opaque face object, read from its explicit metadata.</summary>
+        private sealed class FaceObject
+        {
+            public global::OpenStudio.StandardOpaqueMaterial Material { get; set; }
+            public string Name { get; set; }
+            public string Label { get; set; }
+            public Guid MaterialGuid { get; set; }
+            public bool Internal { get; set; }
+            public bool CarriesIdentity { get; set; }
+
+            /// <summary>The authored SAM face optics the writer stamped (unstated ones absent).</summary>
+            public Dictionary<OpaqueMaterialParameter, double> Authored { get; } = new Dictionary<OpaqueMaterialParameter, double>();
+
+            /// <summary>Values changed since the object was written, as SAM values on the face the object carries.</summary>
+            public Dictionary<OpaqueMaterialParameter, double> Edits { get; } = new Dictionary<OpaqueMaterialParameter, double>();
+
+            /// <summary>Per edited parameter: what was written and what is there now.</summary>
+            public Dictionary<OpaqueMaterialParameter, string> EditNotes { get; } = new Dictionary<OpaqueMaterialParameter, string>();
+
+            public string Signature => string.Join(";", Authored.OrderBy(x => x.Key.ToString(), StringComparer.Ordinal).Select(x => x.Key + "=" + x.Value.ToString("R", CultureInfo.InvariantCulture)));
+        }
+
+        private const string singleValueOnBothFaces = "; the material's single EnergyPlus value is imported on both faces";
+
+        /// <summary>The source SAM material Guid stamped on a SAM-written opaque object, if well formed.</summary>
+        private static bool TryGetSourceMaterialGuid(global::OpenStudio.StandardOpaqueMaterial standardOpaqueMaterial, out Guid materialGuid)
+        {
+            materialGuid = Guid.Empty;
+            return Core.OpenStudio.Query.TryGetSAMFeature(standardOpaqueMaterial, Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace, out string _)
+                && Core.OpenStudio.Query.TryGetSAMFeature(standardOpaqueMaterial, Core.OpenStudio.OpenStudioIdentityKeys.MaterialGuid, out string raw)
+                && Guid.TryParse(raw, out materialGuid) && materialGuid != Guid.Empty;
+        }
+
         /// <summary>
-        /// The authored SAM face optics stamped on a SAM-written opaque material (see
-        /// <see cref="Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace"/>), or null when the object has none
-        /// (a third-party or older OSM: silent) or they cannot be trusted (reported).
+        /// Reads the SAM face metadata of an opaque object (see <see cref="Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace"/>).
+        /// Null when the object has none (a third-party or older OSM: silent) or it cannot be trusted (reported when
+        /// <paramref name="report"/>): the source Guid and face must be well formed, any <c>SAM.Guid</c> must name the
+        /// same material, every stamped value must be a fraction, and the written values must agree with the authored
+        /// face they came from.
         /// <para>
-        /// Trusted only when: the source Guid and face are well formed; any <c>SAM.Guid</c> on the object names
-        /// the same material; every stamped value is a number in [0, 1]; the object's own absorptances equal the
-        /// face it declares (its stated value, or the external value where the writer used it for an unstated
-        /// internal one); and every other face object of the same source material carries the same values.
-        /// Matching is by the explicit source Guid, never by name.
+        /// Each absorptance is compared with the value the writer put there (<c>SAM.Written.*</c>, or the authored face it
+        /// came from): an unchanged object keeps exactly the authored values, so an OpenStudio default written for an
+        /// unstated value is never imported as SAM data, while a changed value is an edit, kept on the face the object
+        /// carries. Without either record the value's provenance is unknown and it is kept as an edit too.
         /// </para>
         /// </summary>
-        private static Dictionary<OpaqueMaterialParameter, double> StampedFaceOptics(global::OpenStudio.StandardOpaqueMaterial standardOpaqueMaterial, double thermalAbsorptance, double solarReflectance, double visibleReflectance, OpenStudioImportContext openStudioImportContext, string label)
+        private static FaceObject ReadFaceObject(global::OpenStudio.StandardOpaqueMaterial standardOpaqueMaterial, OpenStudioImportContext openStudioImportContext, string label, bool report)
         {
             if (!Core.OpenStudio.Query.TryGetSAMFeature(standardOpaqueMaterial, Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace, out string face))
             {
                 return null;
             }
 
-            const string notUsed = "; the material's single EnergyPlus value is imported on both faces";
             if (!Core.OpenStudio.Query.TryGetSAMFeature(standardOpaqueMaterial, Core.OpenStudio.OpenStudioIdentityKeys.MaterialGuid, out string rawGuid) || !Guid.TryParse(rawGuid, out Guid materialGuid) || materialGuid == Guid.Empty
                 || (face != Core.OpenStudio.OpenStudioIdentityKeys.MaterialFaceExternal && face != Core.OpenStudio.OpenStudioIdentityKeys.MaterialFaceInternal))
             {
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.IdentityCollision, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("SAM face metadata is malformed (source material '{0}', face '{1}')" + notUsed, rawGuid, face), label);
+                Report(report, openStudioImportContext, Core.OpenStudio.OpenStudioImportDiagnosticCodes.IdentityCollision, string.Format("SAM face metadata is malformed (source material '{0}', face '{1}')" + singleValueOnBothFaces, rawGuid, face), label);
                 return null;
             }
 
-            if (Core.OpenStudio.Query.TryGetSAMGuid(standardOpaqueMaterial, out Guid ownGuid) && ownGuid != materialGuid)
+            bool carriesIdentity = Core.OpenStudio.Query.TryGetSAMGuid(standardOpaqueMaterial, out Guid ownGuid);
+            if (carriesIdentity && ownGuid != materialGuid)
             {
-                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.IdentityCollision, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("SAM identity {0} and source material {1} of this face object disagree" + notUsed, ownGuid, materialGuid), label);
+                Report(report, openStudioImportContext, Core.OpenStudio.OpenStudioImportDiagnosticCodes.IdentityCollision, string.Format("SAM identity {0} and source material {1} of this face object disagree" + singleValueOnBothFaces, ownGuid, materialGuid), label);
                 return null;
             }
 
-            Dictionary<OpaqueMaterialParameter, double> result = new Dictionary<OpaqueMaterialParameter, double>();
+            FaceObject result = new FaceObject { Material = standardOpaqueMaterial, Name = standardOpaqueMaterial.nameString(), Label = label, MaterialGuid = materialGuid, Internal = face == Core.OpenStudio.OpenStudioIdentityKeys.MaterialFaceInternal, CarriesIdentity = carriesIdentity };
             foreach (OpaqueMaterialParameter opaqueMaterialParameter in stampedOptics)
             {
                 if (!Core.OpenStudio.Query.TryGetSAMFeature(standardOpaqueMaterial, Core.OpenStudio.OpenStudioIdentityKeys.OpticPrefix + opaqueMaterialParameter, out string raw))
@@ -279,46 +333,175 @@ namespace SAM.Analytical.OpenStudio
 
                 if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) || double.IsNaN(value) || value < 0 || value > 1)
                 {
-                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Stamped SAM {0} '{1}' is not a fraction" + notUsed, opaqueMaterialParameter, raw), label);
+                    Report(report, openStudioImportContext, Core.OpenStudio.OpenStudioImportDiagnosticCodes.MaterialUnsupported, string.Format("Stamped SAM {0} '{1}' is not a fraction" + singleValueOnBothFaces, opaqueMaterialParameter, raw), label);
                     return null;
                 }
 
-                result[opaqueMaterialParameter] = value;
+                result.Authored[opaqueMaterialParameter] = value;
             }
 
-            bool internalFace = face == Core.OpenStudio.OpenStudioIdentityKeys.MaterialFaceInternal;
-            (OpaqueMaterialParameter Internal, OpaqueMaterialParameter External, double Native)[] properties =
+            // (internal, external, written key, native absorptance, absorptance is the SAM value itself)
+            (OpaqueMaterialParameter Internal, OpaqueMaterialParameter External, string Written, double Native, bool Direct)[] properties =
             {
-                (OpaqueMaterialParameter.InternalEmissivity, OpaqueMaterialParameter.ExternalEmissivity, thermalAbsorptance),
-                (OpaqueMaterialParameter.InternalSolarReflectance, OpaqueMaterialParameter.ExternalSolarReflectance, solarReflectance),
-                (OpaqueMaterialParameter.InternalLightReflectance, OpaqueMaterialParameter.ExternalLightReflectance, visibleReflectance),
+                (OpaqueMaterialParameter.InternalEmissivity, OpaqueMaterialParameter.ExternalEmissivity, "ThermalAbsorptance", standardOpaqueMaterial.thermalAbsorptance(), true),
+                (OpaqueMaterialParameter.InternalSolarReflectance, OpaqueMaterialParameter.ExternalSolarReflectance, "SolarAbsorptance", standardOpaqueMaterial.solarAbsorptance(), false),
+                (OpaqueMaterialParameter.InternalLightReflectance, OpaqueMaterialParameter.ExternalLightReflectance, "VisibleAbsorptance", standardOpaqueMaterial.visibleAbsorptance(), false),
             };
 
-            foreach ((OpaqueMaterialParameter internalParameter, OpaqueMaterialParameter externalParameter, double native) in properties)
+            foreach ((OpaqueMaterialParameter internalParameter, OpaqueMaterialParameter externalParameter, string writtenKey, double native, bool direct) in properties)
             {
-                OpaqueMaterialParameter declared = internalFace && result.ContainsKey(internalParameter) ? internalParameter : externalParameter;
-                if (result.TryGetValue(declared, out double stamped) && Math.Abs(stamped - native) > 1e-9)
+                double? written = null;
+                if (Core.OpenStudio.Query.TryGetSAMFeature(standardOpaqueMaterial, Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + writtenKey, out string rawWritten))
                 {
-                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(CultureInfo.InvariantCulture, "The {0}-face object holds {1:R} where its stamped SAM {2} is {3:R}: the object was changed after it was written" + notUsed, face, native, declared, stamped), label);
-                    return null;
-                }
-            }
+                    if (!double.TryParse(rawWritten, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed) || double.IsNaN(parsed))
+                    {
+                        Report(report, openStudioImportContext, Core.OpenStudio.OpenStudioImportDiagnosticCodes.MaterialUnsupported, string.Format("Stamped written {0} '{1}' is not a number" + singleValueOnBothFaces, writtenKey, rawWritten), label);
+                        return null;
+                    }
 
-            string signature = string.Join(";", result.OrderBy(x => x.Key.ToString(), StringComparer.Ordinal).Select(x => x.Key + "=" + x.Value.ToString("R", CultureInfo.InvariantCulture)));
-            if (openStudioImportContext.OpaqueFaceOptics.TryGetValue(materialGuid, out Tuple<string, string> first))
-            {
-                if (first.Item2 != signature)
-                {
-                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.IdentityCollision, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("Source material {0} carries different authored face optics here and on '{1}'" + notUsed, materialGuid, first.Item1), label);
-                    return null;
+                    written = parsed;
                 }
-            }
-            else
-            {
-                openStudioImportContext.OpaqueFaceOptics[materialGuid] = Tuple.Create(label, signature);
+
+                // The authored face the writer used: the internal value on an internal-face object when stated, else the external one.
+                OpaqueMaterialParameter source = result.Internal && result.Authored.ContainsKey(internalParameter) ? internalParameter : externalParameter;
+                if (result.Authored.TryGetValue(source, out double authored))
+                {
+                    double expected = direct ? authored : 1.0 - authored;
+                    if (written.HasValue && Math.Abs(written.Value - expected) > 1e-9)
+                    {
+                        Report(report, openStudioImportContext, Core.OpenStudio.OpenStudioImportDiagnosticCodes.MaterialUnsupported, string.Format(CultureInfo.InvariantCulture, "Stamped written {0} {1:R} disagrees with the stamped SAM {2} {3:R}" + singleValueOnBothFaces, writtenKey, written.Value, source, authored), label);
+                        return null;
+                    }
+
+                    written = written ?? expected;
+                }
+
+                if (written.HasValue && Math.Abs(written.Value - native) <= 1e-9)
+                {
+                    continue;
+                }
+
+                OpaqueMaterialParameter onFace = result.Internal ? internalParameter : externalParameter;
+                result.Edits[onFace] = direct ? native : 1.0 - native;
+                result.EditNotes[onFace] = written.HasValue
+                    ? string.Format(CultureInfo.InvariantCulture, "{0} written {1:R}, now {2:R}", writtenKey, written.Value, native)
+                    : string.Format(CultureInfo.InvariantCulture, "{0} {1:R} with no record of what was written", writtenKey, native);
             }
 
             return result;
+        }
+
+        private static void Report(bool report, OpenStudioImportContext openStudioImportContext, string code, string message, string label)
+        {
+            if (report)
+            {
+                openStudioImportContext.AddDiagnostic(code, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, message, label);
+            }
+        }
+
+        /// <summary>Sets each edited value on its face and reports it: an edit made after export is kept, never silently replaced by an authored value or a default.</summary>
+        private static void ApplyEdits(OpaqueMaterial opaqueMaterial, IEnumerable<FaceObject> faceObjects, Dictionary<OpaqueMaterialParameter, double> edits, OpenStudioImportContext openStudioImportContext)
+        {
+            foreach (KeyValuePair<OpaqueMaterialParameter, double> keyValuePair in edits)
+            {
+                opaqueMaterial.SetValue(keyValuePair.Key, keyValuePair.Value);
+            }
+
+            foreach (FaceObject faceObject in faceObjects)
+            {
+                foreach (KeyValuePair<OpaqueMaterialParameter, string> note in faceObject.EditNotes)
+                {
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.MaterialUnsupported, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format(CultureInfo.InvariantCulture, "The {0}-face object was changed after it was written ({1}); the changed value is imported as SAM {2} = {3:R}", faceObject.Internal ? "internal" : "external", note.Value, note.Key, faceObject.Edits[note.Key]), faceObject.Label);
+                }
+            }
+        }
+
+        /// <summary>
+        /// One SAM material for all SAM-written face and thickness objects of source material <paramref name="materialGuid"/>,
+        /// or null when fewer than two usable objects exist or they conflict (each is then imported on its own).
+        /// <para>
+        /// Matching is by the explicit <c>SAM.MaterialGuid</c> only, never by name. The objects merge when their thermal
+        /// properties and authored face optics agree and, per face, every object resolves each optic to the same value
+        /// (its edit, else the authored value). Layer thicknesses stay on the construction layers. The SAM Guid is
+        /// restored from the object that carries it.
+        /// </para>
+        /// </summary>
+        private static IMaterial MergedOpaqueMaterial(Guid materialGuid, OpenStudioImportContext openStudioImportContext)
+        {
+            List<FaceObject> faceObjects = new List<FaceObject>();
+            foreach (global::OpenStudio.StandardOpaqueMaterial standardOpaqueMaterial in openStudioImportContext.Source.getStandardOpaqueMaterials())
+            {
+                if (TryGetSourceMaterialGuid(standardOpaqueMaterial, out Guid guid) && guid == materialGuid)
+                {
+                    FaceObject faceObject = ReadFaceObject(standardOpaqueMaterial, openStudioImportContext, OpenStudioImportContext.OpenStudioObjectLabel(standardOpaqueMaterial), false);
+                    if (faceObject != null)
+                    {
+                        faceObjects.Add(faceObject);
+                    }
+                }
+            }
+
+            if (faceObjects.Count < 2)
+            {
+                return null;
+            }
+
+            faceObjects = faceObjects.OrderBy(x => x.Name, StringComparer.Ordinal).ToList();
+            FaceObject first = faceObjects[0];
+            string conflict = null;
+            if (faceObjects.Any(x => !Same(x.Material.thermalConductivity(), first.Material.thermalConductivity()) || !Same(x.Material.density(), first.Material.density()) || !Same(x.Material.specificHeat(), first.Material.specificHeat())))
+            {
+                conflict = "their thermal properties differ";
+            }
+            else if (faceObjects.Any(x => x.Signature != first.Signature))
+            {
+                conflict = "their authored face optics differ";
+            }
+
+            Dictionary<OpaqueMaterialParameter, double> edits = new Dictionary<OpaqueMaterialParameter, double>();
+            foreach (OpaqueMaterialParameter opaqueMaterialParameter in stampedOptics)
+            {
+                if (conflict != null)
+                {
+                    break;
+                }
+
+                bool internalParameter = opaqueMaterialParameter.ToString().StartsWith("Internal", StringComparison.Ordinal);
+                List<FaceObject> onFace = faceObjects.Where(x => x.Internal == internalParameter).ToList();
+                List<double?> values = onFace.Select(x => x.Edits.TryGetValue(opaqueMaterialParameter, out double edit) ? edit : x.Authored.TryGetValue(opaqueMaterialParameter, out double authored) ? authored : (double?)null).ToList();
+                if (values.Any(x => x.HasValue != values[0].HasValue || (x.HasValue && !Same(x.Value, values[0].Value))))
+                {
+                    conflict = opaqueMaterialParameter + " differs between the " + (internalParameter ? "internal" : "external") + "-face objects";
+                }
+                else if (onFace.Any(x => x.Edits.ContainsKey(opaqueMaterialParameter)))
+                {
+                    edits[opaqueMaterialParameter] = values[0].Value;
+                }
+            }
+
+            if (conflict != null)
+            {
+                openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.IdentityCollision, Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning, string.Format("The face and thickness objects of source material {0} ({1}) are not merged: {2}; each is imported as its own material", materialGuid, string.Join(", ", faceObjects.Select(x => x.Name)), conflict), first.Label);
+                return null;
+            }
+
+            // The identity carrier, else an external-face object, else the first by name; ties by thickness then name.
+            FaceObject primary = faceObjects.OrderByDescending(x => x.CarriesIdentity).ThenBy(x => x.Internal).ThenBy(x => x.Material.thickness()).ThenBy(x => x.Name, StringComparer.Ordinal).First();
+            OpaqueMaterial result = new OpaqueMaterial(openStudioImportContext.ResolveGuid(primary.Material), primary.Name, primary.Name, string.Empty, primary.Material.thermalConductivity(), primary.Material.density(), primary.Material.specificHeat());
+            result.SetValue(Core.MaterialParameter.DefaultThickness, primary.Material.thickness());
+            foreach (KeyValuePair<OpaqueMaterialParameter, double> keyValuePair in first.Authored)
+            {
+                result.SetValue(keyValuePair.Key, keyValuePair.Value);
+            }
+
+            ApplyEdits(result, faceObjects, edits, openStudioImportContext);
+            openStudioImportContext.RegisterCreated();
+            return result;
+        }
+
+        private static bool Same(double a, double b)
+        {
+            return Math.Abs(a - b) <= 1e-9 * Math.Max(1.0, Math.Max(Math.Abs(a), Math.Abs(b)));
         }
 
         /// <summary>

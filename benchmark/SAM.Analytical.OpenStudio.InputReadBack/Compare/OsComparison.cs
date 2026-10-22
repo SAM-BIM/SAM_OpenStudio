@@ -661,7 +661,13 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                 return ExpectedValue.Invalid("no SAM source for layer property " + property);
             }
 
-            return material.TryGetValue(parameter, out double value) ? ExpectedValue.FromValue(value) : ExpectedValue.Unspecified("not stated");
+            // NaN is an unstated value (as for the lighting p): never compared as data, its provenance stays S-UNSPEC.
+            if (!material.TryGetValue(parameter, out double value))
+            {
+                return ExpectedValue.Unspecified("not stated");
+            }
+
+            return double.IsNaN(value) ? ExpectedValue.Unspecified("NaN (not stated)") : ExpectedValue.FromValue(value);
         }
 
         /// <summary>

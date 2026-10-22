@@ -365,6 +365,47 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             Assert.That(report.NonPass.Select(x => x.Key).Intersect(keys), Is.Empty);
         }
 
+        /// <summary>
+        /// Review of 901e592a: Plasterboard's internal light reflectance unstated, absent or NaN. The writer writes the
+        /// external value on the zone face and reports it (SAM-OS-MAT-004); S09 keeps S-UNSPEC on exactly those zone-face
+        /// rows, never a match. S07 lists no default for an internal face, so a native value where SAM states none is an
+        /// EXPORT-DEFECT (FAIL) on exactly those rows: the inheritance is declared by the writer, not accepted by S07.
+        /// </summary>
+        [TestCase("absent")]
+        [TestCase("nan")]
+        public void AnUnstatedZoneFaceValue_KeepsItsUnspecifiedProvenance(string what)
+        {
+            AnalyticalModel model = TestSupport.Load(TestSupport.Box);
+            Core.MaterialLibrary materialLibrary = model.MaterialLibrary;
+            Core.OpaqueMaterial plasterboard = materialLibrary.GetMaterials().OfType<Core.OpaqueMaterial>().Single(x => x.Name == "FIX_Plasterboard");
+            if (what == "nan")
+            {
+                plasterboard.SetValue(OpaqueMaterialParameter.InternalLightReflectance, double.NaN);
+            }
+            else
+            {
+                plasterboard.RemoveValue(OpaqueMaterialParameter.InternalLightReflectance);
+            }
+
+            materialLibrary.Add(plasterboard);
+            model = new AnalyticalModel(model, model.AdjacencyCluster, materialLibrary, model.ProfileLibrary);
+            string label = "box-unstated-light-" + what;
+            OsReport report = TestSupport.Pipeline(TestSupport.Write(model, label), TestSupport.Box, label, out string run);
+
+            Assert.That(report.Inputs["writerDiagnostics"], Does.Contain("Information SAM-OS-MAT-004 Zone face: InternalLightReflectance not stated"));
+            Dictionary<string, QuantityResult> results = LayerResults(run, TestSupport.Box);
+            List<QuantityResult> zoneLight = ZoneFaceKeys(TestSupport.Box).Where(x => x.EndsWith(".internalLightReflectance", StringComparison.Ordinal)).Select(x => results[x]).ToList();
+            List<QuantityResult> unstated = zoneLight.Where(x => x.Input.Expected.State == SamInputState.Unspecified).ToList();
+            Assert.That(unstated.Count, Is.EqualTo(5), "the four walls and the roof have Plasterboard on the zone face; the floor has Screed");
+            Assert.That(unstated.All(x => !x.IsPass && x.Outcome == EquivalenceOutcome.ExportDefect), Is.True, string.Join(" | ", unstated.Select(x => x.Input.ObjectKey + " " + x.Outcome)));
+            Assert.That(zoneLight.Except(unstated).All(x => x.IsPass), Is.True, "the Screed zone face is unaffected");
+
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Fail), report.Status);
+            List<ReportItem> failed = report.NonPass.Where(x => x.Status == GateStatus.Fail.ToString()).ToList();
+            Assert.That(failed.Select(x => x.Key).OrderBy(x => x), Is.EqualTo(unstated.Select(x => x.Input.ObjectKey).OrderBy(x => x)), "exactly the unstated zone-face rows fail");
+            Assert.That(failed.All(x => x.Reason.Contains("S-UNSPEC")), Is.True);
+        }
+
         /// <summary>A copy of a fixture run whose IDF is changed by <paramref name="mutate"/>, read and compared fresh.</summary>
         private static OsReport MutatedIdf(string source, string fixtureId, string label, Func<string, AnalyticalModel, string> mutate)
         {

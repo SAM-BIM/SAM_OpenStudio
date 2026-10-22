@@ -56,5 +56,13 @@ namespace SAM.Core.OpenStudio
         /// not state is not written.
         /// </summary>
         public const string OpticPrefix = "SAM.Optic.";
+
+        /// <summary>
+        /// Prefix of the absorptances the writer actually put on an opaque face object (<c>SAM.Written.ThermalAbsorptance</c>,
+        /// <c>.SolarAbsorptance</c>, <c>.VisibleAbsorptance</c>), invariant round-trip text, including an inherited value
+        /// or an OpenStudio default. An import compares them with the object's current values, so an unchanged default is
+        /// told apart from a later edit.
+        /// </summary>
+        public const string WrittenPrefix = "SAM.Written.";
     }
 }

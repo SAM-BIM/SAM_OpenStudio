@@ -63,9 +63,13 @@ zone face. SAM stores layers inside → outside from the panel's first space in
   other layer takes its `External*` optics. Where a material's `Internal*` values differ
   from `External*`, the first layer uses an internal-face variant: its own cache key
   `(Guid, thickness, Internal)` and name suffix `_Internal`, thermally identical to the
-  external-face object. An `Internal*` value SAM does not state takes the `External*` value
-  on the variant. The face is chosen by SAM layer position, never by EnergyPlus position, so
+  external-face object. The face is chosen by SAM layer position, never by EnergyPlus position, so
   forward and reverse constructions share the same objects and stay exact mirrors.
+- **Inherited zone-face values.** An `Internal*` value SAM does not state (absent or NaN) on a
+  zone face takes the stated `External*` value. This is reported once per material as
+  **information SAM-OS-MAT-004 at Summary**; the written value is not stamped as authored, so
+  an import keeps the internal value unspecified. S07 lists no default for an internal face,
+  so S09 reports those zone-face rows as S-UNSPEC EXPORT-DEFECT, never as a match.
 - **Single-layer constructions** (one layer is both faces): agreeing faces are written
   normally; on the ground or an adiabatic boundary only the zone face is used, so the
   internal values are written. On an outdoor or interzone surface (including a two-sided
@@ -79,13 +83,25 @@ zone face. SAM stores layers inside → outside from the panel's first space in
   external values govern both faces, SAM-OS-MAT-002 information when they differ.
 - **Import identity.** Every opaque object written from a SAM opaque material carries, in
   `OS:AdditionalProperties`, `SAM.MaterialGuid` (source material), `SAM.MaterialFace`
-  (`External`/`Internal`) and each authored `SAM.Optic.<OpaqueMaterialParameter>` SAM states.
-  The importer restores exactly those values on both faces when the metadata is well formed,
-  agrees with the object's own absorptances and with every other face object of the same
-  source Guid; otherwise it warns (SAM-OSI-ID-001 identity, SAM-OSI-MAT-001 values) and
-  imports the single native value on both faces. Unstated values are never filled in, and
-  matching is by the explicit Guid, never by name. An object without the metadata (a
-  third-party or older OSM) imports silently as before.
+  (`External`/`Internal`), each authored `SAM.Optic.<OpaqueMaterialParameter>` SAM states, and
+  `SAM.Written.ThermalAbsorptance` / `.SolarAbsorptance` / `.VisibleAbsorptance` (what was
+  actually written, including inherited values and OpenStudio defaults).
+  - **Unchanged objects** restore exactly the authored values on both faces; an unstated value
+    stays unstated (an unchanged OpenStudio default is not imported as SAM data).
+  - **Edited objects** (an absorptance differing from its written value) keep the edited value
+    on the face the object carries and report it (warning SAM-OSI-MAT-001), so an edit of an
+    unstated value is not lost on re-export.
+  - **Merging.** All usable face and thickness objects of one source Guid become one SAM
+    material (its Guid restored from the object carrying `SAM.Guid`); construction layers keep
+    their own thicknesses. They merge only when thermal properties, authored optics and, per
+    face, each resolved value agree; otherwise a warning (SAM-OSI-ID-001) names the conflict and
+    each object is imported on its own. Matching is by the explicit Guid, never by name.
+  - Malformed or inconsistent metadata is warned (SAM-OSI-ID-001 identity, SAM-OSI-MAT-001
+    values) and the single native value is imported on both faces. An object without the
+    metadata (a third-party or older OSM) imports silently as before.
+- **Known round-trip limit (pre-existing).** The importer keeps OpenStudio's outside-first
+  layer order (`ToSAM/Construction.cs`), while SAM stores inside → outside, so a multi-layer
+  construction comes back reversed and a re-export puts its outermost layer on the zone face.
 
 ## TransparentMaterial → OS:WindowMaterial:Glazing (StandardGlazing)
 

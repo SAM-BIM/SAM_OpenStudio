@@ -138,7 +138,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 
 | OpenStudio concept | SAM target | Status | Diagnostic | Conversion / policy |
 |---|---|---|---|---|
-| `OS:Material.StandardOpaqueMaterial` | `Core.OpaqueMaterial` | **Native** | - |  |
+| `OS:Material.StandardOpaqueMaterial` | `Core.OpaqueMaterial` | **Native** | - | SAM-written face and thickness objects of one source Guid merge into one SAM material with both authored faces; an edit made after export is kept on its face (SAM-OSI-MAT-001); conflicts are not merged (SAM-OSI-ID-001); never matched by name. |
 | `OS:Material.MasslessOpaqueMaterial` | `Core.OpaqueMaterial` | **Approximated** | `SAM-OSI-APX-001` | conductivity = 0.025 m / R; resistance preserved exactly, near-zero thermal mass assigned |
 | `OS:Material.AirGap` | `Core.GasMaterial` | **Derived** | - | HeatTransferCoefficient = 1 / thermalResistance (exact inverse of the forward R = 1/h) |
 | `OS:WindowMaterial.Glazing` | `Core.TransparentMaterial` | **Native** | - | EnergyPlus Front/Back map to SAM External/Internal, matching the forward direction. |

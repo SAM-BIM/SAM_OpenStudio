@@ -30,6 +30,9 @@ namespace SAM.Core.OpenStudio
         /// <summary>Opaque face optics a construction use cannot represent: a single-layer construction on an outdoor or interzone surface whose two faces need different optical values (EnergyPlus materials are single-sided).</summary>
         public const string MaterialFaceOpticsUnrepresentable = "SAM-OS-MAT-003";
 
+        /// <summary>Declared opaque face assumption: an internal-face optical value SAM does not state (absent or NaN) on a zone face takes the external value; its unspecified provenance is kept.</summary>
+        public const string MaterialFaceAssumption = "SAM-OS-MAT-004";
+
         /// <summary>Missing construction layer.</summary>
         public const string ConstructionMissingLayer = "SAM-OS-CON-001";
 

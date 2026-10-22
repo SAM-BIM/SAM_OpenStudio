@@ -75,7 +75,17 @@ namespace SAM.Analytical.OpenStudio
                     : ToOpenStudio_AirGap(gasMaterial, sAMObject, openStudioConversionContext);
             }
 
-            bool internalVariant = internalFace && material is OpaqueMaterial && openStudioMaterialUsage == OpenStudioMaterialUsage.OpaqueConstruction && DivergentInternalOptics(sAMObject).Count > 0;
+            bool zoneFace = internalFace && material is OpaqueMaterial && openStudioMaterialUsage == OpenStudioMaterialUsage.OpaqueConstruction;
+            bool internalVariant = zoneFace && DivergentInternalOptics(sAMObject).Count > 0;
+
+            // Inheritance on a zone face, reported once per material at Summary: an Internal* value SAM does not state
+            // (absent or NaN) takes the stated External* value. The written value is not SAM data, so it is not stamped
+            // as authored and an import keeps the internal value unspecified.
+            List<string> inheritedInternalOptics = zoneFace ? InheritedInternalOptics(sAMObject) : new List<string>();
+            if (inheritedInternalOptics.Count > 0 && openStudioConversionContext.RegisterOnce("SAM-OS-MAT-004:Inherited:" + sAMObject.Guid.ToString("N")))
+            {
+                openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialFaceAssumption, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, string.Format("Zone face: {0} not stated (absent or NaN); the external-side value is written on the zone face and the internal value stays unspecified", string.Join(", ", inheritedInternalOptics)), sAMObject);
+            }
 
             string cacheKey = string.Format(CultureInfo.InvariantCulture, "{0:N}:{1:R}{2}", sAMObject.Guid, thickness, internalVariant ? ":Internal" : string.Empty);
             global::OpenStudio.Material cached;
@@ -329,6 +339,31 @@ namespace SAM.Analytical.OpenStudio
         /// from its External* counterpart (or has no external counterpart to govern it) — the
         /// cases where the single-sided EnergyPlus approximation loses information.
         /// </summary>
+        /// <summary>
+        /// The opaque Internal* optical parameters SAM does not state (absent or NaN) while their External* counterpart is
+        /// stated: on a zone face the external value is written in their place.
+        /// </summary>
+        internal static List<string> InheritedInternalOptics(SAMObject sAMObject)
+        {
+            List<string> result = new List<string>();
+            foreach ((OpaqueMaterialParameter internalParameter, OpaqueMaterialParameter externalParameter) in new[]
+            {
+                (OpaqueMaterialParameter.InternalEmissivity, OpaqueMaterialParameter.ExternalEmissivity),
+                (OpaqueMaterialParameter.InternalSolarReflectance, OpaqueMaterialParameter.ExternalSolarReflectance),
+                (OpaqueMaterialParameter.InternalLightReflectance, OpaqueMaterialParameter.ExternalLightReflectance),
+            })
+            {
+                bool internalStated = sAMObject.TryGetValue(internalParameter, out double internalValue) && !double.IsNaN(internalValue);
+                bool externalStated = sAMObject.TryGetValue(externalParameter, out double externalValue) && !double.IsNaN(externalValue);
+                if (!internalStated && externalStated)
+                {
+                    result.Add(internalParameter.ToString());
+                }
+            }
+
+            return result;
+        }
+
         internal static List<string> DivergentInternalOptics(SAMObject sAMObject)
         {
             List<string> result = new List<string>();
@@ -394,6 +429,12 @@ namespace SAM.Analytical.OpenStudio
                     additionalProperties.setFeature(Core.OpenStudio.OpenStudioIdentityKeys.OpticPrefix + opaqueMaterialParameter, value.ToString("R", CultureInfo.InvariantCulture));
                 }
             }
+
+            // What was actually written, including inherited values and OpenStudio defaults, so a later edit of the object
+            // can be told apart from an unchanged default.
+            additionalProperties.setFeature(Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + "ThermalAbsorptance", standardOpaqueMaterial.thermalAbsorptance().ToString("R", CultureInfo.InvariantCulture));
+            additionalProperties.setFeature(Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + "SolarAbsorptance", standardOpaqueMaterial.solarAbsorptance().ToString("R", CultureInfo.InvariantCulture));
+            additionalProperties.setFeature(Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + "VisibleAbsorptance", standardOpaqueMaterial.visibleAbsorptance().ToString("R", CultureInfo.InvariantCulture));
         }
 
         private static bool IsValidPositive(double value)

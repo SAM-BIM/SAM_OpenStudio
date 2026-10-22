@@ -62,6 +62,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             (IC_PARAM, "Air panel converted with Air Exchange Method 'SimpleMixing' at 2 ACH (caller-supplied assumption", S, "inter-zone air exchange assumption"),
             (MAT_PARAM, "Internal-side optical properties (InternalEmissivity) differ from the external-side values", S, "single-sided optics approximation"),
             (MAT_PARAM, "Material is flagged as a blind but SAM carries no slat geometry", S, "solar control is not modelled"),
+            (Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialFaceAssumption, "Zone face: InternalLightReflectance not stated (absent or NaN); the external-side value is written on the zone face", S, "an inherited zone-face optic changes the heat balance"),
 
             // Dropped inputs that can change loads.
             (CON_PARAM, "Opening properties (openable fraction, discharge coefficient) are not converted", S, "natural ventilation is not modelled"),

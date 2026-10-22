@@ -396,9 +396,38 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(Value(material, OpaqueMaterialParameter.InternalLightReflectance), Is.EqualTo(0.75).Within(1e-12));
         }
 
+        private static readonly Construction sandwich15 = new Construction(new Guid("55555555-0000-0000-0000-000000000004"), "Sandwich 15", new List<ConstructionLayer>
+        {
+            new ConstructionLayer("Insulation", 0.1),
+            new ConstructionLayer("Plasterboard", 0.015),
+            new ConstructionLayer("Brick", 0.1),
+        });
+
+        /// <summary>Import warnings about face metadata, edits and merges (SAM-OSI-ID-001 / SAM-OSI-MAT-001).</summary>
         private static List<Core.OpenStudio.OpenStudioDiagnostic> FaceWarnings(OpenStudioImportResult result)
         {
-            return result.Diagnostics.Where(d => (d.Code == "SAM-OSI-ID-001" || d.Code == "SAM-OSI-MAT-001") && d.Message.Contains("single EnergyPlus value is imported on both faces")).ToList();
+            return result.Diagnostics.Where(d => (d.Code == "SAM-OSI-ID-001" || d.Code == "SAM-OSI-MAT-001") && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Warning).ToList();
+        }
+
+        private static List<OpaqueMaterial> ImportedAll(OpenStudioImportResult result, string fragment)
+        {
+            return result.AnalyticalModel.MaterialLibrary.GetMaterials().OfType<OpaqueMaterial>().Where(x => x.Name.Contains(fragment)).ToList();
+        }
+
+        /// <summary>The written opaque objects of source material <paramref name="source"/> on face <paramref name="face"/>.</summary>
+        private static List<global::OpenStudio.StandardOpaqueMaterial> FaceObjects(global::OpenStudio.Model model, Guid source, string face)
+        {
+            return model.getStandardOpaqueMaterials().Where(x => Feature(x, Core.OpenStudio.OpenStudioIdentityKeys.MaterialGuid) == source.ToString("D") && Feature(x, Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace) == face).ToList();
+        }
+
+        private static MaterialLibrary LibraryWithoutPlasterboardLight()
+        {
+            MaterialLibrary materialLibrary = Library();
+            OpaqueMaterial plasterboard = materialLibrary.GetMaterial("Plasterboard") as OpaqueMaterial;
+            plasterboard.RemoveValue(OpaqueMaterialParameter.ExternalLightReflectance);
+            plasterboard.RemoveValue(OpaqueMaterialParameter.InternalLightReflectance);
+            materialLibrary.Add(plasterboard);
+            return materialLibrary;
         }
 
         [Test]
@@ -416,59 +445,159 @@ namespace SAM.Analytical.OpenStudio.Tests
             }
         }
 
+        /// <summary>
+        /// Review of 901e592a: face and thickness objects of one SAM material are merged by their explicit source Guid into
+        /// one SAM material with both faces, the source Guid, and each construction layer's own thickness.
+        /// </summary>
         [Test]
-        public void TheImport_RecoversBothFaces_OnTheExternalAndTheInternalObject()
+        public void FaceAndThicknessObjectsOfOneSource_MergeIntoOneSamMaterial_KeepingLayerThicknesses()
         {
-            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich).ToOpenStudio())
+            Guid plasterboard = Library().GetMaterial("Plasterboard").Guid;
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15).ToOpenStudio())
             {
+                Assert.That(conversion.Model.getStandardOpaqueMaterials().Count(x => x.nameString().Contains("Plasterboard")), Is.EqualTo(2), "an internal 12.5 mm object and an external 15 mm object");
                 OpenStudioImportResult result = conversion.Model.ToSAM();
-                List<OpaqueMaterial> plasterboards = result.AnalyticalModel.MaterialLibrary.GetMaterials().OfType<OpaqueMaterial>().Where(x => x.Name.Contains("Plasterboard")).ToList();
+                List<OpaqueMaterial> plasterboards = ImportedAll(result, "Plasterboard");
+                Assert.That(plasterboards.Count, Is.EqualTo(1));
+                AssertPlasterboardFaces(plasterboards[0]);
+                Assert.That(plasterboards[0].Guid, Is.EqualTo(plasterboard));
+                Assert.That(FaceWarnings(result), Is.Empty, string.Join(" | ", result.Diagnostics));
+
+                List<ConstructionLayer> layers = result.AnalyticalModel.AdjacencyCluster.GetConstructions().SelectMany(x => x.ConstructionLayers).Where(x => x.Name == plasterboards[0].Name).ToList();
+                Assert.That(layers.Select(x => Math.Round(x.Thickness, 6)).Distinct().OrderBy(x => x), Is.EqualTo(new[] { 0.0125, 0.015 }), "every construction references the merged material at its own thickness");
+            }
+        }
+
+        [Test]
+        public void FaceObjectsWithDifferentThermalProperties_AreNotMerged_AndDiagnosed()
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15).ToOpenStudio())
+            {
+                conversion.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("Plasterboard_15mm")).setDensity(950);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(FaceWarnings(result).Count(d => d.Code == "SAM-OSI-ID-001" && d.Message.Contains("are not merged: their thermal properties differ")), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                List<OpaqueMaterial> plasterboards = ImportedAll(result, "Plasterboard");
                 Assert.That(plasterboards.Count, Is.EqualTo(2));
                 plasterboards.ForEach(AssertPlasterboardFaces);
-                Assert.That(FaceWarnings(result), Is.Empty);
             }
         }
 
         [Test]
-        public void TheImport_DoesNotInventAFaceValueSamDidNotState()
-        {
-            MaterialLibrary materialLibrary = Library();
-            OpaqueMaterial plasterboard = materialLibrary.GetMaterial("Plasterboard") as OpaqueMaterial;
-            plasterboard.RemoveValue(OpaqueMaterialParameter.ExternalLightReflectance);
-            plasterboard.RemoveValue(OpaqueMaterialParameter.InternalLightReflectance);
-            materialLibrary.Add(plasterboard);
-            using (OpenStudioConversionResult conversion = Box(materialLibrary, AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
-            {
-                OpaqueMaterial material = Imported(conversion.Model.ToSAM(), "Plasterboard");
-                Assert.That(material.TryGetValue(OpaqueMaterialParameter.ExternalLightReflectance, out double _), Is.False, "the OpenStudio default is not imported as SAM data");
-                Assert.That(material.TryGetValue(OpaqueMaterialParameter.InternalLightReflectance, out double _), Is.False);
-                Assert.That(Value(material, OpaqueMaterialParameter.InternalEmissivity), Is.EqualTo(0.8).Within(1e-12));
-            }
-        }
-
-        [Test]
-        public void AFaceObjectChangedAfterExport_IsDiagnosed_AndItsStampsAreNotTrusted()
-        {
-            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
-            {
-                conversion.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("_Internal")).setSolarAbsorptance(0.45);
-                OpenStudioImportResult result = conversion.Model.ToSAM();
-                Assert.That(FaceWarnings(result).Any(d => d.Code == "SAM-OSI-MAT-001" && d.Message.Contains("changed after it was written")), Is.True, string.Join(" | ", result.Diagnostics));
-                OpaqueMaterial material = Imported(result, "Plasterboard");
-                Assert.That(Value(material, OpaqueMaterialParameter.InternalSolarReflectance), Is.EqualTo(0.55).Within(1e-12));
-                Assert.That(Value(material, OpaqueMaterialParameter.ExternalSolarReflectance), Is.EqualTo(0.55).Within(1e-12), "the single native value on both faces");
-            }
-        }
-
-        [Test]
-        public void FaceObjectsOfOneMaterialThatDisagree_AreDiagnosed()
+        public void FaceObjectsWithDifferentAuthoredOptics_AreNotMerged_AndDiagnosed()
         {
             using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich).ToOpenStudio())
             {
                 conversion.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("Plasterboard") && !x.nameString().Contains("_Internal"))
                     .additionalProperties().setFeature(Core.OpenStudio.OpenStudioIdentityKeys.OpticPrefix + "InternalEmissivity", "0.6");
                 OpenStudioImportResult result = conversion.Model.ToSAM();
-                Assert.That(FaceWarnings(result).Count(d => d.Code == "SAM-OSI-ID-001" && d.Message.Contains("different authored face optics")), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                Assert.That(FaceWarnings(result).Count(d => d.Code == "SAM-OSI-ID-001" && d.Message.Contains("their authored face optics differ")), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                Assert.That(ImportedAll(result, "Plasterboard").Count, Is.EqualTo(2));
+            }
+        }
+
+        /// <summary>Two external-face objects (12.5 and 15 mm) where only one was edited: one SAM material cannot hold both, so they are not merged.</summary>
+        [Test]
+        public void FaceObjectsWithConflictingEditsOnOneFace_AreNotMerged_AndDiagnosed()
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich, floor: sandwich15).ToOpenStudio())
+            {
+                Assert.That(conversion.Model.getStandardOpaqueMaterials().Count(x => x.nameString().Contains("Plasterboard")), Is.EqualTo(3));
+                conversion.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("Plasterboard_15mm")).setSolarAbsorptance(0.4);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(FaceWarnings(result).Count(d => d.Code == "SAM-OSI-ID-001" && d.Message.Contains("ExternalSolarReflectance differs between the external-face objects")), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                Assert.That(ImportedAll(result, "Plasterboard").Count, Is.EqualTo(3));
+                Assert.That(Value(ImportedAll(result, "Plasterboard_15mm").Single(), OpaqueMaterialParameter.ExternalSolarReflectance), Is.EqualTo(0.6).Within(1e-12), "the edit is kept on its own material");
+            }
+        }
+
+        [Test]
+        public void AnObjectWithoutSourceIdentity_IsNeverMergedByName()
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15).ToOpenStudio())
+            {
+                global::OpenStudio.AdditionalProperties additionalProperties = conversion.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("Plasterboard_15mm")).additionalProperties();
+                additionalProperties.resetFeature(Core.OpenStudio.OpenStudioIdentityKeys.MaterialFace);
+                additionalProperties.resetFeature(Core.OpenStudio.OpenStudioIdentityKeys.MaterialGuid);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(ImportedAll(result, "Plasterboard").Count, Is.EqualTo(2), "the same name stem is not an identity");
+                Assert.That(Value(ImportedAll(result, "Plasterboard_15mm").Single(), OpaqueMaterialParameter.InternalEmissivity), Is.EqualTo(0.9).Within(1e-12), "a third-party object keeps its single value on both faces");
+            }
+        }
+
+        [Test]
+        public void TheImport_DoesNotInventAFaceValueSamDidNotState()
+        {
+            using (OpenStudioConversionResult conversion = Box(LibraryWithoutPlasterboardLight(), AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
+            {
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, "Plasterboard");
+                Assert.That(material.TryGetValue(OpaqueMaterialParameter.ExternalLightReflectance, out double _), Is.False, "the OpenStudio default is not imported as SAM data");
+                Assert.That(material.TryGetValue(OpaqueMaterialParameter.InternalLightReflectance, out double _), Is.False);
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalEmissivity), Is.EqualTo(0.8).Within(1e-12));
+                Assert.That(FaceWarnings(result), Is.Empty);
+            }
+        }
+
+        /// <summary>
+        /// Review of 901e592a (reproduction): Plasterboard light reflectance unstated on both faces, exported (OpenStudio
+        /// default visible absorptance 0.7), then edited natively to 0.42. The reviewed head re-exported 0.7. The edit is
+        /// now kept on the face the object carries, reported, and survives a re-export.
+        /// The re-export is read on the single-layer ground floor, whose one layer is the zone face in either layer order:
+        /// the importer keeps OpenStudio's outside-first layer order, so a multi-layer construction comes back reversed
+        /// (a separate, pre-existing round-trip defect recorded in the PR record).
+        /// </summary>
+        [Test]
+        public void ANativeEditOfAnUnstatedValue_IsKeptAndReported_ThroughImportAndReexport()
+        {
+            Guid plasterboard = Library().GetMaterial("Plasterboard").Guid;
+            using (OpenStudioConversionResult conversion = Box(LibraryWithoutPlasterboardLight(), AnalyticalModelFixtures.WallConstruction, floor: single).ToOpenStudio())
+            {
+                global::OpenStudio.StandardOpaqueMaterial variant = FaceObjects(conversion.Model, plasterboard, "Internal").Single();
+                Assert.That(variant.visibleAbsorptance(), Is.EqualTo(0.7).Within(1e-12), "the OpenStudio default was written");
+                variant.setVisibleAbsorptance(0.42);
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, "Plasterboard");
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalLightReflectance), Is.EqualTo(0.58).Within(1e-12), "the edit is kept on the zone (internal) face");
+                Assert.That(material.TryGetValue(OpaqueMaterialParameter.ExternalLightReflectance, out double _), Is.False, "the other face stays unstated");
+                Assert.That(FaceWarnings(result).Count(d => d.Code == "SAM-OSI-MAT-001" && d.Message.Contains("changed after it was written (VisibleAbsorptance written 0.7, now 0.42)") && d.Message.Contains("InternalLightReflectance")), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+
+                using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
+                {
+                    Assert.That(FaceObjects(reexport.Model, plasterboard, "Internal").Single().visibleAbsorptance(), Is.EqualTo(0.42).Within(1e-12), "the edited value is written again, not the default");
+                }
+            }
+        }
+
+        /// <summary>The unchanged control: an unedited default stays unstated and re-exports as the same default, with no edit reported.</summary>
+        [Test]
+        public void AnUnchangedDefault_StaysUnstated_ThroughImportAndReexport()
+        {
+            Guid plasterboard = Library().GetMaterial("Plasterboard").Guid;
+            using (OpenStudioConversionResult conversion = Box(LibraryWithoutPlasterboardLight(), AnalyticalModelFixtures.WallConstruction, floor: single).ToOpenStudio())
+            {
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(FaceWarnings(result), Is.Empty);
+                Assert.That(Imported(result, "Plasterboard").TryGetValue(OpaqueMaterialParameter.InternalLightReflectance, out double _), Is.False);
+                using (OpenStudioConversionResult reexport = result.AnalyticalModel.ToOpenStudio())
+                {
+                    Assert.That(FaceObjects(reexport.Model, plasterboard, "Internal").Single().visibleAbsorptance(), Is.EqualTo(0.7).Within(1e-12));
+                }
+            }
+        }
+
+        /// <summary>An edit of a stated value is kept on the face the object carries; the other face keeps its authored value.</summary>
+        [Test]
+        public void AnEditOfAStatedValue_IsKeptOnItsFace_AndReported()
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
+            {
+                conversion.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("_Internal")).setSolarAbsorptance(0.45);
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                Assert.That(FaceWarnings(result).Count(d => d.Code == "SAM-OSI-MAT-001" && d.Message.Contains("changed after it was written (SolarAbsorptance written 0.3") && d.Message.Contains(", now 0.45)")), Is.EqualTo(1), string.Join(" | ", result.Diagnostics));
+                OpaqueMaterial material = Imported(result, "Plasterboard");
+                Assert.That(Value(material, OpaqueMaterialParameter.InternalSolarReflectance), Is.EqualTo(0.55).Within(1e-12));
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalSolarReflectance), Is.EqualTo(0.5).Within(1e-12), "the external face keeps its authored value");
             }
         }
 
@@ -496,6 +625,73 @@ namespace SAM.Analytical.OpenStudio.Tests
                 Assert.That(Value(material, OpaqueMaterialParameter.ExternalEmissivity), Is.EqualTo(0.8).Within(1e-12));
                 Assert.That(Value(material, OpaqueMaterialParameter.InternalEmissivity), Is.EqualTo(0.8).Within(1e-12));
                 Assert.That(FaceWarnings(result), Is.Empty, "absent metadata (a third-party object) is not a diagnostic");
+            }
+        }
+
+        // ---- inherited zone-face values (review of 901e592a) --------------------------------------------------------
+
+        /// <summary>
+        /// An Internal* value SAM does not state, absent or NaN, on a zone face takes the external value: reported once at
+        /// Summary (SAM-OS-MAT-004), never stamped as authored, and imported back as unstated.
+        /// </summary>
+        [TestCase("absent")]
+        [TestCase("nan")]
+        public void AnUnstatedInternalValue_IsReportedAtSummary_AndKeepsItsUnspecifiedProvenance(string what)
+        {
+            MaterialLibrary materialLibrary = Library();
+            OpaqueMaterial plasterboard = materialLibrary.GetMaterial("Plasterboard") as OpaqueMaterial;
+            if (what == "nan")
+            {
+                plasterboard.SetValue(OpaqueMaterialParameter.InternalLightReflectance, double.NaN);
+            }
+            else
+            {
+                plasterboard.RemoveValue(OpaqueMaterialParameter.InternalLightReflectance);
+            }
+
+            materialLibrary.Add(plasterboard);
+            using (OpenStudioConversionResult conversion = Box(materialLibrary, AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
+            {
+                List<Core.OpenStudio.OpenStudioDiagnostic> notes = conversion.Diagnostics.Where(d => d.Code == "SAM-OS-MAT-004").ToList();
+                Assert.That(notes.Count, Is.EqualTo(1), string.Join(" | ", conversion.Diagnostics));
+                Assert.That(notes[0].Severity, Is.EqualTo(Core.OpenStudio.OpenStudioDiagnosticSeverity.Information));
+                Assert.That(Core.OpenStudio.Query.GetDiagnosticDetail(notes[0]), Is.EqualTo(DiagnosticDetail.Summary));
+                Assert.That(notes[0].Message, Does.StartWith("Zone face: InternalLightReflectance not stated"));
+                Assert.That(notes[0].SamGuid, Is.EqualTo(plasterboard.Guid));
+
+                global::OpenStudio.StandardOpaqueMaterial variant = FaceObjects(conversion.Model, plasterboard.Guid, "Internal").Single();
+                Assert.That(variant.visibleAbsorptance(), Is.EqualTo(0.5).Within(1e-12), "the external light reflectance 0.5 is written on the zone face");
+                Assert.That(Feature(variant, Core.OpenStudio.OpenStudioIdentityKeys.OpticPrefix + "InternalLightReflectance"), Is.Null, "an inherited value is not stamped as authored");
+
+                OpenStudioImportResult result = conversion.Model.ToSAM();
+                OpaqueMaterial material = Imported(result, "Plasterboard");
+                Assert.That(material.TryGetValue(OpaqueMaterialParameter.InternalLightReflectance, out double imported) && !double.IsNaN(imported), Is.False, "the internal value comes back unstated");
+                Assert.That(Value(material, OpaqueMaterialParameter.ExternalLightReflectance), Is.EqualTo(0.5).Within(1e-12));
+                Assert.That(FaceWarnings(result), Is.Empty);
+            }
+        }
+
+        /// <summary>The unchanged control: every zone-face internal value stated, so nothing is inherited or reported.</summary>
+        [Test]
+        public void StatedInternalValues_RaiseNoInheritanceNote()
+        {
+            using (OpenStudioConversionResult conversion = Box(Library(), AnalyticalModelFixtures.WallConstruction).ToOpenStudio())
+            {
+                Assert.That(conversion.Diagnostics.Any(d => d.Code == "SAM-OS-MAT-004"), Is.False, string.Join(" | ", conversion.Diagnostics.Where(d => d.Code == "SAM-OS-MAT-004")));
+            }
+        }
+
+        [Test]
+        public void EveryOpaqueObject_RecordsWhatWasWritten()
+        {
+            using (OpenStudioConversionResult conversion = Box(LibraryWithoutPlasterboardLight(), AnalyticalModelFixtures.WallConstruction, roof: sandwich15).ToOpenStudio())
+            {
+                foreach (global::OpenStudio.StandardOpaqueMaterial material in conversion.Model.getStandardOpaqueMaterials())
+                {
+                    Assert.That(double.Parse(Feature(material, Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + "ThermalAbsorptance"), System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(material.thermalAbsorptance()), material.nameString());
+                    Assert.That(double.Parse(Feature(material, Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + "SolarAbsorptance"), System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(material.solarAbsorptance()), material.nameString());
+                    Assert.That(double.Parse(Feature(material, Core.OpenStudio.OpenStudioIdentityKeys.WrittenPrefix + "VisibleAbsorptance"), System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(material.visibleAbsorptance()), material.nameString());
+                }
             }
         }
     }
