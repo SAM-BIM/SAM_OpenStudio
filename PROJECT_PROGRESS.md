@@ -1,5 +1,15 @@
 # Project Progress - SAM_OpenStudio (2026-Q4)
 
+## S09 OpenStudio independent native-input read-back closeout - 2026-10-23
+
+- **PR**: SAM-BIM/SAM_OpenStudio#33 (`feature/s09-openstudio-input-readback`) -> `sow/2026-Q4`. **Merged 2026-10-23** as merge commit `81acb8e794efa0f05f973e27f226b4d64c02c2e2`, whose parents are base `7f216657bd03b740644ae12d6ff099396ee997e0` and approved head `39a6c90c24b31e82d26f44ed9fefaf0037d41726`. The merge used `gh pr merge 33 --repo SAM-BIM/SAM_OpenStudio --merge --match-head-commit 39a6c90c...`, with explicit owner approval in chat, no auto-merge and no bypass. Immediately before: OPEN, MERGEABLE/CLEAN, build and spdx SUCCESS on `39a6c90`.
+- **Status**: complete for S09 scope: scoped native-input conformance under S07 section 5.2 (amendment U1). Not simulation equivalence and not a Phase B PASS (S08-S11 PASS is needed). S10 not started.
+- **Work**: independent OSM/IDF native-input read-back comparator and report, writer ventilation alignment, opaque multi-layer layer order on import (revision 11), and OUT-OF-ENGINE-SCOPE reporting for opaque optics on faces EnergyPlus 25.1 does not use (revision 12). Details: `documentation/S09-OpenStudio-InputReadBack-PR.md`.
+- **Validation**: independent review accepted the code (tested content `8edf793a`) and final evidence. Local acceptance at `d26665bd`, pack `documentation/S09-OpenStudio-InputReadBack-evidence/acceptance-2026-10-23/`: both fixtures PASS, 21/21 negatives FAIL by intended mechanism, 24 packed reports match raw reports. Local Release x64: S09 120/120, benchmark 51/51. Hosted: Build and SPDX green at final head `39a6c90`. The acceptance run is local only; hosted CI does not run it.
+- **Unresolved**: acceptance scripts under Windows PowerShell 5.1 (`$PSScriptRoot` in parameter defaults; ANSI read in `Pack-S09-Evidence.ps1`) are unchanged, with workarounds in the pack README. Writer effect on results is unmeasured (no engine run). The used-faces-only EnergyPlus premise is S07's and was not re-verified. See the record's "Unresolved, risks, limits".
+- **Cleanup**: remote `feature/s09-openstudio-input-readback` deleted with `--force-with-lease=...:39a6c90c` after confirming it is an ancestor of `sow/2026-Q4` and no open PR used it; local branch deleted (`git branch -d`). No worktree touched.
+- **Next step**: SAM roadmap S09 row reconciled in SAM `sow/2026-Q4`. S10 needs its own owner start. Phase B gates and the Phase C freeze are unchanged.
+
 ## S06 OpenStudio CLI selection closeout - 2026-10-20
 
 - **PR**: SAM-BIM/SAM_OpenStudio#32 (`fix/s06-openstudio-cli-sdk-match`) -> `sow/2026-Q4`. **Merged 2026-10-20** as merge commit `a9429f7cea975a8f660bac4407779c3828e86627`, whose parents are base `d4216f35` and approved head `3082dc6acebd38778d0e81b1e9b491ac4a759273`. The merge used `gh pr merge 32 --merge --match-head-commit 3082dc6a...`, with explicit owner approval in chat, and no auto-merge or bypass. Immediately before the merge: not draft, MERGEABLE/CLEAN, build and spdx green on `3082dc6`, no reviews or review comments, `sow/2026-Q4` unprotected.
