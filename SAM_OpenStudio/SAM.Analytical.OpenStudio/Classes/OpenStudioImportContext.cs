@@ -41,8 +41,25 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>OpenStudio material name → SAM material created for it.</summary>
         public IDictionary<string, Core.IMaterial> MaterialMap { get; } = new Dictionary<string, Core.IMaterial>();
 
+        /// <summary>
+        /// Source SAM material Guid → the one SAM material its SAM-written face and thickness objects were merged
+        /// into with the OpenStudio handles of its validated members, or a null material when they are imported one by
+        /// one (fewer than two, or a conflict). Only a listed member resolves to the merged material.
+        /// </summary>
+        internal IDictionary<Guid, (Core.IMaterial Material, ISet<string> Members)> OpaqueMaterialGroups { get; } = new Dictionary<Guid, (Core.IMaterial Material, ISet<string> Members)>();
+
         /// <summary>OpenStudio construction name → SAM opaque Construction created for it.</summary>
         public IDictionary<string, Construction> ConstructionMap { get; } = new Dictionary<string, Construction>();
+
+        /// <summary>
+        /// OpenStudio construction name → the innermost-first SAM Construction for the planar surfaces using it, when the
+        /// same OpenStudio construction is also used by a subsurface or shading surface (which keep the OpenStudio order
+        /// through <see cref="ConstructionMap"/>). Surfaces resolve here first.
+        /// </summary>
+        internal IDictionary<string, Construction> SurfaceConstructionMap { get; } = new Dictionary<string, Construction>();
+
+        /// <summary>OpenStudio construction handle → whether planar surfaces, and whether subsurfaces or shading surfaces, use it; read once from <see cref="Source"/>.</summary>
+        internal IDictionary<string, (bool Surface, bool Other)> ConstructionUses { get; set; }
 
         /// <summary>OpenStudio construction name → SAM ApertureConstruction created for it.</summary>
         public IDictionary<string, ApertureConstruction> ApertureConstructionMap { get; } = new Dictionary<string, ApertureConstruction>();

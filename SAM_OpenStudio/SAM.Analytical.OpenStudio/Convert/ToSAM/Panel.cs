@@ -171,8 +171,9 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
+            // A construction shared with subsurfaces or shading surfaces has its innermost-first surface version here.
             Construction result;
-            if (openStudioImportContext.ConstructionMap.TryGetValue(constructionName, out result))
+            if (openStudioImportContext.SurfaceConstructionMap.TryGetValue(constructionName, out result) || openStudioImportContext.ConstructionMap.TryGetValue(constructionName, out result))
             {
                 return result;
             }

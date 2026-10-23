@@ -1,0 +1,49 @@
+# Local test summaries at 20f8fb6 (Release x64); machine-local runs, not hosted CI
+## writer-tests-2
+Passed!  - Failed:     0, Passed:   379, Skipped:     2, Total:   381, Duration: 1 m 46 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+## s09-tests-3
+Passed!  - Failed:     0, Passed:    80, Skipped:     0, Total:    80, Duration: 2 m 16 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+## bench-tests-2
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 162 ms - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+## A/B: previous writer and importer (6a36afb) restored over 20f8fb6
+  Failed RealConverters_ViewCoefficientsAreDetailed_LightingControlIsSummary [132 ms]
+  Failed RadiantProportions_ComeFromSamParameters [128 ms]
+  Failed AnAbsentOrNaNP_TakesTheCommonDefault_WithItsCategoryAndOpenDecisionStated(False) [126 ms]
+  Failed AnAbsentOrNaNP_TakesTheCommonDefault_WithItsCategoryAndOpenDecisionStated(True) [125 ms]
+  Failed AnAuthoredP_IsSplitByS_WithNoReturnAir(0.37d,0.15513d,0.21487d) [127 ms]
+  Failed AnAuthoredP_IsSplitByS_WithNoReturnAir(0.34d,0.142552d,0.197448d) [128 ms]
+  Failed AnAuthoredP_IsSplitByS_WithNoReturnAir(0.41d,0.171901d,0.238099d) [124 ms]
+  Failed AnAuthoredZero_IsPreserved_AllConvective [126 ms]
+  Failed Import_ANonzeroReturnAirShare_IsWarnedAndBecomesConvective [3 ms]
+  Failed Import_AnotherShortWaveShare_IsReported [1 ms]
+  Failed Import_AZeroSplit_IsAnAuthoredZero [1 ms]
+  Failed Import_FractionsSummingAboveOne_AreNotImported [1 ms]
+  Failed Import_RecoversPFromRadiantPlusVisible_AndNeverSetsTheComfortCoefficient [1 ms]
+  Failed RoundTrip_PreservesTheAuthoredP_WithoutAComfortCoefficient(0.37d) [544 ms]
+  Failed RoundTrip_PreservesTheAuthoredP_WithoutAComfortCoefficient(0.0d) [479 ms]
+  Failed TheComfortCoefficient_NeverChangesTheLightsFractions(0.37d) [289 ms]
+  Failed TheComfortCoefficient_NeverChangesTheLightsFractions(0.0d) [254 ms]
+  Failed TheComfortCoefficient_NeverChangesTheLightsFractions(null) [250 ms]
+Failed!  - Failed:    18, Passed:   361, Skipped:     2, Total:   381, Duration: 1 m 43 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+  Failed AnAuthoredZero_IsPreserved_AndReadsBackAllConvective [4 s]
+  Failed AnUnstatedP_IsADocumentedDefault_NeverPass("absent") [4 s]
+  Failed AnUnstatedP_IsADocumentedDefault_NeverPass("nan") [4 s]
+  Failed ASelectionThatDoesNotResolve_IsAnInvalidInput_NeverInactive("missing") [4 s]
+  Failed ASelectionThatDoesNotResolve_IsAnInvalidInput_NeverInactive("wrong-type") [4 s]
+  Failed BothFixtures_HaveCompleteCoverage_AndOnlyTheNamedOwnerDecisionRemains [< 1 ms]
+  Failed TheAuthoredP_IsWrittenAsTheAcceptedLightingSplit("s08-fix-box","5080c000-0000-0000-0000-00000000c001",0.37d) [307 ms]
+  Failed TheAuthoredP_IsWrittenAsTheAcceptedLightingSplit("s08-fix-two","5080c000-0000-0000-0000-00000000c0a1",0.34d) [440 ms]
+  Failed TheAuthoredP_IsWrittenAsTheAcceptedLightingSplit("s08-fix-two","5080c000-0000-0000-0000-00000000c0b1",0.41d) [438 ms]
+  Failed TheComfortCoefficient_LeavesEveryLightingRowUnchanged(0.49d) [4 s]
+  Failed TheComfortCoefficient_LeavesEveryLightingRowUnchanged(0.0d) [3 s]
+  Failed TheSpaceOverride_IsTheRequirement_AndIsDeliveredByTheSelectedProfile [4 s]
+  Failed UninterpretableMultiplicityOrOrientation_BlocksTechnical("zone-multiplier-1.5") [1 s]
+  Failed UninterpretableMultiplicityOrOrientation_BlocksTechnical("north-axis-text") [941 ms]
+  Failed UninterpretableMultiplicityOrOrientation_BlocksTechnical("coordinate-system-unknown") [1 s]
+  Failed UninterpretableMultiplicityOrOrientation_BlocksTechnical("world-with-north-axis") [1 s]
+  Failed UninterpretableMultiplicityOrOrientation_BlocksTechnical("osm-thermal-zone-duplicated") [931 ms]
+  Failed UninterpretableMultiplicityOrOrientation_BlocksTechnical("osm-thermal-zone-name-unlabelled") [880 ms]
+  Failed UninterpretableMultiplicityOrOrientation_BlocksTechnical("osm-subsurface-multiplier-relabelled") [887 ms]
+  Failed V1TwoZones_KeepTheirRequirement_AndDeliverNothing_UnderTheVerifiedInactiveTransformation [< 1 ms]
+  Failed V2ChangedBackToV1_ReadsBackAsNoDelivery [4 s]
+Failed!  - Failed:    21, Passed:    59, Skipped:     0, Total:    80, Duration: 2 m 3 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)

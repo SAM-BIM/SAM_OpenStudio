@@ -1,0 +1,23 @@
+# AReusedProcessId_IsNotTheExportProcess run against the reviewed head's id-only freshness check (a temporary local
+# edit of ReadBackRead.cs, then restored), showing the revision-4 TestSupport diagnostics for a compare with no report.
+
+  Failed AReusedProcessId_IsNotTheExportProcess [729 ms]
+  Error Message:
+     compare exit 70 (<workspace>\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack.Tests\bin\x64\Release\net8.0\s09-runs\neg-people-density-6a6bba)
+output:
+[stdout]
+[stderr]
+infrastructure: the reader did not run in a fresh process after the export
+
+export: schema s09-export/2, pid 24524, process started 2026-10-21T14:27:41.8185370Z, started 2026-10-21T14:27:41.8802897Z, finished 2026-10-21T14:27:44.9366905Z, mutation neg-people-density: IDF People 'SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People' density x 1.01
+reader: schema s09-native/2, pid 24524, process started 2026-10-21T14:27:54.1284592Z, started 2026-10-21T14:27:54.1659206Z, finished 2026-10-21T14:27:54.3867906Z
+file export.json 6393 bytes, written 2026-10-21T14:27:54.4646825Z
+file frozen-model.json 723176 bytes, written 2026-10-21T10:13:28.4709333Z
+file in.idf 2297921 bytes, written 2026-10-21T14:27:54.0791971Z
+file model.osm 5565770 bytes, written 2026-10-21T14:27:54.0840184Z
+file native.json 3113402 bytes, written 2026-10-21T14:27:54.4275682Z
+file weather.epw 1582702 bytes, written 2026-10-21T10:38:56.0058835Z
+
+Assert.That(exit, Is.EqualTo(ReadBackExit.Fail))
+  Expected: 10
+  But was:  70

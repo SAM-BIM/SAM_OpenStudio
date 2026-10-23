@@ -1,0 +1,32 @@
+S09 revision 9 local test summaries (Release x64, SDK 10.0.401, SAM_Tas sow/2026-Q4 c50e9169)
+Tested content 354e5322fa3a4c31a984de911c48534e768c40e4. No engine, acceptance or packing script was run.
+
+== S09 tests at 354e532 (committed content, rebuilt after the A/B)
+harness os-input-readback.dll 4edf422bdd9a5d789a7ac74851e78cf32eab265041e42de369fef992d047fdcc
+library SAM.Analytical.OpenStudio.InputReadBack.dll 1c4408f720a57c5e8dec25a3b852a97240ea25de9cdb6ba6578c21f60d733354
+writer  SAM.Analytical.OpenStudio.dll e9b8c24568ebdc45c0bcf38e66093143f54254b77160c975ef29c53117a43fe9
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97 - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+(also 97/97 before the A/B.) box- and two-report-approved.txt are byte-identical to revision-8/.
+
+== Writer/importer tests/SAM.Analytical.OpenStudio.Tests --filter 'TestCategory!=Simulation' at 354e532
+Passed!  - Failed:     0, Passed:   409, Skipped:     2, Total:   411 - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+After the coverage-manifest edits: CompletenessTests + ReverseCoverageTests 28/28. After the A/B: OpaqueFaceOpticsTests 30/30.
+
+== Benchmark --filter TestCategory!=Simulation at 354e532
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51 - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+
+== A/B: Material.cs, ToSAM/MaterialLibrary.cs, OpenStudioImportContext.cs, Compare/OsComparison.cs of 901e592 restored
+OpaqueFaceOpticsTests: 30 total, 21 passed, 9 failed:
+  ANativeEditOfAnUnstatedValue_IsKeptAndReported_ThroughImportAndReexport   InternalLightReflectance absent after import (the reviewed defect)
+  AnEditOfAStatedValue_IsKeptOnItsFace_AndReported                        single native value on both faces
+  AnUnstatedInternalValue_..._UnspecifiedProvenance(absent, nan)          no SAM-OS-MAT-004
+  EveryOpaqueObject_RecordsWhatWasWritten                                 no SAM.Written.* stamps
+  FaceAndThicknessObjectsOfOneSource_MergeIntoOneSamMaterial_...          2 materials, expected 1
+  FaceObjectsWithConflictingEditsOnOneFace_AreNotMerged_AndDiagnosed      no merge conflict reported
+  FaceObjectsWithDifferentAuthoredOptics_AreNotMerged_AndDiagnosed        revision-8 wording, no merge conflict
+  FaceObjectsWithDifferentThermalProperties_AreNotMerged_AndDiagnosed     no merge conflict reported
+  Controls passing under both: AnUnchangedDefault_StaysUnstated_..., AnObjectWithoutSourceIdentity_IsNeverMergedByName,
+  StatedInternalValues_RaiseNoInheritanceNote and the 18 revision-8 tests.
+S09: AnUnstatedZoneFaceValue_KeepsItsUnspecifiedProvenance(absent, nan) 2 failed (no SAM-OS-MAT-004);
+     BothFixtures_HaveCompleteCoverage_... passed.
+The files were restored with git, touched and rebuilt before the final runs above.

@@ -1,0 +1,25 @@
+# IDF diff: acc6 (revision 4, C:\TasOut\s09\acc6) vs the revision-5 S09 test run at 20f8fb6
+## box
+249,250c249,250
+<   0.37,                                   !- Fraction Radiant
+<   0.25,                                   !- Fraction Visible
+---
+>   0.214869791666667,                      !- Fraction Radiant
+>   0.155130208333333,                      !- Fraction Visible
+## two
+249,250c249,250
+<   0.34,                                   !- Fraction Radiant
+<   0.25,                                   !- Fraction Visible
+---
+>   0.197447916666667,                      !- Fraction Radiant
+>   0.142552083333333,                      !- Fraction Visible
+29826,29827c29826,29827
+<   0.41,                                   !- Fraction Radiant
+<   0.25,                                   !- Fraction Visible
+---
+>   0.238098958333333,                      !- Fraction Radiant
+>   0.171901041666667,                      !- Fraction Visible
+737ea1f44600aff8…  */c/TasOut/s09/acc6/box/in.idf
+f0b9ca4bfedddf75…  */c/TasOut/s09/acc6/two/in.idf
+36251efc34d2de92…  *benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/bin/x64/Release/net8.0/s09-runs/box-a8efe4/in.idf
+551b12746bd00301…  *benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/bin/x64/Release/net8.0/s09-runs/two-b8cf2f/in.idf

@@ -2,3 +2,7 @@
 # output, which is UTF-8 without BOM and uses LF newlines. Pin them to LF so Git's autocrlf
 # setting cannot rewrite them to CRLF on checkout and break the byte-stability comparison.
 benchmark/**/*.json text eol=lf
+
+# S09: the S08 signed-off equivalence fixtures are reused byte for byte (sha256 in Fixtures/SHA256SUMS.txt, CRLF as
+# committed in SAM_Tas). Later rules win, so this keeps them out of the LF rule above.
+benchmark/SAM.Analytical.OpenStudio.InputReadBack/Fixtures/** -text

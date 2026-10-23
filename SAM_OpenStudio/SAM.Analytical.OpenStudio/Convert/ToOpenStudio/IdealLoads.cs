@@ -42,6 +42,22 @@ namespace SAM.Analytical.OpenStudio
                 }
             }
 
+            // Outdoor-air controls (S07 D-F2, T-OA-SYS): stated explicitly rather than left to defaults, so the delivered
+            // outdoor air is exactly the space's effective DSOA (its per-space override, else the inherited SpaceType one)
+            // times its fraction schedule, at the design occupancy: no demand-controlled ventilation, no economizer and
+            // no heat recovery. A space without a DSOA (no requirement, V0) leaves the link empty: no outdoor air.
+            result.setDemandControlledVentilationType("None");
+            result.setOutdoorAirEconomizerType("NoEconomizer");
+            result.setHeatRecoveryType("None");
+            if (openStudioConversionContext.TryGetModelObject(space.Guid, out global::OpenStudio.Space openStudioSpace))
+            {
+                global::OpenStudio.OptionalDesignSpecificationOutdoorAir designSpecificationOutdoorAir = openStudioSpace.designSpecificationOutdoorAir();
+                if (designSpecificationOutdoorAir != null && !designSpecificationOutdoorAir.isNull())
+                {
+                    result.setDesignSpecificationOutdoorAirObject(designSpecificationOutdoorAir.get());
+                }
+            }
+
             if (!result.addToThermalZone(thermalZone))
             {
                 openStudioConversionContext.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.HvacMissingSetpoints, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, "Ideal Loads air system could not be attached to the thermal zone", space, thermalZone.nameString());

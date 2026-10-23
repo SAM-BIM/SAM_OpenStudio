@@ -1,0 +1,10 @@
+The independent review's revision-11-consistency-probe (Program.cs and Probe.csproj byte-identical, machine-local), run
+against the binaries built from 4ea2e6c (SAM.Analytical.OpenStudio.dll sha256 331ec187...). At the reviewed f5f207b it
+printed importSuccessful=True with no error and re-exported 12.5 mm on both sides (its committed probe-output.txt).
+Command: dotnet run --project Probe.csproj -c Release -p:Platform=x64 (exit 0).
+
+THICKNESS setLayers=True
+THICKNESS native SAM_Space_Space_A_aaaaaaaa: SAM_OpaqueMaterial_Brick_100mm_33333333=0.1 -> SAM_OpaqueMaterial_Plasterboard_12.5mm_33333333=0.0125 -> SAM_OpaqueMaterial_Insulation_100mm_33333333=0.1
+THICKNESS native SAM_Space_Space_B_bbbbbbbb: SAM_OpaqueMaterial_Insulation_100mm_33333333=0.1 -> Reviewer_Plasterboard_20mm=0.02 -> SAM_OpaqueMaterial_Brick_100mm_33333333=0.1
+THICKNESS importSuccessful=False importValid=False
+THICKNESS diagnostics=SAM-OSI-CON-002:Panel 'SAM_Construction_Sandwich_Forward_55555555' with construction 'SAM_Construction_Sandwich_Forward_55555555' cannot reproduce its native surfaces: layer 2 ('Reviewer_Plasterboard_20mm') of the surface in space 'SAM_Space_Space_B_bbbbbbbb' is 0.02 m thick but the SAM layer is 0.0125 m. One SAM panel cannot represent these surfaces of this (edited or mixed) model, so the import is unsuccessful rather than changing a layer or a face EnergyPlus uses

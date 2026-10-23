@@ -1,0 +1,44 @@
+S09 revision 10 local test summaries (Release x64, SDK 10.0.401, SAM_Tas sow/2026-Q4 c50e9169)
+Tested content 78f10146481dbd4fe46af8761813fa4f9d58d357. No engine, acceptance or packing script was run.
+Built with dotnet build ... --no-restore (each project 2 warnings, 0 errors), then dotnet test --no-build.
+
+== S09 tests at 78f1014
+harness os-input-readback.dll 3589bc9cb86f79a32f81885bac39987e466e7961cbe22ed732092725713e7f22
+library SAM.Analytical.OpenStudio.InputReadBack.dll 40ee4c7d2aebb213b6f359c150d3d983fa956d8cacc548fe3db3a237b5998a40
+writer  SAM.Analytical.OpenStudio.dll 5286c4aded80614b0788f3662b7fad6420517272aad7a81b5deb6e5ee7341bf8
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 3 m 37 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+The box and two-zone fixture report.txt of this run (s09-runs/box-9c1ffd, two-43230f) are byte-identical to
+revision-9/box-report-approved.txt and two-report-approved.txt (S09 does not use the OpenStudio importer).
+
+== Writer/importer tests/SAM.Analytical.OpenStudio.Tests --filter 'TestCategory!=Simulation' at 78f1014
+Passed!  - Failed:     0, Passed:   432, Skipped:     2, Total:   434, Duration: 6 m 4 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+(409 at revision 9 + 23 new OpaqueFaceOpticsTests cases. Before the commit the face-optics fixture alone ran 51/53: the two
+whole-model cases used an unreferenced third object, which an AnalyticalModel library does not keep; the test now uses
+it as the floor layer and both passed.)
+
+== Benchmark --filter TestCategory!=Simulation at 78f1014
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 203 ms - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+
+== A/B: ToSAM/MaterialLibrary.cs and Classes/OpenStudioImportContext.cs of 806d544 restored (new tests kept)
+OpaqueFaceOpticsTests: 53 total, 37 passed, 16 failed. Failing (the regressions):
+  Failed AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup("face",False)
+  Failed AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup("face",True)
+  Failed AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup("identity",False)
+  Failed AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup("identity",True)
+  Failed AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup("optic",False)
+  Failed AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup("optic",True)
+  Failed AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup("written",False)
+  Failed AMalformedObjectOfAMergedSource_IsImportedOnItsOwn_NeverAliasedToTheGroup("written",True)
+  Failed AMalformedObjectOfAMergedSource_KeepsItsOwnProperties_InAWholeModelImport("face")
+  Failed AMalformedObjectOfAMergedSource_KeepsItsOwnProperties_InAWholeModelImport("identity")
+  Failed AnEditOfASharedEqualFaceInterzoneMultiLayerObject_IsKeptOnItsFirstSpaceFace
+  Failed AnEditOfASharedEqualFaceInterzoneSingleLayerObject_IsKeptOnBothFaces(False)
+  Failed AnEditOfASharedEqualFaceInterzoneSingleLayerObject_IsKeptOnBothFaces(True)
+  Failed AnEditOfASharedEqualFaceMultiLayerObject_IsKeptOnTheFacesItsPositionExposes("Plasterboard",True,False)
+  Failed AnEditOfASharedEqualFaceMultiLayerObject_IsKeptOnTheFacesItsPositionExposes("Insulation",True,True)
+  Failed AnEditOfASharedEqualFaceSingleLayerObject_IsKeptOnBothFaces_AndReexportsValid
+Passing under both (the 7 new controls): AConsistentlyStampedObjectWithOtherThermalProperties_StopsTheMerge(False, True),
+TheValidPair_MergesInEitherImportOrder(False, True), AnUnchangedSharedEqualFaceSingleLayerObject_...,
+AnEditOfASharedEqualFaceMultiLayerObject_...("Brick",False,True), AnEditOfADivergentMaterialsExternalObject_...;
+and the 30 revision-9 tests.
+The two files were restored from the working copy afterwards, rebuilt, and the final runs above use that build.

@@ -1,0 +1,138 @@
+{
+    "phase":  "acceptance-negative",
+    "started":  "2026-10-21T12:43:55.9563804Z",
+    "harnessDll":  "b7cf9f2684f09ade91d2fdbbae3de1a9b069dde35359893d0b42f1295f3aa11d",
+    "runs":  [
+                 {
+                     "label":  "neg-identity-swap-names",
+                     "fixture":  "s08-fix-two",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-identity-swap-names: IDF surfaces \u0027SAM_Surface_FIX_EXT_WALL_0_2b2d8a7f\u0027 and \u0027SAM_Surface_FIX_EXT_WALL_0_4224250c\u0027 trade names",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-schedule-swap",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-schedule-swap: IDF DSOA \u0027SAM_InternalCondition_FIX_IC_BOX_af50b3dc_DesignSpecificationOutdoorAir\u0027 schedule -\u003e the occupancy schedule \u0027SAM_Schedule_FIX_IC_BOX_OCC_Occupancy_98cc45ae\u0027",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-v1-unscheduled",
+                     "fixture":  "s08-fix-two",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-v1-unscheduled: every DSOA fraction schedule removed in the IDF and the OSM (unscheduled delivery)",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-missing-dsoa-link",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-missing-dsoa-link: IDF Ideal Loads \u0027SAM_IdealLoads_FixBox_5080c000\u0027 names no DSOA",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-missing-schedule-object",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-missing-schedule-object: IDF schedule \u0027SAM_Schedule_FIX_IC_BOX_VNT_Ventilation_970842a3\u0027 renamed: the DSOA names an undefined schedule",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-people-density",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-people-density: IDF People \u0027SAM_InternalCondition_FIX_IC_BOX_af50b3dc_People\u0027 density x 1.01",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-layer-conductivity",
+                     "fixture":  "s08-fix-two",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-layer-conductivity: IDF Material \u0027SAM_OpaqueMaterial_FIX_Blockwork_100mm_422b4f0d\u0027 conductivity x 1.001",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-osm-dsoa-schedule",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-osm-dsoa-schedule: OSM DSOA \u0027SAM_InternalCondition_FIX_IC_BOX_af50b3dc_DesignSpecificationOutdoorAir\u0027 fraction schedule removed (IDF unchanged)",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-zone-multiplier",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-zone-multiplier: IDF Zone \u0027SAM_ThermalZone_FixBox_5080c000\u0027 Multiplier 1 -\u003e 2 (OSM unchanged)",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-window-multiplier",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-window-multiplier: IDF FenestrationSurface:Detailed Multiplier blank -\u003e 2 on 2 subsurface(s) (OSM unchanged)",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-north-axis",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-north-axis: IDF Building \u0027Building 1\u0027 North Axis blank -\u003e 90 (OSM unchanged)",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-zone-multiplier-both",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-zone-multiplier-both: IDF Zone \u0027SAM_ThermalZone_FixBox_5080c000\u0027 Multiplier 1 -\u003e 2 and OSM OS:ThermalZone Multiplier blank -\u003e 2",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-window-multiplier-both",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-window-multiplier-both: IDF FenestrationSurface:Detailed Multiplier blank -\u003e 2 on 2 subsurface(s) and OSM OS:SubSurface Multiplier blank -\u003e 2",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-north-axis-both",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-north-axis-both: IDF Building \u0027Building 1\u0027 North Axis blank -\u003e 90 and OSM OS:Building North Axis blank -\u003e 90",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-osm-missing-thermal-zone",
+                     "fixture":  "s08-fix-two",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-osm-missing-thermal-zone: OSM OS:ThermalZone \u0027SAM_ThermalZone_FixA_5080c000\u0027 removed (IDF unchanged)",
+                     "required":  10
+                 },
+                 {
+                     "label":  "neg-osm-missing-subsurfaces",
+                     "fixture":  "s08-fix-box",
+                     "approvedExit":  10,
+                     "status":  "Fail",
+                     "mutation":  "neg-osm-missing-subsurfaces: OSM OS:SubSurface removed for 2 subsurface(s) (IDF unchanged)",
+                     "required":  10
+                 }
+             ],
+    "original-unchanged:box":  true,
+    "original-unchanged:two":  true,
+    "finished":  "2026-10-21T12:44:18.4668749Z"
+}

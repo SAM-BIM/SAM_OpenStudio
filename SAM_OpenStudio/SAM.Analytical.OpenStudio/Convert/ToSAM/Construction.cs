@@ -22,9 +22,16 @@ namespace SAM.Analytical.OpenStudio
         /// stable regardless of import order.
         /// </para>
         /// <para>
-        /// Layer order is preserved exactly as OpenStudio stores it — outside first — which is
-        /// the order the forward converter writes, so a construction survives a round trip
-        /// without being reversed.
+        /// Layer order: OpenStudio stores layers outside first, SAM inside → outside from the
+        /// panel's first space (the forward converter reverses SAM's order). An opaque layered
+        /// construction used by a planar surface is therefore read innermost layer first, so the
+        /// layer facing the surface's zone is SAM's first layer and an export, import and export
+        /// keeps every layer, thickness and exposed face in place. Fenestration constructions
+        /// (glazing, gas and opaque door panes), air boundaries, non-layered constructions and
+        /// constructions no planar surface uses keep OpenStudio's order. A construction that is
+        /// used by planar surfaces and also by a subsurface or shading surface is split: the
+        /// surfaces get the innermost-first SAM construction, the other uses a separate one in
+        /// OpenStudio's order (reported).
         /// </para>
         /// </summary>
         /// <param name="openStudioImportContext">Import context.</param>
@@ -179,11 +186,88 @@ namespace SAM.Analytical.OpenStudio
                 return apertureConstruction;
             }
 
+            (bool surfaceUse, bool otherUse) = ConstructionUse(constructionBase, openStudioImportContext);
+            if (surfaceUse)
+            {
+                List<ConstructionLayer> innermostFirst = new List<ConstructionLayer>(constructionLayers);
+                innermostFirst.Reverse();
+                if (otherUse)
+                {
+                    Construction surfaceConstruction = new Construction(openStudioImportContext.ResolveGuid(constructionBase, typeof(Construction).Name), name, innermostFirst);
+                    Modify.SetOpenStudioSource(surfaceConstruction, constructionBase);
+                    openStudioImportContext.SurfaceConstructionMap[name] = surfaceConstruction;
+                    openStudioImportContext.RegisterCreated();
+
+                    Construction openStudioOrder = new Construction(openStudioImportContext.ResolveGuid(null), name, constructionLayers);
+                    Modify.SetOpenStudioSource(openStudioOrder, constructionBase);
+                    openStudioImportContext.ConstructionMap[name] = openStudioOrder;
+                    openStudioImportContext.RegisterCreated();
+                    openStudioImportContext.AddDiagnostic(Core.OpenStudio.OpenStudioImportDiagnosticCodes.ApproximationApplied, Core.OpenStudio.OpenStudioDiagnosticSeverity.Information, "Opaque construction is used by planar surfaces and by a subsurface or shading surface: the surfaces receive a SAM construction read innermost layer first (SAM inside -> outside), the other uses a separate SAM construction in OpenStudio's layer order with its own Guid", label);
+                    return surfaceConstruction;
+                }
+
+                constructionLayers = innermostFirst;
+            }
+
             Construction result = new Construction(openStudioImportContext.ResolveGuid(constructionBase, typeof(Construction).Name), name, constructionLayers);
             Modify.SetOpenStudioSource(result, constructionBase);
             openStudioImportContext.ConstructionMap[name] = result;
             openStudioImportContext.RegisterCreated();
             return result;
+        }
+
+        /// <summary>
+        /// Whether planar surfaces, and whether subsurfaces or shading surfaces, of the source model use
+        /// <paramref name="constructionBase"/> (directly or through a default construction set), read once per import.
+        /// </summary>
+        private static (bool Surface, bool Other) ConstructionUse(global::OpenStudio.ConstructionBase constructionBase, OpenStudioImportContext openStudioImportContext)
+        {
+            if (openStudioImportContext.ConstructionUses == null)
+            {
+                Dictionary<string, (bool Surface, bool Other)> uses = new Dictionary<string, (bool Surface, bool Other)>(StringComparer.Ordinal);
+                void Use(global::OpenStudio.OptionalConstructionBase optionalConstructionBase, bool surface)
+                {
+                    if (optionalConstructionBase == null || optionalConstructionBase.isNull())
+                    {
+                        return;
+                    }
+
+                    string key = optionalConstructionBase.get().handle().__str__();
+                    uses.TryGetValue(key, out (bool Surface, bool Other) use);
+                    uses[key] = surface ? (true, use.Other) : (use.Surface, true);
+                }
+
+                try
+                {
+                    foreach (global::OpenStudio.Surface surface in openStudioImportContext.Source.getSurfaces())
+                    {
+                        Use(surface.construction(), true);
+                    }
+
+                    foreach (global::OpenStudio.SubSurface subSurface in openStudioImportContext.Source.getSubSurfaces())
+                    {
+                        Use(subSurface.construction(), false);
+                    }
+
+                    foreach (global::OpenStudio.ShadingSurface shadingSurface in openStudioImportContext.Source.getShadingSurfaces())
+                    {
+                        Use(shadingSurface.construction(), false);
+                    }
+
+                    foreach (global::OpenStudio.InteriorPartitionSurface interiorPartitionSurface in openStudioImportContext.Source.getInteriorPartitionSurfaces())
+                    {
+                        Use(interiorPartitionSurface.construction(), false);
+                    }
+                }
+                catch (Exception)
+                {
+                    // an unreadable use leaves the construction in OpenStudio's order, as before
+                }
+
+                openStudioImportContext.ConstructionUses = uses;
+            }
+
+            return openStudioImportContext.ConstructionUses.TryGetValue(constructionBase.handle().__str__(), out (bool Surface, bool Other) result) ? result : (false, false);
         }
 
         /// <summary>

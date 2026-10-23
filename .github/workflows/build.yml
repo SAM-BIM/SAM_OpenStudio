@@ -169,6 +169,51 @@ jobs:
           if (-not (Test-Path $dll)) { throw "Expected schema DLL missing after build: $dll" }
           Write-Host "Schema DLL present: $dll"
 
+      - name: Clone S08 evaluation core (SAM_Tas, sparse)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $org = '${{ env.ORG_NAME }}'
+          $r   = 'SAM_Tas'
+
+          # The S09 read-back (benchmark/SAM.Analytical.OpenStudio.InputReadBack) reuses, from SAM_Tas, the COM-free S08
+          # evaluation core (project reference) and the SAM-intent builder ReadBackExpected.cs (linked source). Only those
+          # two folders are checked out; nothing TAS/COM is built. Same branch-candidate order as the other dependencies.
+          if (-not (Test-Path $r)) {
+            $headRef = '${{ github.head_ref }}'
+            $baseRef = '${{ github.base_ref }}'
+            $refName = '${{ github.ref_name }}'
+            $candidates = @()
+            if ($headRef) { $candidates += $headRef }
+            $sowRef = if ($baseRef -match '^sow/') { $baseRef } elseif ($refName -match '^sow/') { $refName } else { '' }
+            if ($sowRef -and $sowRef -ne $headRef) { $candidates += $sowRef }
+            foreach ($branchRef in @($headRef, $baseRef, $refName)) {
+              if ($branchRef -match '^sow/(\d{4}-Q\d)') {
+                $quarterRef = "sow/$($Matches[1])"
+                if ($candidates -notcontains $quarterRef) { $candidates += $quarterRef }
+              }
+            }
+            $cloned = $false
+            foreach ($cand in $candidates) {
+              $has = (git ls-remote --heads "https://github.com/$org/$r.git" $cand 2>$null | Out-String).Trim()
+              if ($has) {
+                Write-Host "Cloning $org/$r @ $cand (sparse)"
+                git clone --depth 1 --filter=blob:none --sparse --branch $cand "https://github.com/$org/$r.git" $r
+                $cloned = $true
+                break
+              }
+            }
+            if (-not $cloned) { throw "No SAM_Tas branch among: $($candidates -join ', ')" }
+            git -C $r sparse-checkout set benchmark/SAM.Analytical.InputEquivalence SAM_Tas/SAM.Analytical.Tas.DirectT3D.Validation/ReadBack
+            if ($LASTEXITCODE -ne 0) { throw "SAM_Tas sparse checkout failed" }
+          }
+
+          Write-Host ("SAM_Tas at " + (git -C $r rev-parse HEAD) + " (" + (git -C $r rev-parse --abbrev-ref HEAD) + ")")
+          foreach ($p in @('benchmark/SAM.Analytical.InputEquivalence/SAM.Analytical.InputEquivalence.csproj', 'SAM_Tas/SAM.Analytical.Tas.DirectT3D.Validation/ReadBack/ReadBackExpected.cs')) {
+            if (-not (Test-Path (Join-Path $r $p))) { throw "Missing from the SAM_Tas checkout: $p" }
+          }
+
       - name: Restore + Rebuild in order (safe Platform handling)
         shell: pwsh
         run: |
@@ -270,6 +315,35 @@ jobs:
             --filter 'TestCategory!=Simulation' `
             --logger 'console;verbosity=normal'
           if ($LASTEXITCODE -ne 0) { throw "Benchmark producer tests failed" }
+
+      - name: Run S09 OpenStudio native-input read-back tests (offline)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $repo = '${{ env.REPO_NAME }}'
+
+          # S09: the writer's ventilation policy and the fresh-process OSM/IDF read-back on the S08 signed-off fixtures with
+          # the SAM#212 Budapest EPW (from the SAM sibling). OpenStudio SDK NuGet only: no CLI, no EnergyPlus run.
+          $testProject = Join-Path $repo 'benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/SAM.Analytical.OpenStudio.InputReadBack.Tests.csproj'
+          Write-Host "==> Testing: $testProject"
+          & dotnet test $testProject `
+            -c Release `
+            '/p:Platform=x64' `
+            '/p:SAMVersion=${{ steps.ver.outputs.samversion }}' `
+            --logger 'console;verbosity=normal'
+          if ($LASTEXITCODE -ne 0) { throw "S09 read-back tests failed" }
+
+      - name: Upload S09 failure diagnostics
+        # Only when a step failed: the bounded text evidence (exit code, stdout/stderr, process identities, file list) the
+        # S09 tests write for a failed CLI step. No native files.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.REPO_NAME }}-s09-diagnostics
+          path: ${{ env.REPO_NAME }}/benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/bin/**/s09-diagnostics/*.txt
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Upload build folders (optional)
         uses: actions/upload-artifact@v4

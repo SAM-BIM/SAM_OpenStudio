@@ -193,24 +193,24 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
-        public void OpaqueMaterial_DivergentInternalOptics_RaisesDeclaredDiagnostic()
+        public void OpaqueMaterial_DivergentInternalOptics_OnTheZoneFace_IsAVariantNotAnApproximation()
         {
-            // Manifest: OpaqueMaterialParameter.InternalEmissivity (and the Internal
-            // reflectances) — Approximated, "SAM-OS-MAT-002 info when Internal differs from
-            // External; EnergyPlus opaque materials are single-sided".
+            // Manifest: OpaqueMaterialParameter.InternalEmissivity (and the Internal reflectances)
+            // — Derived: SAM's first layer carries an internal-face variant (revision 8), so the
+            // single-sided approximation diagnostic is no longer raised for opaque constructions.
             Core.MaterialLibrary materialLibrary = AnalyticalModelFixtures.CreateMaterialLibrary();
-            OpaqueMaterial brick = materialLibrary.GetMaterial("Brick") as OpaqueMaterial;
-            brick.SetValue(OpaqueMaterialParameter.InternalEmissivity, 0.4);        // external 0.9 → divergent
-            brick.SetValue(OpaqueMaterialParameter.InternalSolarReflectance, 0.3);  // external 0.3 → identical
-            materialLibrary.Add(brick);
+            OpaqueMaterial plasterboard = materialLibrary.GetMaterial("Plasterboard") as OpaqueMaterial;
+            plasterboard.SetValue(OpaqueMaterialParameter.InternalEmissivity, 0.4);        // external 0.9 → divergent
+            plasterboard.SetValue(OpaqueMaterialParameter.InternalSolarReflectance, 0.5);  // external 0.5 → identical
+            materialLibrary.Add(plasterboard);
 
             OpenStudioConversionResult result = SingleBoxModel(materialLibrary).ToOpenStudio();
 
             Assert.That(result.IsValid, Is.True);
-            List<Core.OpenStudio.OpenStudioDiagnostic> diagnostics = result.Diagnostics.Where(d => d.Code == "SAM-OS-MAT-002" && d.Severity == Core.OpenStudio.OpenStudioDiagnosticSeverity.Information && d.Message.Contains("Internal-side")).ToList();
-            Assert.That(diagnostics.Count, Is.EqualTo(1), "Declared single-sided approximation diagnostic, once per material");
-            Assert.That(diagnostics[0].Message, Does.Contain("InternalEmissivity"), "The divergent parameter is named");
-            Assert.That(diagnostics[0].Message, Does.Not.Contain("InternalSolarReflectance"), "A matching internal value is not a divergence");
+            Assert.That(result.Diagnostics.Any(d => d.Code == "SAM-OS-MAT-002" && d.Message.Contains("Internal-side")), Is.False, "Represented on the zone face, not approximated");
+            global::OpenStudio.StandardOpaqueMaterial variant = result.Model.getStandardOpaqueMaterials().Single(x => x.nameString().Contains("Plasterboard_12.5mm_Internal"));
+            Assert.That(variant.thermalAbsorptance(), Is.EqualTo(0.4).Within(1e-12), "The internal emissivity is written on the zone face");
+            Assert.That(variant.solarAbsorptance(), Is.EqualTo(0.5).Within(1e-12));
         }
 
         [Test]

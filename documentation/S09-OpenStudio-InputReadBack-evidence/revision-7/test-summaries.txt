@@ -1,0 +1,28 @@
+S09 revision 7 local test summaries (Release x64, SDK 10.0.401, SAM_Tas sow/2026-Q4 c50e9169)
+
+== S09 tests at 614a7a8 (working tree = the revision-7 code commit)
+harness os-input-readback.dll e41b13eebb26176e093434bbb0e4f29087ea86dd288269c7cc0f31d2c95881ca
+library SAM.Analytical.OpenStudio.InputReadBack.dll afc9920cee26a59acd4224dc3fee5c4ed4cc3780688dd93b0d1c366843237352
+Passed!  - Failed:     0, Passed:    93, Skipped:     0, Total:    93 - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+(also 93/93 on the first run of the same source. One intermediate run gave 91/93: after the A/B, the restored
+Cli/ReadBackRead.cs kept the A/B copy's older timestamp, so the incremental build kept the A/B binary and the same two
+tests failed as in the A/B. The file was touched, rebuilt and re-run: 93/93, with byte-identical fixture reports.)
+
+Fixture reports (box-report-approved.txt, two-report-approved.txt):
+s08-fix-box -> NotPassAcceptedLimitation (exit 14); coverage Complete (319 required, 319 results)
+s08-fix-two -> NotPassAcceptedLimitation (exit 14); coverage Complete (592 required, 592 results)
+Outcome counts identical to revision-5/; each report.txt differs only in its status line and the listed rows' reasons.
+
+== A/B: Cli/ReadBackRead.cs of 8fd0ffc2 restored (no model hash passed to OsComparison.Run, so no acceptance)
+filter: TheOpticsAcceptance | AWrongOpaqueOpticalValue | BothFixtures_HaveCompleteCoverage | AnExplicitNoPlenumSetting
+  Passed AnExplicitNoPlenumSetting_IsTheUnchangedControl
+  Failed AWrongOpaqueOpticalValue_StillFails_UnderTheAcceptance   (at "the internal-face rows keep their accepted limitation"; its exit-10 FAIL assertions passed)
+  Failed BothFixtures_HaveCompleteCoverage_AndOnlyTheNamedOwnerDecisionRemains   (s08-fix-box: BlockedOwnerDecision, not NotPassAcceptedLimitation)
+  Passed TheOpticsAcceptance_DoesNotApplyToAChangedModel
+  Passed TheOpticsAcceptance_NeedsTheReviewedFixtureIdAndApprovedRules("other-fixture-id","s08-fix-two","approved")
+  Passed TheOpticsAcceptance_NeedsTheReviewedFixtureIdAndApprovedRules("unknown-fixture-id","s08-fix-box-copy","approved")
+  Passed TheOpticsAcceptance_NeedsTheReviewedFixtureIdAndApprovedRules("provisional-rules","s08-fix-box","provisional")
+Total 7: Passed 5, Failed 2
+
+Not run: Run-S09-ReadBack.ps1, Pack-S09-Evidence.ps1, the writer suite and the benchmark tests (no writer, importer or
+benchmark file changed). No EnergyPlus or Tas execution.

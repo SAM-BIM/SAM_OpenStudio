@@ -1,0 +1,49 @@
+# Build (Windows) run 39603021836, job 119232047962, head e0a6ea1950455e04dbf086d164500fd8829867ec (pull/33/merge).
+# Excerpt of 'gh run view 39603021836 --repo SAM-BIM/SAM_OpenStudio --log-failed' (column 1-2 prefixes and ANSI codes removed).
+
+2026-10-21T12:52:18.5165501Z Cloning SAM-BIM/SAM @ sow/2026-Q4
+2026-10-21T12:52:18.5394348Z Cloning into 'SAM'...
+2026-10-21T12:52:20.4921931Z Cloning SAM-BIM/SAM_SQLite @ sow/2026-Q4
+2026-10-21T12:52:20.5143429Z Cloning into 'SAM_SQLite'...
+...
+2026-10-21T12:52:21.3373725Z Cloning SAM-BIM/SAM_Validation @ sow/2026-Q4
+2026-10-21T12:52:21.3598075Z Cloning into 'SAM_Validation'...
+...
+2026-10-21T12:52:36.8986558Z ##[endgroup]
+2026-10-21T12:52:37.5052250Z Cloning SAM-BIM/SAM_Tas @ sow/2026-Q4 (sparse)
+2026-10-21T12:52:37.5275493Z Cloning into 'SAM_Tas'...
+2026-10-21T12:52:38.3492344Z SAM_Tas at c50e91698e931f98633ac2cb169417e4568da61d (sow/2026-Q4)
+...
+2026-10-21T12:54:56.7731248Z Total tests: 51
+...
+2026-10-21T12:55:36.8122536Z   Passed EveryTargetedMutation_Fails("neg-identity-swap-names","s08-fix-two") [1 s]
+2026-10-21T12:55:36.8338870Z   Passed EveryTargetedMutation_Fails("neg-schedule-swap","s08-fix-box") [1 s]
+2026-10-21T12:55:38.8588763Z   Passed EveryTargetedMutation_Fails("neg-v1-unscheduled","s08-fix-two") [2 s]
+2026-10-21T12:55:40.3571869Z   Passed EveryTargetedMutation_Fails("neg-missing-dsoa-link","s08-fix-box") [1 s]
+2026-10-21T12:55:41.8574263Z   Passed EveryTargetedMutation_Fails("neg-missing-schedule-object","s08-fix-box") [1 s]
+2026-10-21T12:55:43.3590741Z   Failed EveryTargetedMutation_Fails("neg-people-density","s08-fix-box") [695 ms]
+2026-10-21T12:55:43.3591572Z   Error Message:
+2026-10-21T12:55:43.3593177Z    System.IO.DirectoryNotFoundException : Could not find a part of the path 'D:\a\SAM_OpenStudio\SAM_OpenStudio\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack.Tests\bin\x64\Release\net8.0\s09-runs\neg-people-density-b0da74\compare-approved\report.json'.
+2026-10-21T12:55:43.3594927Z   Stack Trace:
+2026-10-21T12:55:43.3595736Z      at Microsoft.Win32.SafeHandles.SafeFileHandle.CreateFile(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+2026-10-21T12:55:43.3597441Z    at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+2026-10-21T12:55:43.3599314Z    at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+2026-10-21T12:55:43.3601306Z    at System.IO.Strategies.FileStreamHelpers.ChooseStrategyCore(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+2026-10-21T12:55:43.3602813Z    at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+2026-10-21T12:55:43.3603618Z    at System.IO.File.ReadAllText(String path, Encoding encoding)
+2026-10-21T12:55:43.3604944Z    at SAM.Analytical.OpenStudio.InputReadBack.OsReport.Load(String path) in D:\a\SAM_OpenStudio\SAM_OpenStudio\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack\Report\OsReport.cs:line 86
+2026-10-21T12:55:43.3607179Z    at SAM.Analytical.OpenStudio.InputReadBack.Tests.TestSupport.ReadAndCompare(String run, String fixtureId) in D:\a\SAM_OpenStudio\SAM_OpenStudio\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack.Tests\TestSupport.cs:line 111
+2026-10-21T12:55:43.3609787Z    at SAM.Analytical.OpenStudio.InputReadBack.Tests.ReadBackTests.EveryTargetedMutation_Fails(String caseId, String fixture) in D:\a\SAM_OpenStudio\SAM_OpenStudio\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack.Tests\ReadBackTests.cs:line 145
+2026-10-21T12:55:43.3611893Z    at InvokeStub_ReadBackTests.EveryTargetedMutation_Fails(Object, Span`1)
+2026-10-21T12:55:43.3612994Z    at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+2026-10-21T12:55:43.3613832Z 
+2026-10-21T12:55:44.8608319Z   Passed EveryTargetedMutation_Fails("neg-layer-conductivity","s08-fix-two") [1 s]
+...
+2026-10-21T12:56:39.0942212Z Test Run Failed.
+2026-10-21T12:56:39.0942472Z Total tests: 58
+2026-10-21T12:56:39.0944698Z      Passed: 57
+2026-10-21T12:56:39.0944949Z      Failed: 1
+2026-10-21T12:56:39.0945177Z  Total time: 1.5862 Minutes
+...
+2026-10-21T12:56:39.3399742Z ##[error]Process completed with exit code 1.
+...

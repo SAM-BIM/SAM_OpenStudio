@@ -27,6 +27,12 @@ namespace SAM.Core.OpenStudio
         /// <summary>Unsupported material parameter (e.g. blind flag without slat geometry).</summary>
         public const string MaterialUnsupportedParameter = "SAM-OS-MAT-002";
 
+        /// <summary>Opaque face optics a construction use cannot represent: a single-layer construction on an outdoor or interzone surface whose two faces need different optical values (EnergyPlus materials are single-sided).</summary>
+        public const string MaterialFaceOpticsUnrepresentable = "SAM-OS-MAT-003";
+
+        /// <summary>Declared opaque face assumption: an internal-face optical value SAM does not state (absent or NaN) on a zone face takes the external value; its unspecified provenance is kept.</summary>
+        public const string MaterialFaceAssumption = "SAM-OS-MAT-004";
+
         /// <summary>Missing construction layer.</summary>
         public const string ConstructionMissingLayer = "SAM-OS-CON-001";
 
@@ -38,6 +44,9 @@ namespace SAM.Core.OpenStudio
 
         /// <summary>Unsupported internal-condition parameter.</summary>
         public const string InternalConditionUnsupportedParameter = "SAM-OS-IC-001";
+
+        /// <summary>Declared internal-condition conversion assumption or contract default applied (S07 §5.1 lighting split and its common default).</summary>
+        public const string InternalConditionAssumption = "SAM-OS-IC-002";
 
         /// <summary>Conditioned zone missing setpoints, or HVAC-dependent data (emitter characteristics, exhaust flows) deferred to the detailed-HVAC programme.</summary>
         public const string HvacMissingSetpoints = "SAM-OS-HVAC-001";

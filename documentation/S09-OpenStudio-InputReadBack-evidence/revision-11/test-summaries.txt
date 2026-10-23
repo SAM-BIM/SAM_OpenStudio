@@ -1,0 +1,101 @@
+S09 revision 11 local test summaries (Release x64, SDK 10.0.401, SAM_Tas sow/2026-Q4 c50e9169)
+Tested content 4ea2e6c2ac5805426ed1b39bdd5d88b39b1c723f (revision 11: 37841ea, 5241bdd, f5f207b, then the per-layer
+consistency fix 4ea2e6c for the review of 89a2216). No engine, acceptance or packing script was run. Built with
+dotnet build ... --no-restore (each project 2 warnings, 0 errors), then dotnet test --no-build.
+
+== S09 tests at 4ea2e6c
+harness os-input-readback.dll 4f746d9aec6cfdac91773ebd6018b78b2444637fb07df52ad350e2edf476e799
+library SAM.Analytical.OpenStudio.InputReadBack.dll 0bf9fd32a965db4ab65dd45c2e8a27d9abb183f339d1fcbd39eede540f169a03
+writer  SAM.Analytical.OpenStudio.dll 331ec187fcc722195868c2cfbb9717a567f7bdc1bbed08ca1ff18bb35e6a7865
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 3 m 16 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+The box and two-zone fixture report.txt of this run (s09-runs/box-e75504, two-ca5763) are byte-identical to
+revision-9/box-report-approved.txt and two-report-approved.txt.
+
+== Writer/importer --filter 'TestCategory!=Simulation' at 4ea2e6c
+Passed!  - Failed:     0, Passed:   471, Skipped:     2, Total:   473, Duration: 14 m 42 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+(462 at f5f207b + 9 per-layer consistency cases; the 2 skipped are the pre-existing real-SQL fixtures.)
+
+== Benchmark --filter TestCategory!=Simulation at 4ea2e6c
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 311 ms - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+
+== D: f5f207b AnalyticalModel.cs (layer names only, no per-layer thickness) restored; the 9 new cases kept
+    build: 0 errors
+  Failed AnInterzoneSideWithAnotherLayerThickness_FailsNamed(False)
+  Failed AnInterzoneSideWithAnotherLayerThickness_FailsNamed(True)
+  Failed ARepeatedMaterialWithSwappedThicknessesOnOneSide_FailsNamed
+Failed!  - Failed:     3, Passed:     6, Skipped:     0, Total:     9, Duration: 1 m 21 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+restored (cmp identical)
+(D: the three regressions fail under the names-only check: each import succeeded with a changed layer thickness; the
+six controls pass under both.)
+
+== Runs at f5f207b (the reviewed code of 89a2216; kept for continuity)
+== S09 tests at f5f207b
+harness os-input-readback.dll 6b4c510d87fe3a986cdce30d64d31408dbb733eecd3962463718de8f59d48a01
+library SAM.Analytical.OpenStudio.InputReadBack.dll c64d8cb585c54aa3b3e8d7241c5d947d049d1010e772f399875d7bbb5593a4fd
+writer  SAM.Analytical.OpenStudio.dll 209c519bce5cb90034d367dbb8cfcb19756b0c187e89ac804eac234055522244
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 2 m 56 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+The box and two-zone fixture report.txt of this run (s09-runs/box-7a8b22, two-91a8de) are byte-identical to
+revision-9/box-report-approved.txt and two-report-approved.txt (S09 does not use the OpenStudio importer).
+
+== Writer/importer tests/SAM.Analytical.OpenStudio.Tests --filter 'TestCategory!=Simulation' at f5f207b
+Passed!  - Failed:     0, Passed:   462, Skipped:     2, Total:   464, Duration: 12 m 24 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+(432 at revision 10 + 30 OpaqueLayerOrderImportTests cases; the 2 skipped are the pre-existing real-SQL fixtures.)
+
+== Benchmark --filter TestCategory!=Simulation at f5f207b
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 285 ms - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+
+== Earlier revision-11 runs (superseded, recorded for completeness)
+37841ea: S09 97/97; writer/importer 451 passed, 2 skipped; benchmark 51/51. The 432 existing writer/importer cases had
+also passed with the reversal before the new tests existed: none asserted the old order.
+5241bdd: S09 97/97; benchmark 51/51; writer/importer 451 passed, 1 failed, 2 skipped. The failure,
+EveryDeclaredDiagnosticCode_Exists, came from editing tests/resources/openstudio-to-sam-coverage.json (declaring
+SAM-OSI-CON-002 for the next commit) while that run was in progress: ReverseCoverageTests reads the manifest from the
+source tree at run time. It passes at f5f207b, where the code exists.
+
+== A/B (OpaqueLayerOrderImportTests; `git show <commit>:<path> > <path>`, rebuild, run, restore, rebuild)
+== A: revision-10 importer (93ec315) restored: Construction.cs, Panel.cs, AnalyticalModel.cs, OpenStudioImportContext.cs; the 20 new cases kept
+    build: 0 errors
+  Failed AConstructionSharedByWallsAndAShade_IsSplit_AndReported
+  Failed AGeometricFallbackPair_KeepsTheForwardSide(False)
+  Failed AGeometricFallbackPair_KeepsTheForwardSide(True)
+  Failed AGlazingConstruction_KeepsOpenStudiosPaneOrder
+  Failed AMultiLayerRoundTrip_KeepsLayersThicknessesAndBothUsedFaces(True)
+  Failed AMultiLayerRoundTrip_KeepsLayersThicknessesAndBothUsedFaces(False)
+  Failed AnAirBoundary_IsUnchanged
+  Failed AnInterzoneMultiLayerRoundTrip_KeepsTheFirstSpaceAndBothSides(False,False)
+  Failed AnInterzoneMultiLayerRoundTrip_KeepsTheFirstSpaceAndBothSides(True,False)
+  Failed AnInterzoneMultiLayerRoundTrip_KeepsTheFirstSpaceAndBothSides(False,True)
+  Failed AnInterzoneMultiLayerRoundTrip_KeepsTheFirstSpaceAndBothSides(True,True)
+  Failed AnOpaqueDoorPane_KeepsOpenStudiosOrder
+  Failed AnUnstampedHalfBuiltFromTheSecondSpace_IsReReadFromItsPartner(False)
+  Failed AnUnstampedHalfBuiltFromTheSecondSpace_IsReReadFromItsPartner(True)
+  Failed AnUnstampedNativeModel_RoundTripsItsLayersAndUsedFaces("box",False)
+  Failed AnUnstampedNativeModel_RoundTripsItsLayersAndUsedFaces("two",False)
+  Failed AnUnstampedNativeModel_RoundTripsItsLayersAndUsedFaces("two",True)
+  Failed ASingleLayerRoundTrip_IsUnchanged
+Failed!  - Failed:    18, Passed:     2, Skipped:     0, Total:    20, Duration: 30 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+== B: revision-11 reversal kept, revision-10 AnalyticalModel.cs restored (no forward-side choice, space order or re-read)
+    build: 0 errors
+  Failed AnUnstampedHalfBuiltFromTheSecondSpace_IsReReadFromItsPartner(False)
+  Failed AnUnstampedHalfBuiltFromTheSecondSpace_IsReReadFromItsPartner(True)
+Failed!  - Failed:     2, Passed:    18, Skipped:     0, Total:    20, Duration: 3 m 22 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+(A and B ran at 5241bdd's 20 cases. In A the glazing, door-pane and air-boundary controls fail only on their last line,
+"the same model's walls are read innermost first" (Brick, not Plasterboard); their unchanged-path checks pass under
+both, as do the shading-only and non-layered controls. The single-layer control fails under revision 10 only on the
+box's multi-layer walls. In B the stamped interzone and fallback cases passed because OpenStudio's handle-based space
+order matched the authored one in that run; during development, before OrderSpaces, the fallback case with B first
+failed with both sides of the shared wall reversed.)
+== C: 5241bdd AnalyticalModel.cs (warning-only re-read, no face check) restored; fail-closed tests kept
+    build: 0 errors
+  Failed AMixedModelWhoseUnstampedHalfIsReRead_KeepsItsUsedFaces_OrFailsNamed(False,True,False,False)
+  Failed AMixedModelWhoseUnstampedHalfIsReRead_KeepsItsUsedFaces_OrFailsNamed(True,True,False,False)
+  Failed AnUnstampedConstructionWithAFaceObjectInTheOtherRole_FailsNamed
+  Failed ContradictoryForwardSides_KeepTheUsedFaces_OrFailNamed(False,True,False)
+  Failed ContradictoryForwardSides_KeepTheUsedFaces_OrFailNamed(True,True,False)
+  Failed ContradictoryForwardSides_KeepTheUsedFaces_OrFailNamed(False,False,True)
+  Failed ContradictoryForwardSides_KeepTheUsedFaces_OrFailNamed(True,False,True)
+Failed!  - Failed:     7, Passed:     5, Skipped:     0, Total:    12, Duration: 2 m 25 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+(C: under 5241bdd's warning-only re-read, the four divergent cases and the edited single-sided wall imported
+"successfully" with a changed zone face, and the equal-face contradiction cases came back with reversed layers because
+that revision did not re-read a SAM-written panel. The equivalent-success controls pass under both.)
+After each A/B the files were restored (cmp identical) and rebuilt; the final runs above use that build.

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace SAM.Analytical.OpenStudio
 {
@@ -221,11 +222,21 @@ namespace SAM.Analytical.OpenStudio
             }
 
             Dictionary<Guid, List<global::OpenStudio.Surface>> surfacesByPanel = new Dictionary<Guid, List<global::OpenStudio.Surface>>();
+            Dictionary<Guid, List<Guid>> surfaceSpacesByPanel = new Dictionary<Guid, List<Guid>>();
             Dictionary<Guid, Panel> panelByGuid = new Dictionary<Guid, Panel>();
             Dictionary<Guid, List<global::OpenStudio.SubSurface>> subSurfacesByAperture = new Dictionary<Guid, List<global::OpenStudio.SubSurface>>();
             HashSet<Guid> spacesWithSurfaces = new HashSet<Guid>();
 
             List<Space> spaces = adjacencyCluster.GetSpaces();
+            Dictionary<Guid, int> spaceIndexes = new Dictionary<Guid, int>();
+            for (int i = 0; spaces != null && i < spaces.Count; i++)
+            {
+                if (spaces[i] != null && !spaceIndexes.ContainsKey(spaces[i].Guid))
+                {
+                    spaceIndexes[spaces[i].Guid] = i;
+                }
+            }
+
             context.Statistics.SourceObjects = (spaces?.Count ?? 0) + (sourcePanels?.Count ?? 0) + sourceApertureCount;
             if (spaces == null || spaces.Count == 0)
             {
@@ -289,11 +300,21 @@ namespace SAM.Analytical.OpenStudio
                         }
                     }
 
+                    // Per-space outdoor-air override: replaces the SpaceType DSOA in EnergyPlus. It is the
+                    // space's requirement, so it is delivered by the same rule as the SpaceType one (S07
+                    // D-F2): only through the selected Ventilation profile, otherwise not at all. Every
+                    // rate field is written explicitly so no OpenStudio default (Flow/Person, 0.00944
+                    // m3/s per person) can add air SAM never stated.
                     if (space.TryGetValue(SpaceParameter.OutsideSupplyAirFlow, out double outsideSupplyAirFlow) && !double.IsNaN(outsideSupplyAirFlow) && outsideSupplyAirFlow > 0)
                     {
                         global::OpenStudio.DesignSpecificationOutdoorAir designSpecificationOutdoorAir = new global::OpenStudio.DesignSpecificationOutdoorAir(context.Target);
                         designSpecificationOutdoorAir.setName(Core.OpenStudio.Query.OpenStudioName("DesignSpecificationOutdoorAir", space.Name, space.Guid));
+                        designSpecificationOutdoorAir.setOutdoorAirMethod("Sum");
+                        designSpecificationOutdoorAir.setOutdoorAirFlowperPerson(0);
+                        designSpecificationOutdoorAir.setOutdoorAirFlowperFloorArea(0);
+                        designSpecificationOutdoorAir.setOutdoorAirFlowAirChangesperHour(0);
                         designSpecificationOutdoorAir.setOutdoorAirFlowRate(outsideSupplyAirFlow);
+                        designSpecificationOutdoorAir.setOutdoorAirFlowRateFractionSchedule(internalCondition.ToOpenStudio_VentilationDeliverySchedule(context, designSpecificationOutdoorAir.nameString()));
                         openStudioSpace.setDesignSpecificationOutdoorAir(designSpecificationOutdoorAir);
                     }
 
@@ -357,6 +378,13 @@ namespace SAM.Analytical.OpenStudio
                         }
 
                         surfaces.Add(surface);
+                        if (!surfaceSpacesByPanel.TryGetValue(panel.Guid, out List<Guid> surfaceSpaces))
+                        {
+                            surfaceSpaces = new List<Guid>();
+                            surfaceSpacesByPanel[panel.Guid] = surfaceSpaces;
+                        }
+
+                        surfaceSpaces.Add(space.Guid);
                         panelByGuid[panel.Guid] = panel;
                         spacesWithSurfaces.Add(space.Guid);
                     }
@@ -495,6 +523,32 @@ namespace SAM.Analytical.OpenStudio
                     continue;
                 }
 
+                // Orientation: SAM lists layers inside → outside from the panel's first space in
+                // GetSpaces() order (S07 section 1), so the forward construction belongs to that space's
+                // side. When that side produced no surface, the remaining one is never given it instead.
+                surfaceSpacesByPanel.TryGetValue(panel.Guid, out List<Guid> sides);
+                string orientationProblem = ForwardSideProblem(FirstSpace(adjacencyCluster, panel, spaceIndexes), sides);
+                if (orientationProblem != null)
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.AdjacencyMissingSurface, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, orientationProblem, panel);
+                    context.RegisterSkip();
+                    continue;
+                }
+
+                // Single-layer face optics, checked for this use before any cached construction is
+                // reused: on the ground or an adiabatic boundary only the zone face is used (internal
+                // values); on an outdoor or interzone surface both faces are, and one single-sided
+                // EnergyPlus material cannot carry two different value sets. Two sides (even demoted to
+                // adiabatic after a failed pairing) are two zone faces, one per value set.
+                List<string> divergentFaceOptics = SingleLayerDivergentFaceOptics(construction, context.Source?.MaterialLibrary);
+                string outsideBoundaryCondition = surfaces[0].outsideBoundaryCondition();
+                if (divergentFaceOptics.Count > 0 && (surfaces.Count >= 2 || !IsZoneFaceOnlyBoundary(outsideBoundaryCondition)))
+                {
+                    context.AddDiagnostic(Core.OpenStudio.OpenStudioDiagnosticCodes.MaterialFaceOpticsUnrepresentable, Core.OpenStudio.OpenStudioDiagnosticSeverity.Error, string.Format("Single-layer construction '{0}' on a surface with outside boundary {1} needs different optical values on its two faces ({2}); EnergyPlus opaque materials are single-sided, so no construction was assigned — no external, averaged or split-layer substitute", construction.Name, outsideBoundaryCondition, string.Join(", ", divergentFaceOptics)), panel);
+                    context.RegisterSkip();
+                    continue;
+                }
+
                 global::OpenStudio.Construction forwardConstruction = construction.ToOpenStudio(true, context);
                 if (forwardConstruction == null)
                 {
@@ -628,6 +682,44 @@ namespace SAM.Analytical.OpenStudio
         /// PolygonClipping, and flag the surface anyway. Best-effort: a geometry-kernel
         /// failure skips the advisory, never the surface.
         /// </summary>
+        /// <summary>
+        /// The panel's first related space in <see cref="AdjacencyCluster.GetSpaces"/> order: the space SAM's
+        /// inside → outside layer order starts from (S07 section 1). Null when the panel has no related space
+        /// in the list.
+        /// </summary>
+        private static Space FirstSpace(AdjacencyCluster adjacencyCluster, Panel panel, Dictionary<Guid, int> spaceIndexes)
+        {
+            List<Space> relatedSpaces = adjacencyCluster.GetRelatedObjects<Space>(panel);
+            return relatedSpaces?.Where(x => x != null && spaceIndexes.ContainsKey(x.Guid)).OrderBy(x => spaceIndexes[x.Guid]).FirstOrDefault();
+        }
+
+        /// <summary>
+        /// The error when the panel's first surface (which receives the forward construction) is not on its first
+        /// space's side: that side produced no surface, and giving the forward construction to the other side would
+        /// swap SAM's inside and outside. Null when the first side is present or the panel has no ordered space.
+        /// </summary>
+        /// <param name="firstSpace">The panel's first related space in GetSpaces() order.</param>
+        /// <param name="surfaceSpaces">The space of each converted surface of the panel, in conversion order.</param>
+        internal static string ForwardSideProblem(Space firstSpace, IReadOnlyList<Guid> surfaceSpaces)
+        {
+            if (firstSpace == null || surfaceSpaces == null || surfaceSpaces.Count == 0 || surfaceSpaces[0] == firstSpace.Guid)
+            {
+                return null;
+            }
+
+            return string.Format("The side of the panel facing its first space ('{0}') produced no surface; SAM orients the construction inside → outside from that space, so no construction was assigned — the sides are never swapped", firstSpace.Name);
+        }
+
+        /// <summary>
+        /// True for an outside boundary whose face receives no solar or long-wave exchange (ground and
+        /// adiabatic), so only the zone face's optics are used.
+        /// </summary>
+        private static bool IsZoneFaceOnlyBoundary(string outsideBoundaryCondition)
+        {
+            return outsideBoundaryCondition == "Adiabatic" || outsideBoundaryCondition == "Foundation"
+                || (outsideBoundaryCondition != null && outsideBoundaryCondition.StartsWith("Ground", StringComparison.Ordinal));
+        }
+
         private static void EmitNonConvexCastingDiagnostic(Panel panel, string openStudioObjectName, OpenStudioConversionContext openStudioConversionContext)
         {
             Geometry.Spatial.Face3D face3D = panel?.GetFace3D();

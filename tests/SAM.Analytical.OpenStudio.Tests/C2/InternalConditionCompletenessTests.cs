@@ -218,7 +218,9 @@ namespace SAM.Analytical.OpenStudio.Tests
             OpenStudioConversionResult result = AnalyticalModelFixtures.SingleBox(internalConditionOverride: internalCondition).ToOpenStudio();
 
             Assert.That(result.Model.getPeopleDefinitions()[0].fractionRadiant(), Is.EqualTo(0.5).Within(1e-9));
-            Assert.That(result.Model.getLightsDefinitions()[0].fractionRadiant(), Is.EqualTo(0.2).Within(1e-9));
+            // S07 §5.1: the lighting proportion is the total radiant share, split by s = 0.2415 / 0.576 (LightingSplitTests).
+            Assert.That(result.Model.getLightsDefinitions()[0].fractionRadiant() + result.Model.getLightsDefinitions()[0].fractionVisible(), Is.EqualTo(0.2).Within(1e-9));
+            Assert.That(result.Model.getLightsDefinitions()[0].fractionRadiant(), Is.EqualTo(0.2 * (1 - 0.2415 / 0.576)).Within(1e-9));
             Assert.That(result.Model.getElectricEquipmentDefinitions()[0].fractionRadiant(), Is.EqualTo(0.1).Within(1e-9));
         }
 

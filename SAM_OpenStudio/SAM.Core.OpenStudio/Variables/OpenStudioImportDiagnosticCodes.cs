@@ -91,6 +91,13 @@ namespace SAM.Core.OpenStudio
         /// <summary>Unsupported construction kind.</summary>
         public const string ConstructionUnsupported = "SAM-OSI-CON-001";
 
+        /// <summary>
+        /// Error: an imported opaque surface construction cannot reproduce the native layer order or the absorptances of a
+        /// face EnergyPlus uses (an edited or mixed model whose orientation or face roles cannot be established); the import
+        /// is unsuccessful rather than silently changing those faces.
+        /// </summary>
+        public const string ConstructionFacesUnresolved = "SAM-OSI-CON-002";
+
         /// <summary>Unsupported schedule kind, or a schedule that could not be expanded to hourly values.</summary>
         public const string ScheduleUnsupported = "SAM-OSI-SCH-001";
 

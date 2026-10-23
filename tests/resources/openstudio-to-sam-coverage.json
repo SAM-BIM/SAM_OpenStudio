@@ -79,7 +79,7 @@
     { "id": "OS:ShadingSurfaceGroup.Identity", "status": "Native", "target": "OpenStudioSourceParameter.ShadingGroupType/Name" },
     { "id": "OS:ShadingSurfaceGroup.ShadedSurface", "status": "Approximated", "diagnostic": "SAM-OSI-APX-001", "notes": "SAM shade panels are free-standing; the association is metadata only." },
 
-    { "id": "OS:Material.StandardOpaqueMaterial", "status": "Native", "target": "Core.OpaqueMaterial" },
+    { "id": "OS:Material.StandardOpaqueMaterial", "status": "Native", "target": "Core.OpaqueMaterial", "notes": "SAM-written face and thickness objects of one source Guid merge into one SAM material with both authored faces; an edit made after export is kept on its face (SAM-OSI-MAT-001); conflicts are not merged (SAM-OSI-ID-001); never matched by name." },
     { "id": "OS:Material.MasslessOpaqueMaterial", "status": "Approximated", "target": "Core.OpaqueMaterial", "diagnostic": "SAM-OSI-APX-001", "formula": "conductivity = 0.025 m / R; resistance preserved exactly, near-zero thermal mass assigned" },
     { "id": "OS:Material.AirGap", "status": "Derived", "target": "Core.GasMaterial", "formula": "HeatTransferCoefficient = 1 / thermalResistance (exact inverse of the forward R = 1/h)" },
     { "id": "OS:WindowMaterial.Glazing", "status": "Native", "target": "Core.TransparentMaterial", "notes": "EnergyPlus Front/Back map to SAM External/Internal, matching the forward direction." },
@@ -92,7 +92,7 @@
     { "id": "OS:WindowMaterial.GlazingRefractionExtinctionMethod", "status": "Unsupported", "diagnostic": "SAM-OSI-MAT-001" },
     { "id": "OS:MaterialProperty.PhaseChange", "status": "Unsupported", "diagnostic": "SAM-OSI-MAT-001", "notes": "SAM materials have no phase-change model." },
 
-    { "id": "OS:Construction.Opaque", "status": "Native", "target": "Construction", "notes": "Layer order preserved outside-first." },
+    { "id": "OS:Construction.Opaque", "status": "Native", "target": "Construction", "notes": "Opaque constructions used by planar surfaces are read innermost layer first (SAM inside to outside from the side the panel is built from, the SAM-written forward side when stamped); fenestration, door-pane, shading-only and unused constructions keep the outside-first order; a construction shared with a subsurface or shading surface is split (SAM-OSI-APX-001)." },
     { "id": "OS:Construction.Fenestration", "status": "Native", "target": "ApertureConstruction", "notes": "Pane layers only; frame layers are never fabricated." },
     { "id": "OS:Construction.AirBoundary", "status": "Native", "target": "PanelType.Air", "notes": "A layer-free SAM construction; the air behaviour is carried by the panel type." },
     { "id": "OS:Construction.InternalSource", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-001" },
@@ -100,13 +100,14 @@
     { "id": "OS:Construction.FfactorGroundFloor", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-001" },
     { "id": "OS:Construction.WindowDataFile", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-001" },
     { "id": "OS:Construction.Missing", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-001", "notes": "A surface with no construction gets a named, layer-free placeholder - never a default build-up." },
+    { "id": "OS:Construction.FacesUnresolved", "status": "Unsupported", "diagnostic": "SAM-OSI-CON-002", "notes": "An opaque surface construction that cannot reproduce its native layer order or the absorptances of a face EnergyPlus uses (an edited or mixed model whose orientation or face roles cannot be established) is an error, and the import is unsuccessful." },
     { "id": "OS:Construction.UnreferencedPruning", "status": "Native", "notes": "Materials and profiles the imported topology does not reference are removed." },
 
     { "id": "OS:People", "status": "Derived", "target": "InternalConditionParameter.AreaPerPerson + Occupancy*GainPerPerson", "formula": "areaPerPerson = 1 / peopleperSpaceFloorArea; sensible = activityLevel * sensibleHeatFraction; latent = activityLevel * (1 - sensibleHeatFraction)", "diagnostic": "SAM-OSI-LOAD-001" },
     { "id": "OS:People.AutocalculatedSensibleFraction", "status": "Approximated", "diagnostic": "SAM-OSI-APX-001", "notes": "No fixed split exists; the whole metabolic rate is imported as sensible." },
     { "id": "OS:People.NumberOfPeopleMethod", "status": "Unsupported", "diagnostic": "SAM-OSI-LOAD-001", "notes": "An absolute count cannot become a density on a shared space type without inventing an area." },
     { "id": "OS:Lights", "status": "Native", "target": "InternalConditionParameter.LightingGainPerArea + LightingProfileName" },
-    { "id": "OS:Lights.RadiantVisibleFractions", "status": "Native", "target": "InternalConditionParameter.LightingRadiantProportion / LightingViewCoefficient" },
+    { "id": "OS:Lights.RadiantVisibleFractions", "status": "Derived", "target": "InternalConditionParameter.LightingRadiantProportion", "formula": "p = Fraction Radiant + Fraction Visible (SAM S07 section 5.1); LightingViewCoefficient (a comfort coefficient) is not set", "diagnostic": "SAM-OSI-APX-001", "notes": "Warning when Return Air Fraction > 0 (that share becomes convective room gain) or the fractions sum above 1 (not imported); information when Fraction Visible / (Fraction Radiant + Fraction Visible) differs from s = 0.2415 / 0.576." },
     { "id": "OS:ElectricEquipment", "status": "Native", "target": "InternalConditionParameter.EquipmentSensibleGainPerArea / EquipmentLatentGainPerArea" },
     { "id": "OS:ElectricEquipment.PartLatent", "status": "Approximated", "diagnostic": "SAM-OSI-APX-001", "notes": "A single part-latent instance is apportioned; the two halves then share one schedule." },
     { "id": "OS:GasEquipment", "status": "Unsupported", "diagnostic": "SAM-OSI-LOAD-001" },

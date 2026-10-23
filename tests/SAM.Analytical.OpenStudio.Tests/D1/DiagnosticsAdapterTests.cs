@@ -357,7 +357,8 @@ namespace SAM.Analytical.OpenStudio.Tests
             ["ConstructionMissingLayer"] = "SAM-OS-CON-001", ["ConstructionUnsupportedParameter"] = "SAM-OS-CON-002", ["ScheduleMissingProfile"] = "SAM-OS-SCH-001",
             ["InternalConditionUnsupportedParameter"] = "SAM-OS-IC-001", ["HvacMissingSetpoints"] = "SAM-OS-HVAC-001", ["RunCliFailed"] = "SAM-OS-RUN-001",
             ["WeatherDataIssue"] = "SAM-OS-RUN-002", ["ResultExtractionLimitation"] = "SAM-OS-RUN-003", ["SimulationSettingsUnsupported"] = "SAM-OS-SET-001",
-            ["ComplianceInputUnsupported"] = "SAM-OS-SET-002", ["EnergyPlusSevereError"] = "SAM-OS-EPLUS-001",
+            ["ComplianceInputUnsupported"] = "SAM-OS-SET-002", ["EnergyPlusSevereError"] = "SAM-OS-EPLUS-001", ["InternalConditionAssumption"] = "SAM-OS-IC-002",
+            ["MaterialFaceOpticsUnrepresentable"] = "SAM-OS-MAT-003", ["MaterialFaceAssumption"] = "SAM-OS-MAT-004",
         };
 
         private static readonly Dictionary<string, string> releasedImportCodes = new Dictionary<string, string>
@@ -368,7 +369,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             ["OswFinalOsmNotFound"] = "SAM-OSI-OSW-006", ["OswEnergyPlusMeasureNotRepresentable"] = "SAM-OSI-OSW-007", ["OswWorkflowExecuted"] = "SAM-OSI-OSW-008",
             ["OswNoSimulationResults"] = "SAM-OSI-OSW-009", ["GeometryInvalid"] = "SAM-OSI-GEO-001", ["GeometryVerticesCleaned"] = "SAM-OSI-GEO-002",
             ["AdjacencyGeometricFallback"] = "SAM-OSI-ADJ-001", ["AdjacencyPairingFailed"] = "SAM-OSI-ADJ-002", ["BoundaryConditionUnsupported"] = "SAM-OSI-BC-001",
-            ["SubSurfaceUnsupported"] = "SAM-OSI-SUB-001", ["MaterialUnsupported"] = "SAM-OSI-MAT-001", ["ConstructionUnsupported"] = "SAM-OSI-CON-001",
+            ["SubSurfaceUnsupported"] = "SAM-OSI-SUB-001", ["MaterialUnsupported"] = "SAM-OSI-MAT-001", ["ConstructionUnsupported"] = "SAM-OSI-CON-001", ["ConstructionFacesUnresolved"] = "SAM-OSI-CON-002",
             ["ScheduleUnsupported"] = "SAM-OSI-SCH-001", ["LoadUnsupported"] = "SAM-OSI-LOAD-001", ["LoadAssignmentConflict"] = "SAM-OSI-LOAD-002",
             ["HvacUnsupported"] = "SAM-OSI-HVAC-001", ["ZoneMultiSpace"] = "SAM-OSI-ZONE-001", ["ZoneIncomplete"] = "SAM-OSI-ZONE-002",
             ["IdentityCollision"] = "SAM-OSI-ID-001", ["WeatherLimitation"] = "SAM-OSI-WEA-001", ["SimulationSettingUnsupported"] = "SAM-OSI-SET-001",

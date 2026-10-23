@@ -27,13 +27,13 @@ independent: a concept can be Native one way and Unsupported the other.
 
 | Status | Entries |
 |---|---|
-| Native | 57 |
-| Derived | 11 |
+| Native | 56 |
+| Derived | 12 |
 | Approximated | 16 |
-| Unsupported | 45 |
+| Unsupported | 46 |
 | Deferred | 9 |
 | NotApplicable | 6 |
-| **Total** | **144** |
+| **Total** | **145** |
 
 ## Explicitly deferred domains
 
@@ -138,7 +138,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 
 | OpenStudio concept | SAM target | Status | Diagnostic | Conversion / policy |
 |---|---|---|---|---|
-| `OS:Material.StandardOpaqueMaterial` | `Core.OpaqueMaterial` | **Native** | - |  |
+| `OS:Material.StandardOpaqueMaterial` | `Core.OpaqueMaterial` | **Native** | - | SAM-written face and thickness objects of one source Guid merge into one SAM material with both authored faces; an edit made after export is kept on its face (SAM-OSI-MAT-001); conflicts are not merged (SAM-OSI-ID-001); never matched by name. |
 | `OS:Material.MasslessOpaqueMaterial` | `Core.OpaqueMaterial` | **Approximated** | `SAM-OSI-APX-001` | conductivity = 0.025 m / R; resistance preserved exactly, near-zero thermal mass assigned |
 | `OS:Material.AirGap` | `Core.GasMaterial` | **Derived** | - | HeatTransferCoefficient = 1 / thermalResistance (exact inverse of the forward R = 1/h) |
 | `OS:WindowMaterial.Glazing` | `Core.TransparentMaterial` | **Native** | - | EnergyPlus Front/Back map to SAM External/Internal, matching the forward direction. |
@@ -155,7 +155,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 
 | OpenStudio concept | SAM target | Status | Diagnostic | Conversion / policy |
 |---|---|---|---|---|
-| `OS:Construction.Opaque` | `Construction` | **Native** | - | Layer order preserved outside-first. |
+| `OS:Construction.Opaque` | `Construction` | **Native** | - | Opaque constructions used by planar surfaces are read innermost layer first (SAM inside to outside from the side the panel is built from, the SAM-written forward side when stamped); fenestration, door-pane, shading-only and unused constructions keep the outside-first order; a construction shared with a subsurface or shading surface is split (SAM-OSI-APX-001). |
 | `OS:Construction.Fenestration` | `ApertureConstruction` | **Native** | - | Pane layers only; frame layers are never fabricated. |
 | `OS:Construction.AirBoundary` | `PanelType.Air` | **Native** | - | A layer-free SAM construction; the air behaviour is carried by the panel type. |
 | `OS:Construction.InternalSource` | - | **Unsupported** | `SAM-OSI-CON-001` |  |
@@ -163,6 +163,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 | `OS:Construction.FfactorGroundFloor` | - | **Unsupported** | `SAM-OSI-CON-001` |  |
 | `OS:Construction.WindowDataFile` | - | **Unsupported** | `SAM-OSI-CON-001` |  |
 | `OS:Construction.Missing` | - | **Unsupported** | `SAM-OSI-CON-001` | A surface with no construction gets a named, layer-free placeholder - never a default build-up. |
+| `OS:Construction.FacesUnresolved` | - | **Unsupported** | `SAM-OSI-CON-002` | An opaque surface construction that cannot reproduce its native layer order or the absorptances of a face EnergyPlus uses (an edited or mixed model whose orientation or face roles cannot be established) is an error, and the import is unsuccessful. |
 | `OS:Construction.UnreferencedPruning` | - | **Native** | - | Materials and profiles the imported topology does not reference are removed. |
 
 ### Loads and controls
@@ -173,7 +174,7 @@ EnergyManagementSystem; output requests and reporting configuration.
 | `OS:People.AutocalculatedSensibleFraction` | - | **Approximated** | `SAM-OSI-APX-001` | No fixed split exists; the whole metabolic rate is imported as sensible. |
 | `OS:People.NumberOfPeopleMethod` | - | **Unsupported** | `SAM-OSI-LOAD-001` | An absolute count cannot become a density on a shared space type without inventing an area. |
 | `OS:Lights` | `InternalConditionParameter.LightingGainPerArea + LightingProfileName` | **Native** | - |  |
-| `OS:Lights.RadiantVisibleFractions` | `InternalConditionParameter.LightingRadiantProportion / LightingViewCoefficient` | **Native** | - |  |
+| `OS:Lights.RadiantVisibleFractions` | `InternalConditionParameter.LightingRadiantProportion` | **Derived** | `SAM-OSI-APX-001` | p = Fraction Radiant + Fraction Visible (SAM S07 §5.1); `LightingViewCoefficient` is a comfort coefficient and is not set. Warning when Return Air Fraction > 0 (that share becomes convective room gain) or the fractions sum above 1 (not imported); information when Fraction Visible / (Fraction Radiant + Fraction Visible) differs from s = 0.2415 / 0.576. Files imported under the previous mapping hold Fraction Radiant in p and Fraction Visible in the view coefficient; they cannot be identified and are not migrated. |
 | `OS:ElectricEquipment` | `InternalConditionParameter.EquipmentSensibleGainPerArea / EquipmentLatentGainPerArea` | **Native** | - |  |
 | `OS:ElectricEquipment.PartLatent` | - | **Approximated** | `SAM-OSI-APX-001` | A single part-latent instance is apportioned; the two halves then share one schedule. |
 | `OS:GasEquipment` | - | **Unsupported** | `SAM-OSI-LOAD-001` |  |

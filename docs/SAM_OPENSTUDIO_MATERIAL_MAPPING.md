@@ -46,6 +46,108 @@ created per **(SAM material Guid, thickness)** pair.
 Validation ranges: conductivity > 0; density > 0; specific heat > 0; thickness > 0;
 absorptances within [0, 1] (out-of-range → error, no clamping).
 
+### Opaque face optics (SAM_OpenStudio#33 revision 8)
+
+EnergyPlus opaque materials hold **one** absorptance set for both faces, and the heat balance
+uses only the outermost layer's outside face (outdoor surfaces) and the innermost layer's
+zone face. SAM stores layers inside → outside from the panel's first space in
+`AdjacencyCluster.GetSpaces()` order (S07 section 1), so:
+
+| Face EnergyPlus uses | SAM layer | SAM face |
+| --- | --- | --- |
+| zone face, first space (and every single-sided surface) | first | `Internal*` |
+| zone face, second space of an internal panel | last | `External*` |
+| outside face of an outdoor surface | last | `External*` |
+
+- **Rule.** SAM's first layer of an opaque construction takes its `Internal*` optics; every
+  other layer takes its `External*` optics. Where a material's `Internal*` values differ
+  from `External*`, the first layer uses an internal-face variant: its own cache key
+  `(Guid, thickness, Internal)` and name suffix `_Internal`, thermally identical to the
+  external-face object. The face is chosen by SAM layer position, never by EnergyPlus position, so
+  forward and reverse constructions share the same objects and stay exact mirrors.
+- **Inherited zone-face values.** An `Internal*` value SAM does not state (absent or NaN) on a
+  zone face takes the stated `External*` value. This is reported once per material as
+  **information SAM-OS-MAT-004 at Summary**; the written value is not stamped as authored, so
+  an import keeps the internal value unspecified. S07 lists no default for an internal face,
+  so S09 reports those zone-face rows as S-UNSPEC EXPORT-DEFECT, never as a match.
+- **What S09 gates (S07 §5.2, amendment U1, from #33 revision 12).** S09 compares the faces in
+  the table above exactly. Every other face of an opaque layer (buried faces, and the outer
+  face of an interzone, ground or adiabatic side) holds a value EnergyPlus 25.1 does not use:
+  when both values are valid and the face's role is established independently of this
+  writer, the row is reported as OUT-OF-ENGINE-SCOPE (informational, not gated) with both
+  values. The writer itself is unchanged by this.
+- **Single-layer constructions** (one layer is both faces): agreeing faces are written
+  normally; on the ground or an adiabatic boundary only the zone face is used, so the
+  internal values are written. On an outdoor or interzone surface (including a two-sided
+  panel whose pairing failed) differing faces are **error SAM-OS-MAT-003**: no construction
+  is assigned and the conversion is unsuccessful — no external, averaged or split-layer
+  substitute. The check runs per panel use, before any cached construction is reused.
+- **Orientation.** The forward construction goes to the first space's side only. If that
+  side produced no surface the panel gets **error SAM-OS-ADJ-001** and no construction; the
+  sides are never swapped.
+- **Opaque door panes** (opaque layers of a fenestration construction) are unchanged: the
+  external values govern both faces, SAM-OS-MAT-002 information when they differ.
+- **Import identity.** Every opaque object written from a SAM opaque material carries, in
+  `OS:AdditionalProperties`, `SAM.MaterialGuid` (source material), `SAM.MaterialFace`
+  (`External`/`Internal`), each authored `SAM.Optic.<OpaqueMaterialParameter>` SAM states, and
+  `SAM.Written.ThermalAbsorptance` / `.SolarAbsorptance` / `.VisibleAbsorptance` (what was
+  actually written, including inherited values and OpenStudio defaults).
+  - **Unchanged objects** restore exactly the authored values on both faces; an unstated value
+    stays unstated (an unchanged OpenStudio default is not imported as SAM data).
+  - **Edited objects** (an absorptance differing from its written value) keep the edited value
+    on every SAM face the object supplies and report it (warning SAM-OSI-MAT-001), so an edit
+    of an unstated value is not lost on re-export. An `Internal` variant supplies the zone face;
+    an `External` object of a material whose authored faces differ supplies the external face
+    (the variant supplies the zone face). An `External` object of a material whose faces agree
+    is shared by every layer position, so its faces come from the constructions using it as an
+    outermost or innermost layer: in a SAM-written (forward) opaque construction the last layer
+    is the zone face and the first the outer face; the unstamped reverse construction mirrors
+    it; any other construction's exposed position supplies both faces. A single-layer use
+    therefore keeps the edit on both faces (no differing faces are invented); an object in no
+    exposed position keeps it on the external face and each stated internal one.
+  - **Merging.** All usable face and thickness objects of one source Guid become one SAM
+    material (its Guid restored from the object carrying `SAM.Guid`); construction layers keep
+    their own thicknesses. They merge only when thermal properties, authored optics and, per
+    face, each resolved value of the objects supplying it agree; otherwise a warning
+    (SAM-OSI-ID-001) names the conflict and each object is imported on its own. Matching is by
+    the explicit Guid, never by name. Each object is validated before a merged material is
+    returned for it: only a validated member of the group resolves to it.
+  - Malformed or inconsistent metadata is warned (SAM-OSI-ID-001 identity, SAM-OSI-MAT-001
+    values) and the object is imported as its own material with its own thermal properties —
+    never merged with, or aliased to, a valid group of the same source Guid — and its single
+    native value on both faces. An object without the metadata (a third-party or older OSM)
+    imports silently as before.
+- **Import layer order (since SAM_OpenStudio#33 revision 11).** An opaque layered construction
+  used by a planar surface is read innermost layer first (`ToSAM/Construction.cs`), so SAM's
+  first layer is the one facing the surface's zone. An interzone panel is built from, and first
+  related to, the side carrying the SAM-written forward construction (SAM type `Construction`
+  with a SAM Guid), also after a geometric-fallback pairing; without that stamp, from the first
+  surface visited. Spaces are added in an order that puts each forward side's space first, because the
+  writer takes a panel's first space from the cluster's space order. Export → import → export therefore
+  keeps every layer, thickness and used face. A panel whose building side is then second (a mixed or edited
+  model) is re-read from its partner surface (information SAM-OSI-APX-001).
+  - **Fail closed (error SAM-OSI-CON-002).** Every imported opaque surface panel is checked against its
+    native surfaces. The checks:
+    - its first space's surface holds the SAM layers innermost first and a second side their mirror;
+    - each native StandardOpaqueMaterial layer, on both sides and in each side's direction, has the
+      thickness, conductivity, density and specific heat of the SAM layer it became (merged source names
+      alone would hide, for example, a 20 mm object on one side of a 12.5 mm wall);
+    - the absorptances the writer would put on every face EnergyPlus uses equal the native ones.
+
+    When one SAM panel cannot keep them, the import is unsuccessful (no model) instead of changing a layer
+    or a used face. Massless and air-gap layers keep their nominal-thickness import and are matched by
+    material only.
+  Fenestration (glazing, gas, opaque door panes), air boundaries, non-layered constructions and
+  constructions no planar surface uses keep OpenStudio's order. A construction also used by a
+  subsurface or shading surface is split into an innermost-first SAM construction for the
+  surfaces (SAM Guid restored) and one in OpenStudio's order for the other uses (own Guid;
+  SAM-OSI-APX-001 information).
+  - **Compatibility.** Every multi-layer opaque import now has the opposite SAM layer order to
+    imports made before revision 11 (U-value unchanged; layer positions, thermal-mass position
+    and exposed faces change, which is the correction). SAM models imported earlier keep their
+    reversed constructions; nothing identifies them, and no automatic migration is made. Re-import
+    the source OSM to correct such a model.
+
 ## TransparentMaterial → OS:WindowMaterial:Glazing (StandardGlazing)
 
 EnergyPlus defines the glazing **Front side as "the side of the layer opposite the zone"**

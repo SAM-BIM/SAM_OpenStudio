@@ -1,0 +1,55 @@
+S09 revision 12 (S07 section 5.2, amendment U1) A/B: the pre-U1 comparator on the runs of the U1 S09 test session.
+
+Method (machine-local; no engine, no export, no simulation):
+- pre-U1 library: benchmark/SAM.Analytical.OpenStudio.InputReadBack of adcad2f4383ab3763839e4a7e0a87c84d1468e4c, extracted with
+  git archive into a temporary sibling folder of the workspace (SAM-BIM/_s09_u1_ab, removed afterwards) and built Release x64
+  (SAM.Analytical.OpenStudio.InputReadBack.dll 3f5748464c8710145525d81a9deaf1110d0cf2761123cc75758dbdc2e88c2c8c).
+- harness: a copy of the U1 CLI output folder (os-input-readback.dll bb8431523c571d20f0a309a6b5cd88e3ddcdbfd3df74131e96f79dac4c68fb74;
+  the CLI source is unchanged since adcad2f) with only that library swapped in.
+- for the newest run of each listed label under SAM.Analytical.OpenStudio.InputReadBack.Tests/bin/x64/Release/net8.0/s09-runs,
+  `os-input-readback compare --run <run> --fixture-id <id> --rule-set approved --out <separate dir>` with the pre-U1 harness;
+  "U1" is the report.txt the U1 test session wrote for the same run. The runs themselves were not changed.
+
+Each line: run | pre-U1 exit and verdict (its MAPPING-DIFFERENCE count) | U1 verdict.
+box-0740bb | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (319); gated non-PASS 0; out-of-engine-scope 105 (informational, not gated)
+box-p-0-9aa6a6 | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (319); gated non-PASS 0; out-of-engine-scope 105 (informational, not gated)
+box-p-1-7878be | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (319); gated non-PASS 0; out-of-engine-scope 105 (informational, not gated)
+box-p-zero-4c24cb | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (319); gated non-PASS 0; out-of-engine-scope 105 (informational, not gated)
+box-plasterboard-absorptance-2e66cf | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 65) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 4; out-of-engine-scope 105 (informational, not gated)
+box-single-floor-550bbb | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (299) (MappingDifference 63) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (299); gated non-PASS 0; out-of-engine-scope 93 (informational, not gated)
+box-unstated-light-absent-835771 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 64) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 5; out-of-engine-scope 105 (informational, not gated)
+ctl-lighting-plenum-no-f97bc9 | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (319); gated non-PASS 0; out-of-engine-scope 105 (informational, not gated)
+swapped-zone-face-s08-fix-box-13c1c0 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 51) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 18; out-of-engine-scope 105 (informational, not gated)
+swapped-zone-face-s08-fix-two-04ac95 | pre-U1 exit 10: s08-fix-two -> Fail (exit 10); coverage Complete (592) (MappingDifference 105) | U1: s08-fix-two -> Fail (exit 10); coverage Complete (592); gated non-PASS 33; out-of-engine-scope 216 (informational, not gated)
+two-7aea83 | pre-U1 exit 12: s08-fix-two -> BlockedOwnerDecision (exit 12); coverage Complete (592) (MappingDifference 138) | U1: s08-fix-two -> Pass (exit 0); coverage Complete (592); gated non-PASS 0; out-of-engine-scope 216 (informational, not gated)
+u1-adiabatic-4a57a6 | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (319); gated non-PASS 0; out-of-engine-scope 108 (informational, not gated)
+u1-adiabatic-as-ground-a0f8cb | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 12; out-of-engine-scope 87 (informational, not gated)
+u1-adiabatic-source-b1bd9f | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (319); gated non-PASS 0; out-of-engine-scope 108 (informational, not gated)
+u1-buried-thickness-99a5a0 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 1; out-of-engine-scope 105 (informational, not gated)
+u1-ground-preprocessor-ec45b8 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 9; out-of-engine-scope 90 (informational, not gated)
+u1-interzone-adiabatic-6334ab | pre-U1 exit 12: s08-fix-two -> BlockedOwnerDecision (exit 12); coverage Complete (592) (MappingDifference 138) | U1: s08-fix-two -> Fail (exit 10); coverage Complete (592); gated non-PASS 24; out-of-engine-scope 174 (informational, not gated)
+u1-interzone-first-397ead | pre-U1 exit 10: s08-fix-two -> Fail (exit 10); coverage Complete (592) (MappingDifference 130) | U1: s08-fix-two -> Fail (exit 10); coverage Complete (592); gated non-PASS 7; out-of-engine-scope 216 (informational, not gated)
+u1-interzone-not-mirrored-2585c1 | pre-U1 exit 10: s08-fix-two -> Fail (exit 10); coverage Complete (592) (MappingDifference 132) | U1: s08-fix-two -> Fail (exit 10); coverage Complete (592); gated non-PASS 38; out-of-engine-scope 174 (informational, not gated)
+u1-interzone-partner-missing-1e11fd | pre-U1 exit 12: s08-fix-two -> BlockedOwnerDecision (exit 12); coverage Complete (592) (MappingDifference 138) | U1: s08-fix-two -> Fail (exit 10); coverage Complete (592); gated non-PASS 24; out-of-engine-scope 174 (informational, not gated)
+u1-interzone-second-771897 | pre-U1 exit 10: s08-fix-two -> Fail (exit 10); coverage Complete (592) (MappingDifference 136) | U1: s08-fix-two -> Fail (exit 10); coverage Complete (592); gated non-PASS 1; out-of-engine-scope 216 (informational, not gated)
+u1-native-1.25-00cc85 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 68) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 2; out-of-engine-scope 103 (informational, not gated)
+u1-native-NaN-4ecaa6 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 68) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 2; out-of-engine-scope 103 (informational, not gated)
+u1-native-abc-256cc0 | pre-U1 exit 11: s08-fix-box -> BlockedTechnical (exit 11); coverage Complete (319) (MappingDifference 68) | U1: s08-fix-box -> BlockedTechnical (exit 11); coverage Complete (319); gated non-PASS 2; out-of-engine-scope 103 (informational, not gated)
+u1-native-blank-204083 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 68) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 2; out-of-engine-scope 103 (informational, not gated)
+u1-neg-layer-conductivity-s08-fix-two-2637af | pre-U1 exit 10: s08-fix-two -> Fail (exit 10); coverage Complete (592) (MappingDifference 138) | U1: s08-fix-two -> Fail (exit 10); coverage Complete (592); gated non-PASS 6; out-of-engine-scope 216 (informational, not gated)
+u1-neg-lighting-return-air-s08-fix-box-c10c67 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 2; out-of-engine-scope 105 (informational, not gated)
+u1-outdoor-face-d9979c | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 68) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 1; out-of-engine-scope 105 (informational, not gated)
+u1-sam-absent-478aff | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 68) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 1; out-of-engine-scope 104 (informational, not gated)
+u1-sam-nan-3942f2 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 68) | U1: s08-fix-box -> Fail (exit 10); coverage Complete (319); gated non-PASS 1; out-of-engine-scope 104 (informational, not gated)
+u1-sam-out-of-domain-6ca6fd | pre-U1 exit 12: s08-fix-box -> BlockedOwnerDecision (exit 12); coverage Complete (319) (MappingDifference 69) | U1: s08-fix-box -> BlockedTechnical (exit 11); coverage Complete (319); gated non-PASS 1; out-of-engine-scope 104 (informational, not gated)
+u1-zero-9932b9 | pre-U1 exit 10: s08-fix-box -> Fail (exit 10); coverage Complete (319) (MappingDifference 67) | U1: s08-fix-box -> Pass (exit 0); coverage Complete (319); gated non-PASS 0; out-of-engine-scope 105 (informational, not gated)
+
+Reading:
+- Both fixtures and every valid variant (p = 0 / 1, authored p 0, plenum No control, single-layer ground floor, adiabatic
+  wall, authored-zero unused faces): pre-U1 BLOCKED owner (12) on the S09-only MAPPING-DIFFERENCE listing, or FAIL (10) for the
+  authored zero (S-ZERO was never listed); U1 PASS (0) with the rows OUT-OF-ENGINE-SCOPE.
+- Undeterminable or contradictory face roles (adiabatic written as Ground, interzone partner missing, adiabatic interzone
+  panel) and an out-of-domain SAM value on an unused face: pre-U1 BLOCKED owner (12), hidden in the listing; U1 named
+  (Unsupported "optics role" / INPUT-INVALID) and gated: FAIL (10) or BLOCKED technical (11).
+- Every used-face, thickness, conductivity, lighting and invalid-native case FAILs or BLOCKs under both; U1 keeps the same
+  exit and reports the gated rows apart from the informational ones.

@@ -1,0 +1,27 @@
+S09 revision 12 local test summaries (Release x64, SDK 10.0.401, SAM sow/2026-Q4 0168d03f, SAM_Tas sow/2026-Q4 c50e9169)
+Tested content 8edf793a63b274cafe5e55b9e85fa597d6307a10 (S07 section 5.2, amendment U1; the working tree that was built and
+tested is this commit's content). No engine, simulation, sizing, acceptance or packing script was run. Each project was
+built with dotnet build ... -c Release -p:Platform=x64 --no-restore (2 warnings, 0 errors each), then dotnet test --no-build.
+
+== S09 tests at 8edf793
+harness os-input-readback.dll bb8431523c571d20f0a309a6b5cd88e3ddcdbfd3df74131e96f79dac4c68fb74
+library SAM.Analytical.OpenStudio.InputReadBack.dll 46cd8fb60306e054038546bcc4842d2835a55eb7a5df5b093d7199741920fa3c
+core    SAM.Analytical.InputEquivalence.dll 0c01d8926bb07528eef38c69bf1e54bb9664849a850e8185e56b2e6dac77a7ac
+writer  SAM.Analytical.OpenStudio.dll 37226c49c9bc2c8fb80b4e906ce46d6bca7d3e4f2e086cb3883ea6f3df7ffb5d (writer source unchanged since 4ea2e6c)
+Passed!  - Failed:     0, Passed:   120, Skipped:     0, Total:   120, Duration: 4 m 53 s - SAM.Analytical.OpenStudio.InputReadBack.Tests.dll (net8.0)
+(97 revision-11 cases, 6 of them with updated pre-U1 expectations, plus 23 new cases in OpaqueFaceScopeTests.cs.)
+An earlier session at the same library failed 1 case, AnAdiabaticWall_HasItsOuterFaceOutOfEngineScope: the test picked a
+wall with a window, which an adiabatic surface cannot keep. Only the test's wall selection changed (a wall without
+apertures, also in the adiabatic-written-as-Ground case); the run above is the full suite after that change.
+The fixture report.txt of both sessions are byte-identical (box 868a5808..., two-zone 9e3a3f0e...): revision-12/*.txt.
+
+== Writer/importer --filter 'TestCategory!=Simulation' at 8edf793
+  Skipped RealSqlFixture_SpaceAndSurfaceResults_NoThrow [23 ms]
+  Skipped CreateDesignDays_RealSqlReproductionFixture_NoThrow [< 1 ms]
+Passed!  - Failed:     0, Passed:   471, Skipped:     2, Total:   473, Duration: 12 m 9 s - SAM.Analytical.OpenStudio.Tests.dll (net8.0)
+(the 2 skipped are the pre-existing real-SQL fixtures; no writer, importer or writer-test file changed.)
+
+== Benchmark --filter 'TestCategory!=Simulation' at 8edf793
+Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 184 ms - SAM.Analytical.OpenStudio.Benchmark.Tests.dll (net8.0)
+
+== A/B: see ab-pre-u1.txt
