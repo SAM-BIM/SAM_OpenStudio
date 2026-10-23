@@ -6,8 +6,13 @@ closeout `c50e9169`; post-merge Build 39580480516 succeeded on `61eb0d37`).
 
 Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`). **Draft, for independent review. Not
 merged.**
-- **Tested content (revision 11, the owner-approved opaque multi-layer import order, fail closed, per-layer
-  consistency):** `4ea2e6c2ac5805426ed1b39bdd5d88b39b1c723f` (after `37841ea`, `5241bdd` and `f5f207b`).
+- **Tested content (revision 12, S07 §5.2 amendment U1, OUT-OF-ENGINE-SCOPE):** `8edf793a63b274cafe5e55b9e85fa597d6307a10`. S09 comparator,
+  report and tests only; the writer and importer are unchanged.
+- **Revision 11 (the owner-approved opaque multi-layer import order, fail closed, per-layer consistency):** tested
+  content `4ea2e6c2ac5805426ed1b39bdd5d88b39b1c723f` (after `37841ea`, `5241bdd` and `f5f207b`), head
+  `adcad2f4383ab3763839e4a7e0a87c84d1468e4c` (Build 39838540508 and SPDX 39838540363 succeeded). **The per-layer fix
+  `4ea2e6c` was independently accepted** (owner statement in the revision-12 brief, 2026-10-23); this corrects the
+  revision-11 text, which listed it as pending review.
 - **Revision 11 reviewed state:** code `f5f207b456a3e7e2429ead4054c779031615e2b7`, head
   `89a2216da8acbde8abfd25430d0b0cf15f9f9730` (Build 39824715351 and SPDX 39824715431 succeeded). The independent review
   of that head confirmed the corrections and found one P1, the per-layer interzone consistency gap that `4ea2e6c`
@@ -38,8 +43,24 @@ merged.**
 
 ## Status
 
+- **Revision 12 implements S07 §5.2, amendment U1** (approved by the merge of SAM#218, `b06dbe8c`; closeout `0168d03f`;
+  see "Revision 12"). S09 only; **not yet independently reviewed**.
+  - Row-3a opaque absorptance and emissivity on a face EnergyPlus 25.1 does not use are **OUT-OF-ENGINE-SCOPE**:
+    informational, not gated, never MATCH, NOT-APPLICABLE or an accepted limitation. Each row keeps the SAM and native
+    values, the difference, side, layer, property, scope reason and the amendment, in JSON and text, with counts.
+  - Only when the face's role is established from raw SAM, the side and the native boundary (never the writer's
+    selector), and both values are valid and comparable. Used faces, every thickness/λ/ρ/c row, and missing, NaN,
+    unreadable, out-of-domain or undeterminable rows stay gated; an undeterminable role is named (BLOCKED technical).
+  - The S09-only OS-MAT-SINGLE-SIDED listing (MAPPING-DIFFERENCE, revisions 2-11) is removed.
+  - **Both fixtures: PASS, exit 0**, coverage 319/319 and 592/592. Out-of-engine-scope: box 105 (69 differing, 36
+    equal), two-zone 216 (138 differing, 78 equal). This is **scoped native-input conformance** of the OpenStudio
+    export to S07, not simulation equivalence, not a Phase B PASS (which needs S08-S11) and not an owner acceptance of
+    anything else.
+  - Tests: S09 120/120 (97 retained, 23 new), writer/importer and benchmark below. A/B: the pre-U1 comparator gives
+    BLOCKED owner (12) or FAIL (10) where U1 gives PASS, and hides the undeterminable-role and out-of-domain cases.
 - **Revision 11 implements the owner-approved opaque multi-layer layer-order correction** (see "Revision 11"). Importer
-  only. Not yet independently reviewed; optics acceptance is not renewed and Phase B is not claimed.
+  only. **Independently accepted** (the review of `89a2216` and then of the per-layer fix `4ea2e6c`); optics acceptance
+  is not renewed and Phase B is not claimed.
   - Opaque layered constructions used by planar surfaces are read innermost first; interzone panels are built from the
     SAM-written forward side and the spaces are ordered so that side is the writer's first space (a deviation from the
     proposal's "no space-order change", explained in "Revision 11").
@@ -181,7 +202,8 @@ merged.**
   implemented. Revision 3 corrects its wording only.
 - On this evidence every S07 quantity matches except the rows on faces EnergyPlus does not use (69 / 138), which keep
   both fixtures BLOCKED owner, exit 12, subject to the independent review of revision 8. Clearing them needs an owner
-  decision: accept those unused-face rows, or an S07 3a scope decision (compare only used faces).
+  decision: accept those unused-face rows, or an S07 3a scope decision (compare only used faces). (Revision 8 text; the
+  scope decision was taken by S07 amendment U1, SAM#218, and revision 12 implements it: both fixtures PASS, exit 0.)
 
 ## Owner instructions applied
 
@@ -297,6 +319,25 @@ split.
   limits. Return for independent review after final-head CI.
 - Excluded: merge, engines, Tas changes, a roadmap exception and S10.
 
+**Revision 12 (2026-10-23, in substance).** Implement the approved S07 amendment U1 (SAM#218 merge `b06dbe8c`, closeout
+`0168d03f`) in this PR only; keep the writer/importer fixes.
+- OUT-OF-ENGINE-SCOPE only for valid, comparable authored row-3a optics on demonstrably unused faces (§5.2). Authored
+  zero is a value. Roles derived independently from raw SAM, orientation and a supported boundary, never the writer's
+  selector; a mismatch need not equal the other face. Validate states, domains, readability, object presence and
+  face-role consistency first; missing, invalid, NaN, unreadable values and malformed, unknown or contradictory roles
+  never become informational; unsupported boundaries are not read as Ground.
+- Keep values, delta, side/layer, reason, amendment and per-outcome counts in JSON and text; keep every required row and
+  the coverage; separate informational rows from blockers in gate, report, summary and exit code. An informational row
+  masks nothing; PASS needs every gated quantity in the allow-list.
+- Smallest OpenStudio-local adaptation: no SAM_Tas, linked-source or shared-gate change, no copied evaluator, no fake
+  outcome. Coverage 319/319 and 592/592; the 69 / 138 rows stay visible; do not force totals.
+- Regressions and controls as listed in "Revision 12"; A/B against the pre-U1 behaviour; the three suites built Release
+  x64 and run `--no-build`; no engines, simulations, acceptance or packing scripts.
+- Excluded: writer/importer changes, optics re-acceptance, single-layer refusal, Tas/S08, lighting/ventilation, OD-L1,
+  fallback, fixtures, roadmap, `PROJECT_PROGRESS.md`, merge, S09 closeout, S10. Correct the stale pending-review item
+  (the per-layer fix was accepted). Keep #33 draft; obtain final-head CI and stop for independent principal-architect
+  review.
+
 ## Work completed
 
 | Commit | Change |
@@ -325,7 +366,98 @@ split.
 | `78f1014` | **Revision 10:** importer only: each face object validated before a merged result and only group members resolve to it; edits kept on every face the object supplies; 23 writer/importer test cases; mapping doc |
 | `e04ff90`, `93ec315` | Revision 10 evidence (`revision-10/`), the layer-order proposal and this record |
 | `37841ea`, `5241bdd`, `f5f207b`, `4ea2e6c` | **Revision 11:** importer: innermost-first opaque surface constructions, the shared-use split, forward-side panels, the space order and the re-read; then the fail-closed face check SAM-OSI-CON-002 replacing the warning-only re-read, and (review of `89a2216`) the per-layer thickness and thermal comparison of both sides; 39 layer-order test cases; mapping, to-SAM coverage and audit docs |
-| (record commit) | Revision 11 evidence (`revision-11/`) and this record |
+| `adcad2f` | Revision 11 evidence (`revision-11/`) and this record |
+| `8edf793` | **Revision 12:** S07 §5.2 (amendment U1) in `Compare/OsComparison.cs` (`OpaqueRole`, `UnusedOpaqueFace`, `OutOfEngineScopeRow`), report schema `/3` in `Report/OsReport.cs`; 23 S09 test cases (`OpaqueFaceScopeTests.cs`) and the updated fixture expectations; material-mapping doc note |
+| (record commit) | Revision 12 evidence (`revision-12/`) and this record |
+
+## Revision 12: S07 §5.2 opaque optical face scope (amendment U1)
+
+Tested content `8edf793a63b274cafe5e55b9e85fa597d6307a10`. S09 only: `Compare/OsComparison.cs`, `Report/OsReport.cs`, the S09 tests and one
+material-mapping doc note. The writer, importer, CLI, shared core (SAM_Tas `c50e9169`, unchanged), linked
+`ReadBackExpected.cs`, fixtures and tolerances are unchanged. Evidence: `revision-12/`.
+
+**Design (OpenStudio-local, on top of the shared evaluation):**
+- Every row-3a row is first evaluated by the shared core exactly as before, with no listing. Only an opaque optical row
+  on a face that `IsExposedOpaqueFace` (revision 8, from SAM and the side) does not name as used is then considered.
+- **Face role** (`OpaqueRole`, per panel side). Established only when: the native surface exists and its identity is
+  verified; the SAM panel's spaces include this space, number one or two and are distinct; its type has an opaque
+  boundary (not Undefined, Shade, SolarPanel, Air); it is not both two-sided and adiabatic or a ground type; the native
+  Outside Boundary Condition is exactly the SAM boundary (Outdoors, Surface, Ground, Adiabatic: an adiabatic panel
+  written as Ground, a ground preprocessor, other-side coefficients or a Foundation are not read as one); the native
+  construction has one layer per SAM layer; and, interzone, the partner surface exists, names this surface back and
+  holds this construction reversed. A missing surface, construction or unverified identity gates on its own rows; every
+  other failure is named as `Unsupported` "optics role: <side>: <reason>" (BLOCKED technical at least).
+- **Row** (`UnusedOpaqueFace`). OUT-OF-ENGINE-SCOPE only when the role is established, the SAM layer is an opaque
+  material and the native layer an opaque `Material`, the SAM value is authored (S-VALUE, or S-ZERO) and the native value
+  read, both in [0, 1], and the shared outcome is a numeric comparison (MATCH, WITHIN-TOLERANCE, OUT-OF-TOLERANCE)
+  without another trigger. A mismatch qualifies whatever the native value is. Otherwise the shared, gated result stays,
+  with "Not OUT-OF-ENGINE-SCOPE (…): <why>" appended; an out-of-domain SAM value is INPUT-INVALID (S-INVALID, BLOCKED
+  technical) and an out-of-domain native value EXPORT-DEFECT (FAIL), never compared.
+- **Gate.** The OUT-OF-ENGINE-SCOPE result stays in `Results` (coverage is unchanged) marked informational through the
+  shared `QuantityResult` flag, so the shared gate does not count it. Every other result gates exactly as before;
+  `Consistency`, `Unsupported` and fixture criteria apply as before; PASS still needs every gating result in the
+  allow-list and complete coverage.
+- **Report** (schema `s09-readback-report/3`). `CountByOutcome` counts each result once, an S07 §5.2 row as
+  `OutOfEngineScope` (never as its numeric MATCH or OUT-OF-TOLERANCE). `NonPass` and the new `GatedNonPass` hold only
+  gating results. `OutOfEngineScope` holds the amendment, the count, the differing and equal counts, counts by scope and
+  by property, and every row (key, side, layer of layer count, property, SAM face, SAM material, native object, SAM
+  value, native value, |d|, the shared numeric verdict, `Differs`, scope reason, amendment). `report.txt` adds both
+  counts to its first line and an OUT-OF-ENGINE-SCOPE block (12 rows shown, the rest in JSON), apart from NOT PASS.
+- **Decision for review:** the S09-only OS-MAT-SINGLE-SIDED listing is removed, not kept for rows that cannot be
+  excluded. S07 never listed it, and U1 replaces it; so an unused-face row whose role is undeterminable and whose values
+  differ is OUT-OF-TOLERANCE (FAIL), beside the named role problem.
+- **Decision for review:** a native value of exactly 0 against an authored non-zero value stays the shared EXPORT-DEFECT
+  ("abs never turns a zeroed native object into a pass"); it does not occur on the fixtures.
+
+**Fixture results** (S09 test session at `8edf793`; `revision-12/box-report-approved.txt`, `two-report-approved.txt`):
+
+| Fixture | Revision 11 (exit) | Revision 12 (exit) | Coverage | Outcomes (revision 12) | Out-of-engine-scope |
+|---|---|---|---|---|---|
+| `s08-fix-box` | BLOCKED owner (12) | **PASS (0)** | 319/319 | Match 183, WithinTolerance 26, AcceptedTransformation 4, NotApplicable 1, OutOfEngineScope 105 | 105: 69 differing, 36 equal; buried 102, ground outer 3 |
+| `s08-fix-two` | BLOCKED owner (12) | **PASS (0)** | 592/592 | Match 319, WithinTolerance 42, AcceptedTransformation 14, NotApplicable 1, OutOfEngineScope 216 | 216: 138 differing, 78 equal; buried 204, ground outer 6, interzone outer 6 |
+
+- Changed distribution: the 69 / 138 MAPPING-DIFFERENCE rows are now the differing OUT-OF-ENGINE-SCOPE rows (the same
+  keys). The 36 / 78 equal rows (box Match 30 + WithinTolerance 6; two-zone 60 + 18) are unused faces too, so they move
+  from MATCH/WITHIN-TOLERANCE to OUT-OF-ENGINE-SCOPE. Every other count is unchanged.
+- `report.txt` SHA-256 (byte-identical in both test sessions): box `868a5808d4cc1a96513e54b8189e647c8f45f4375b058a940ac1dee719b959fe`,
+  two-zone `9e3a3f0ed0e2fd6d8703154a0cb71a69ffa10344d1e4e253c29886840a6c466d`. Against `revision-9/` only the first two
+  lines and the NOT PASS block (replaced by the OUT-OF-ENGINE-SCOPE block) differ. `report.json` differs per run
+  (process identities, times, OSM handles).
+- Example row (box, ground floor): `layer1.internalEmissivity: SAM 0.87, native 0.95, |d| 0.07999999999999996 (OutsideTolerance);
+  buried layer face (layer 1 of 3, SAM internal face); SAM 'FIX_Concrete'`.
+
+**Tests** (`OpaqueFaceScopeTests.cs`, 23 cases; each runs the CLI export, fresh-process read and compare):
+
+| Test | Required |
+|---|---|
+| `EveryUnusedFaceRow_IsOutOfEngineScope_WithBothValuesAndItsReason` (both fixtures) | the OUT-OF-ENGINE-SCOPE keys are exactly the unused faces derived in the test from raw SAM; values, difference, side/layer, reason, amendment and counts by scope as derived; the differing rows are exactly the single-sided set (69 / 138), equal rows > 0; none in NonPass; `report.txt` lines |
+| `BothFixtures_HaveCompleteCoverage_AndPassWithTheUnusedFaceRowsInformational` (changed, both) | 319 / 592 required and results, Complete, PASS exit 0, no MappingDifference, counts sum to results |
+| `AWrongOutdoorFaceValue_Fails…` | Render absorptance: exactly the outdoor-face rows FAIL; the same object's buried face stays informational |
+| `AnInterzoneZoneFaceError_Fails…` (both directions) | the zone face FAILs; the partner's interzone outer face stays informational with the new value |
+| `AWrongBuriedLayerThickness_Fails…` | exactly that layer's thickness rows FAIL (plus 3b at most); scope count unchanged |
+| `AnInformationalRow_NeverMasksAGatedDefect` (conductivity two-zone, return air box) | FAIL exit 10, counts unchanged, blockers and informational rows disjoint, both blocks in `report.txt` |
+| `AnAuthoredZeroOnAnUnusedFace_IsAValue…` | EPS internal emissivity 0 (differing) and both light reflectances 0 (equal, Identical): OUT-OF-ENGINE-SCOPE, PASS |
+| `AnInvalidNativeValueOnAnUnusedFace_IsNeverExcluded` (NaN, blank, `abc`, 1.25) | exactly the two EPS solar rows gated: EXPORT-DEFECT FAIL, or UNVERIFIED BLOCKED technical; named "Not OUT-OF-ENGINE-SCOPE" |
+| `AnInvalidSamValueOnAnUnusedFace_IsNeverExcluded` (absent, NaN, 1.4) | the one row gated: EXPORT-DEFECT FAIL, or INPUT-INVALID BLOCKED technical (exit 11) |
+| `AnAdiabaticWall_HasItsOuterFaceOutOfEngineScope` (control) | adiabatic outer face rows (3) informational; PASS |
+| `AFaceRoleThatCannotBeEstablished_IsNeverExcluded` (ground preprocessor, adiabatic written as Ground, interzone not mirrored, partner missing, adiabatic interzone) | each side named "optics role", none of its rows informational, never PASS |
+
+Changed existing tests (pre-U1 expectations only): the fixture test above; `Unexplained` is now every gating non-PASS
+item; `AnAuthoredZero…`, `TheBoundarySplits…` and the single-layer ground floor now expect PASS; `AnUnstatedP…`
+(BLOCKED owner) also checks the unchanged scope count; the used-zone-face test also checks the rows gate. All other
+revision 1-11 tests, including every negative, are unchanged.
+
+**A/B** (`revision-12/ab-pre-u1.txt`): the adcad2f library on the U1 test session's runs, with the same harness.
+- Fixtures and valid variants: pre-U1 BLOCKED owner (12) on the MAPPING-DIFFERENCE listing, or FAIL (10) for the authored
+  zero (S-ZERO was never listed); U1 PASS (0).
+- Adiabatic written as Ground, interzone partner missing, adiabatic interzone panel and an out-of-domain SAM value:
+  pre-U1 BLOCKED owner (12), hidden in the listing; U1 named and gated, FAIL (10) or BLOCKED technical (11).
+- Used-face, thickness, conductivity, lighting and invalid-native cases: FAIL or BLOCKED under both, same exit.
+
+**Not covered:** whether EnergyPlus 25.1 reads only these faces is S07's premise (revision 8 optics table), not
+re-verified here (no engine run); Material:NoMass and AirGap layers (their optics are unreadable to S09, so they stay
+BLOCKED technical); a model with a native exact-zero reflectance on an unused face; used-face out-of-domain SAM optics
+(compared numerically as before; U1 keeps used faces "as today").
 
 ## Revision 11: opaque multi-layer layer order on import (owner-approved proposal)
 
@@ -1176,8 +1308,9 @@ because `FenestrationTests.Holes_...` takes the first diagnostic containing "hol
 
 ## Fixture verdicts (approved rules)
 
-**Revision 5 supersedes the counts and the lighting item below** (319/319 and 592/592, optics only; see "Revision 5"),
-and revision 7 the status: both fixtures are NOT PASS, accepted limitation, exit 14 (see "Revision 7").
+**Revision 12 supersedes the status and outcomes below:** both fixtures PASS, exit 0, under S07 §5.2 (see "Revision
+12"). Revision 5 superseded the counts and the lighting item (319/319 and 592/592, optics only; see "Revision 5"), and
+revision 7 then revision 8 the status.
 This section is the revisions 1–4 acceptance (`acc3`/`acc6`), which predates amendment L1 and was not re-run.
 
 Evidence: `documentation/S09-OpenStudio-InputReadBack-evidence/`, revision-3 acceptance `acc3`. Harness
@@ -1461,6 +1594,17 @@ calculation, EnergyPlus simulation or sizing was run.
 - `SAM_OpenStudio.sln`, `.gitattributes` (fixtures `-text`), `.github/workflows/build.yml`
 - `docs/SAM_OPENSTUDIO_INTERNAL_CONDITION_MAPPING.md`, `tests/SAM.Analytical.OpenStudio.Tests/D1/DiagnosticDetailTableTests.cs`
 - `documentation/S09-OpenStudio-InputReadBack-PR.md` (this record), `documentation/S09-OpenStudio-InputReadBack-evidence/**`
+- Revision 12 changed:
+  - `benchmark/SAM.Analytical.OpenStudio.InputReadBack/Compare/OsComparison.cs`: `OutOfEngineScopeRow`, the U1
+    constants, `OutOfEngineScope`, `IsOutOfEngineScope` / `ReportedOutcome`, `OpaqueRole`, `UnusedOpaqueFace`; the
+    MAPPING-DIFFERENCE listing and its Supporting line replaced;
+  - `Report/OsReport.cs`: schema `/3`, `OutOfEngineScopeSummary`, `GatedNonPass`, local `CountByOutcome`, text block;
+  - `benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/OpaqueFaceScopeTests.cs` (new, 23 cases) and
+    `ReadBackTests.cs` (partial; pre-U1 expectations updated);
+  - `docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md` (what S09 gates);
+  - the evidence `revision-12/` and this record.
+
+  No writer, importer, CLI, shared-core, linked-source, fixture, weather, tolerance or workflow change.
 - Revision 2 changed:
   - `Compare/OsComparison.cs`, `Native/NativeReader.cs`, `Report/OsReport.cs`, `Run-S09-ReadBack.ps1`;
   - `Cli/Negative.cs`, `Tests/ReadBackTests.cs`;
@@ -1578,6 +1722,10 @@ calculation, EnergyPlus simulation or sizing was run.
 
 | Check | At | Result |
 |---|---|---|
+| S09 tests | `8edf793` (revision 12, `8edf793a63b274cafe5e55b9e85fa597d6307a10`; harness `bb843152…`, library `46cd8fb6…`, writer `37226c49…`) | **120/120** (97 retained, 6 with updated pre-U1 expectations, + 23 new); both fixtures PASS exit 0; `report.txt` byte-identical in two sessions (`revision-12/`). The first session failed 1 new case (an adiabatic test wall with a window); only the test's wall choice changed |
+| Writer/importer, `--filter 'TestCategory!=Simulation'` | `8edf793` | **471 passed, 2 skipped** (the real-SQL fixtures; no writer, importer or writer-test change) |
+| Benchmark, `--filter 'TestCategory!=Simulation'` | `8edf793` | 51/51 |
+| A/B: the `adcad2f` S09 library on the revision-12 test runs | isolated copy, removed afterwards | fixtures and valid variants 12 or 10 → U1 0; undeterminable roles and out-of-domain SAM hidden as 12 → U1 10 / 11; defect cases unchanged (`revision-12/ab-pre-u1.txt`) |
 | S09 tests | `4ea2e6c` (revision 11 final, `4ea2e6c2ac5805426ed1b39bdd5d88b39b1c723f`; harness `4f746d9a…`, library `0bf9fd32…`, writer `331ec187…`) | **97/97**; both fixture `report.txt` byte-identical to `revision-9/` |
 | Writer/importer, `--filter 'TestCategory!=Simulation'` | `4ea2e6c` | **471 passed, 2 skipped** (462 + 9 per-layer consistency cases) |
 | Benchmark, `--filter TestCategory!=Simulation` | `4ea2e6c` | 51/51 |
@@ -1646,6 +1794,9 @@ benchmark/SAM.Analytical.OpenStudio.InputReadBack/Run-S09-ReadBack.ps1 -Phase ac
 benchmark/SAM.Analytical.OpenStudio.InputReadBack/Pack-S09-Evidence.ps1 -Root <same dir>
 ```
 
+Revision 12 built each test project Release x64 first and ran the three `dotnet test` lines with `--no-build` (exact
+commands in `revision-12/README.md`); the acceptance and packing scripts were not run.
+
 ### Writer-test scope correction (record only, after the review of `59036783`)
 
 - **The command was unsafe.** Until this correction the writer-test line above had no category filter. The writer
@@ -1699,10 +1850,24 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 - **Owner decisions in force (2026-10-22):** the T-VENT-INACTIVE extension (ventilation A) and the Decision 5 reading
   (lighting B1). The optics option-1 acceptance (revision 7) is superseded: revision 8 corrects the writer instead.
+- **Revision 12 (S07 §5.2, amendment U1) limits:**
+  - **Resolved by U1:** the revision-8 owner decision on the 69 / 138 unused-face rows (the S07 3a scope decision was
+    taken by SAM#218). They are now OUT-OF-ENGINE-SCOPE and both fixtures PASS, exit 0: scoped native-input conformance
+    only. It is not simulation equivalence, not a Phase B PASS (S08-S11 PASS is needed; no roadmap exception is
+    requested) and not an owner acceptance of anything else. Not independently reviewed yet.
+  - The premise (EnergyPlus 25.1 reads only the outermost outside face and the innermost zone face of an opaque
+    construction) is S07's, from the revision-8 optics table; it was not re-verified against the EnergyPlus reference
+    here, and no engine was run. A later engine version or setting that reads other faces needs a new decision (§5.2).
+  - The S07 contract text keeps its proposal-era labels ("proposed", "owner approval = merge of this PR"); approval is
+    the merge `b06dbe8c` and closeout `0168d03f`. Tidying those labels is a separate SAM change, not made here.
+  - The S09-only OS-MAT-SINGLE-SIDED listing is removed; an unused-face row that cannot be excluded and differs is
+    OUT-OF-TOLERANCE (FAIL). A native exact 0 against an authored non-zero stays EXPORT-DEFECT. Both are review items.
+  - Used-face optics outside [0, 1] are compared numerically as before (U1 keeps used faces as today); only unused faces
+    apply the [0, 1] validity check. Material:NoMass and AirGap optics remain unreadable to S09 (BLOCKED technical).
+  - The writer's construction-aware variants' effect on results stays unmeasured (no engine run; §5.2 adds none).
 - **Revision 8 limits and open items:**
-  - **Owner decision pending:** the 69 / 138 rows on faces EnergyPlus does not use keep both fixtures BLOCKED owner
-    (exit 12): accept them, or an S07 3a scope decision (separate SAM PR). Neither is PASS until then; exit 12 is not
-    a Phase B PASS, and no roadmap exception is requested.
+  - **Owner decision (resolved by U1, revision 12):** the 69 / 138 rows on faces EnergyPlus does not use kept both
+    fixtures BLOCKED owner (exit 12) until S07 §5.2; see the revision-12 item above.
   - **Behaviour change:** every SAM model whose first-layer materials have differing faces now exports `_Internal`
     variants with different zone-face absorptances. **The effect on results is unmeasured**; nothing was simulated.
   - A single-layer outdoor or interzone construction with differing faces now makes the conversion invalid
@@ -1798,14 +1963,15 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 
 ## Next step
 
-Both fixtures report BLOCKED owner, exit 12, with only unused-face rows left. Do not start S10.
-- **Independent review of the revision-11 per-layer consistency fix** (`4ea2e6c`, and the record head in the PR
-  description): the per-layer thickness and thermal comparison of both sides, its direction, the massless and air-gap
-  exclusion, the 12.5 mm / 20 mm regression and swapped-thickness case, the valid controls and the A/B. Revision 10 has
-  passed independent review; the review of `89a2216` confirmed the rest of revision 11 and raised this one finding.
-- Then the owner decides the unused-face rows (accept, or an S07 3a scope decision through a separate SAM PR).
+Both fixtures PASS, exit 0, under S07 §5.2 (scoped native-input conformance; not Phase B). Do not start S10.
+- **Independent principal-architect review of revision 12** (tested content `8edf793a63b274cafe5e55b9e85fa597d6307a10`, and the record head in the PR
+  description): the face-role derivation (`OpaqueRole`) and its independence from the writer, the row conditions
+  (`UnusedOpaqueFace`), the informational flag on the shared result and the gate, report schema `/3`, the two review
+  decisions in "Revision 12" (listing removed; native exact zero), the 23 cases and the A/B. Revisions 10 and 11 have
+  passed independent review (revision 11 including the per-layer fix `4ea2e6c`).
 - Optional, if the owner wants a refreshed committed pack: an authorised acceptance run (`Run-S09-ReadBack.ps1`, both
   phases, then `Pack-S09-Evidence.ps1`) at the reviewed head. It exports and translates with the OpenStudio SDK only.
+  The committed pack (`runs/`, `negatives/`, `summary-*.json`) predates L1 and U1.
 - Then the owner's merge decision, the known-SHA `PROJECT_PROGRESS.md` closeout and guarded branch cleanup.
 - The roadmap S09 row, and any Phase B gate exception, change only through a separate SAM PR.
 - The construction-performance route needs its own owner start and authorisation for any EnergyPlus run.
