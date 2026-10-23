@@ -8,6 +8,9 @@ Branch `feature/s09-openstudio-input-readback`, base `sow/2026-Q4` (`7f216657`).
 merged.**
 - **Tested content (revision 12, S07 §5.2 amendment U1, OUT-OF-ENGINE-SCOPE):** `8edf793a63b274cafe5e55b9e85fa597d6307a10`. S09 comparator,
   report and tests only; the writer and importer are unchanged.
+- **Acceptance (2026-10-23):** run at head `d26665bd2e397d011cd1dda382c3e93004e1c231` (code `8edf793`), packed in
+  `documentation/S09-OpenStudio-InputReadBack-evidence/acceptance-2026-10-23/`. Revision 12 passed independent code
+  review before it.
 - **Revision 11 (the owner-approved opaque multi-layer import order, fail closed, per-layer consistency):** tested
   content `4ea2e6c2ac5805426ed1b39bdd5d88b39b1c723f` (after `37841ea`, `5241bdd` and `f5f207b`), head
   `adcad2f4383ab3763839e4a7e0a87c84d1468e4c` (Build 39838540508 and SPDX 39838540363 succeeded). **The per-layer fix
@@ -44,7 +47,12 @@ merged.**
 ## Status
 
 - **Revision 12 implements S07 §5.2, amendment U1** (approved by the merge of SAM#218, `b06dbe8c`; closeout `0168d03f`;
-  see "Revision 12"). S09 only; **not yet independently reviewed**.
+  see "Revision 12"). S09 only. **It passed independent code review** (owner statement, 2026-10-23, at head
+  `d26665b`).
+  - **Acceptance run at head `d26665b`** (owner-authorised, 2026-10-23; `acceptance-2026-10-23/`): box, two-zone
+    and the box repeat PASS, exit 0, coverage 319/319 and 592/592; out-of-engine-scope 105 / 216 (differing 69 /
+    138); all 21 negatives FAIL (exit 10) by their intended mechanism; the repeat IDF and every `report.txt` are
+    byte-identical (and identical to the revision-12 test session). Local only: hosted CI does not run it.
   - Row-3a opaque absorptance and emissivity on a face EnergyPlus 25.1 does not use are **OUT-OF-ENGINE-SCOPE**:
     informational, not gated, never MATCH, NOT-APPLICABLE or an accepted limitation. Each row keeps the SAM and native
     values, the difference, side, layer, property, scope reason and the amendment, in JSON and text, with counts.
@@ -1309,7 +1317,7 @@ because `FenestrationTests.Holes_...` takes the first diagnostic containing "hol
 ## Fixture verdicts (approved rules)
 
 **Revision 12 supersedes the status and outcomes below:** both fixtures PASS, exit 0, under S07 §5.2 (see "Revision
-12"). Revision 5 superseded the counts and the lighting item (319/319 and 592/592, optics only; see "Revision 5"), and
+12"); its acceptance pack is `acceptance-2026-10-23/` (21 negatives, box repeat). Revision 5 superseded the counts and the lighting item (319/319 and 592/592, optics only; see "Revision 5"), and
 revision 7 then revision 8 the status.
 This section is the revisions 1–4 acceptance (`acc3`/`acc6`), which predates amendment L1 and was not re-run.
 
@@ -1602,9 +1610,11 @@ calculation, EnergyPlus simulation or sizing was run.
   - `benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/OpaqueFaceScopeTests.cs` (new, 23 cases) and
     `ReadBackTests.cs` (partial; pre-U1 expectations updated);
   - `docs/SAM_OPENSTUDIO_MATERIAL_MAPPING.md` (what S09 gates);
-  - the evidence `revision-12/` and this record.
+  - the evidence `revision-12/` and this record;
+  - the acceptance pack `documentation/S09-OpenStudio-InputReadBack-evidence/acceptance-2026-10-23/` (new, after the
+    review; the earlier `runs/`, `negatives/` and `summary-*.json` are kept as history).
 
-  No writer, importer, CLI, shared-core, linked-source, fixture, weather, tolerance or workflow change.
+  No writer, importer, CLI, shared-core, linked-source, fixture, weather, tolerance, script or workflow change.
 - Revision 2 changed:
   - `Compare/OsComparison.cs`, `Native/NativeReader.cs`, `Report/OsReport.cs`, `Run-S09-ReadBack.ps1`;
   - `Cli/Negative.cs`, `Tests/ReadBackTests.cs`;
@@ -1722,6 +1732,7 @@ calculation, EnergyPlus simulation or sizing was run.
 
 | Check | At | Result |
 |---|---|---|
+| Acceptance (`Run-S09-ReadBack.ps1`, both phases; `Pack-S09-Evidence.ps1`) | head `d26665b` (code `8edf793`; harness `8a77b235…`, library `d2368ce8…`, writer `67a2ded7…`), root `C:\TasOut\s09\acc7-u1` (machine-local) | box / two / box-repeat PASS exit 0 (319/319, 592/592); out-of-engine-scope 105 / 216, differing 69 / 138; 21/21 negatives FAIL exit 10; repeat IDF and `report.txt` identical; provisional baseline: box 0, two-zone 12 (no T-VENT-INACTIVE in that rule set). Pack: `acceptance-2026-10-23/` |
 | S09 tests | `8edf793` (revision 12, `8edf793a63b274cafe5e55b9e85fa597d6307a10`; harness `bb843152…`, library `46cd8fb6…`, writer `37226c49…`) | **120/120** (97 retained, 6 with updated pre-U1 expectations, + 23 new); both fixtures PASS exit 0; `report.txt` byte-identical in two sessions (`revision-12/`). The first session failed 1 new case (an adiabatic test wall with a window); only the test's wall choice changed |
 | Writer/importer, `--filter 'TestCategory!=Simulation'` | `8edf793` | **471 passed, 2 skipped** (the real-SQL fixtures; no writer, importer or writer-test change) |
 | Benchmark, `--filter 'TestCategory!=Simulation'` | `8edf793` | 51/51 |
@@ -1854,7 +1865,12 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
   - **Resolved by U1:** the revision-8 owner decision on the 69 / 138 unused-face rows (the S07 3a scope decision was
     taken by SAM#218). They are now OUT-OF-ENGINE-SCOPE and both fixtures PASS, exit 0: scoped native-input conformance
     only. It is not simulation equivalence, not a Phase B PASS (S08-S11 PASS is needed; no roadmap exception is
-    requested) and not an owner acceptance of anything else. Not independently reviewed yet.
+    requested) and not an owner acceptance of anything else. Passed independent code review; acceptance pack
+    `acceptance-2026-10-23/`.
+  - Acceptance tooling under Windows PowerShell 5.1 (observed 2026-10-23, scripts not changed): `$PSScriptRoot` is
+    empty in the parameter defaults of `Run-S09-ReadBack.ps1` and `Pack-S09-Evidence.ps1` (pass `-Exe` / `-Target`),
+    and `Pack-S09-Evidence.ps1` reads reports with the ANSI default, turning "§" into "Â§". The committed pack was
+    made with `Get-Content` defaulted to UTF-8 and checked byte-identical; the earlier packs have no "§".
   - The premise (EnergyPlus 25.1 reads only the outermost outside face and the innermost zone face of an opaque
     construction) is S07's, from the revision-8 optics table; it was not re-verified against the EnergyPlus reference
     here, and no engine was run. A later engine version or setting that reads other faces needs a new decision (§5.2).
@@ -1964,14 +1980,14 @@ The before/after commands are in `documentation/S09-OpenStudio-InputReadBack-evi
 ## Next step
 
 Both fixtures PASS, exit 0, under S07 §5.2 (scoped native-input conformance; not Phase B). Do not start S10.
-- **Independent principal-architect review of revision 12** (tested content `8edf793a63b274cafe5e55b9e85fa597d6307a10`, and the record head in the PR
-  description): the face-role derivation (`OpaqueRole`) and its independence from the writer, the row conditions
-  (`UnusedOpaqueFace`), the informational flag on the shared result and the gate, report schema `/3`, the two review
-  decisions in "Revision 12" (listing removed; native exact zero), the 23 cases and the A/B. Revisions 10 and 11 have
-  passed independent review (revision 11 including the per-layer fix `4ea2e6c`).
-- Optional, if the owner wants a refreshed committed pack: an authorised acceptance run (`Run-S09-ReadBack.ps1`, both
-  phases, then `Pack-S09-Evidence.ps1`) at the reviewed head. It exports and translates with the OpenStudio SDK only.
-  The committed pack (`runs/`, `negatives/`, `summary-*.json`) predates L1 and U1.
-- Then the owner's merge decision, the known-SHA `PROJECT_PROGRESS.md` closeout and guarded branch cleanup.
+Revision 12 passed independent code review, and the acceptance pack at head `d26665b` is committed
+(`acceptance-2026-10-23/`).
+- **Final review of the acceptance evidence** (the record head and its hosted checks in the PR description).
+- Then the **owner's merge decision** (the PR is open and was marked ready for review by the owner account on
+  2026-10-23; this task did not change its draft state). After merge: the known-SHA `PROJECT_PROGRESS.md` closeout and
+  guarded branch cleanup.
+- Optional, separate: make the two scripts work as written under Windows PowerShell 5.1 (`$PSScriptRoot` in parameter
+  defaults; `Get-Content` without `-Encoding UTF8` in `Pack-S09-Evidence.ps1`). Not changed here; the workarounds are
+  in `acceptance-2026-10-23/README.md`.
 - The roadmap S09 row, and any Phase B gate exception, change only through a separate SAM PR.
 - The construction-performance route needs its own owner start and authorisation for any EnergyPlus run.
