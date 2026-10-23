@@ -29,6 +29,40 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
     }
 
     /// <summary>
+    /// One row-3a opaque optical row on a face EnergyPlus does not use (S07 §5.2, amendment U1): OUT-OF-ENGINE-SCOPE,
+    /// informational and not gated. Both values, their difference, the side and layer, and the scope reason are kept.
+    /// </summary>
+    public sealed class OutOfEngineScopeRow
+    {
+        public string Quantity { get; set; }
+        public string Key { get; set; }
+        public string Side { get; set; }
+
+        /// <summary>The layer's EnergyPlus position on this side, outside first (as in the key), of <see cref="LayerCount"/>.</summary>
+        public int Layer { get; set; }
+        public int LayerCount { get; set; }
+        public string Property { get; set; }
+
+        /// <summary>The SAM face the row holds: internal or external.</summary>
+        public string SamFace { get; set; }
+        public string SamMaterial { get; set; }
+        public string NativeObject { get; set; }
+        public double SamValue { get; set; }
+        public double NativeValue { get; set; }
+
+        /// <summary>|native − SAM|.</summary>
+        public double Delta { get; set; }
+
+        /// <summary>The shared S07 numeric verdict of the two values (Identical, WithinTolerance, OutsideTolerance), for information.</summary>
+        public string NumericVerdict { get; set; }
+
+        /// <summary>True when the two values are outside the row-3a tolerance (the pre-U1 single-sided difference).</summary>
+        public bool Differs { get; set; }
+        public string ScopeReason { get; set; }
+        public string Amendment { get; set; }
+    }
+
+    /// <summary>
     /// The S09 comparison of one fixture: SAM intent (ReadBackExpected and the core formulas, S07 section 3) against the
     /// native OSM/IDF read-back, quantity by quantity and hour by hour, gated by the S08 evaluation core.
     /// </summary>
@@ -42,8 +76,15 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
         /// <summary>The S07 §5.1 lighting energy split (amendment L1), verified for an authored p.</summary>
         public const string LightSplit = "T-LIGHT-SPLIT";
 
-        /// <summary>The writer's single-sided opaque optical properties (SAM-OS-MAT-002): a known converter behaviour, named for the owner.</summary>
-        public const string SingleSidedOpaque = "OS-MAT-SINGLE-SIDED";
+        /// <summary>
+        /// S07 §5.2, amendment U1 (approved by the merge of SAM#218, b06dbe8c): row-3a opaque absorptance and emissivity are
+        /// gated on the faces EnergyPlus 25.1 uses; a valid, comparable authored value on any other face is
+        /// OUT-OF-ENGINE-SCOPE. It replaces the S09-only OS-MAT-SINGLE-SIDED listing (MAPPING-DIFFERENCE) of revisions 2-11.
+        /// </summary>
+        public const string OpaqueFaceScope = "S07 §5.2 amendment U1 (SAM#218 b06dbe8c)";
+
+        /// <summary>The report's outcome name for an OUT-OF-ENGINE-SCOPE row (the shared core has no such outcome; it is OpenStudio-local).</summary>
+        public const string OutOfEngineScopeOutcome = "OutOfEngineScope";
 
         public string FixtureId { get; private set; }
         public GateRuleSet RuleSet { get; private set; }
@@ -64,9 +105,17 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
 
         public List<string> FixtureCriteria { get; } = new List<string>();
         public Dictionary<string, string> VentilationStates { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// The OUT-OF-ENGINE-SCOPE rows (S07 §5.2), in result order. Each one's result stays in <see cref="Results"/> for
+        /// coverage, marked informational, so the gate does not count it; every other result gates as before.
+        /// </summary>
+        public List<OutOfEngineScopeRow> OutOfEngineScope { get; } = new List<OutOfEngineScopeRow>();
+
         public GateReport Gate { get; private set; }
         public GateStatus Status { get; private set; }
 
+        private readonly HashSet<QuantityResult> outOfEngineScope = new HashSet<QuantityResult>();
         private NativeModel native;
         private AnalyticalModel model;
         private bool calendarVerified;
@@ -94,10 +143,10 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             result.CompareWeather(epwPath, snapshot);
             result.CompareDesignDays(expected);
 
-            int singleSided = result.Results.Count(x => x.Input.Listing == ContractListing.MappingDifference);
-            if (singleSided > 0)
+            if (result.OutOfEngineScope.Count > 0)
             {
-                result.Supporting.Add(SingleSidedOpaque + ": " + singleSided + " opaque optical row(s) on faces EnergyPlus does not use (buried layer faces, the outside face of interzone, ground and adiabatic sides) hold the layer's other authored face, because EnergyPlus opaque materials are single-sided. Every used face (each innermost layer's zone face, each outdoor outermost face) is compared exactly. Listed as MAPPING-DIFFERENCE by S09, not by S07: an owner decision (accept, or an S07 3a scope decision).");
+                int differing = result.OutOfEngineScope.Count(x => x.Differs);
+                result.Supporting.Add(OpaqueFaceScope + ": " + result.OutOfEngineScope.Count + " row-3a opaque optical row(s) on faces EnergyPlus 25.1 does not use are OUT-OF-ENGINE-SCOPE (informational, not gated): " + differing + " differ from the native value, " + (result.OutOfEngineScope.Count - differing) + " equal it. Each holds a valid authored value and a valid native value on a face whose role S09 derived from SAM, the side and the native boundary. Every used face (each innermost layer's zone face, each outdoor outermost face), every thickness, conductivity, density and specific heat, and every row that is not valid and comparable is gated.");
             }
 
             result.Gate = EQ.Gate(result.Results, result.Configuration);
@@ -117,6 +166,18 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
 
             result.Status = status;
             return result;
+        }
+
+        /// <summary>True for a result reported as OUT-OF-ENGINE-SCOPE (S07 §5.2); it is informational and never gates.</summary>
+        public bool IsOutOfEngineScope(QuantityResult result)
+        {
+            return result != null && outOfEngineScope.Contains(result);
+        }
+
+        /// <summary>A result's reported outcome: <see cref="OutOfEngineScopeOutcome"/> for an S07 §5.2 row, otherwise the shared outcome.</summary>
+        public string ReportedOutcome(QuantityResult result)
+        {
+            return IsOutOfEngineScope(result) ? OutOfEngineScopeOutcome : result.Outcome.ToString();
         }
 
         // ---- coverage ---------------------------------------------------------------------------------------------------
@@ -467,7 +528,13 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             bool firstSide = panel.SpaceOrder.Count == 0 || panel.SpaceOrder[0] == space.Guid;
             List<ExpectedLayer> expectedLayers = firstSide ? Enumerable.Reverse(panel.Layers).ToList() : panel.Layers.ToList();
             List<IdfObject> nativeLayers = LayersOf(surface?.Object.Value(2, "Construction Name", out string _), side, surface != null);
-            CompareLayers(side, expectedLayers, nativeLayers, identity, false, firstSide, kind);
+            OpaqueSideRole role = OpaqueRole(space, panel, surface, identity, expectedLayers, nativeLayers, kind);
+            if (!role.Established && role.Named)
+            {
+                Unsupported.Add("optics role: " + side + ": " + role.Problem + "; no optical face of this side is OUT-OF-ENGINE-SCOPE (" + OpaqueFaceScope + ")");
+            }
+
+            CompareLayers(side, expectedLayers, nativeLayers, identity, false, firstSide, kind, role);
             SingleLayerFaces(side, expectedLayers, kind);
 
             HeatFlowDirection direction = DirectionOf(panel, firstSide);
@@ -510,7 +577,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
             return result;
         }
 
-        private void CompareLayers(string key, List<ExpectedLayer> expected, List<IdfObject> nativeLayers, IdentityStatus identity, bool transparent, bool frontIsExternal, ElementKind kind)
+        private void CompareLayers(string key, List<ExpectedLayer> expected, List<IdfObject> nativeLayers, IdentityStatus identity, bool transparent, bool frontIsExternal, ElementKind kind, OpaqueSideRole role = null)
         {
             int count = Math.Max(expected.Count, nativeLayers?.Count ?? 0);
             for (int k = 0; k < count; k++)
@@ -522,25 +589,256 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
                     string layerKey = Keys.Layer(key, k + 1, property);
                     ExpectedValue e = layer == null ? ExpectedValue.Unspecified("SAM states no layer " + (k + 1)) : ExpectedLayerValue(layer, property);
                     ReaderResult n = NativeLayerValue(nativeLayer, property, frontIsExternal);
-                    ContractListing listing = ContractListing.None;
-                    if (!transparent && layer != null && TryGetOpaqueFace(property, out bool internalFace, out string otherFace)
+                    QuantityResult result = EQ.Evaluate(Input(transparent ? "3c.layer" : "3a", layerKey, e, n, identity, AlignmentStatus.Unverified), Configuration);
+
+                    // S07 §5.2: EnergyPlus opaque materials hold one value per property for both faces, and only the
+                    // outermost layer's outside face (outdoors) and the innermost layer's zone face are used. Every
+                    // other face's row is OUT-OF-ENGINE-SCOPE when it is valid and comparable; otherwise it gates.
+                    if (!transparent && layer != null && TryGetOpaqueFace(property, out bool internalFace, out string _)
                         && !IsExposedOpaqueFace(k, expected.Count, internalFace, frontIsExternal, kind))
                     {
-                        // EnergyPlus opaque materials hold one value per property for both faces, and only the
-                        // outermost layer's outside face (outdoors) and the innermost layer's zone face are used. On
-                        // any other face a different authored value is the named single-sided difference, but only
-                        // while the native value is this layer's other authored face: anything else is not explained.
-                        ExpectedValue other = ExpectedLayerValue(layer, otherFace);
-                        if (e.State == SamInputState.Value && other.State == SamInputState.Value && e.Value != other.Value && n.HasNumber
-                            && EQ.Compare(other.Value, n.Value, QuantityCatalog.Get("3a").Tolerance).IsWithin)
-                        {
-                            listing = ContractListing.MappingDifference;
-                        }
+                        result = UnusedOpaqueFace(result, role, key, layer, nativeLayer, k, expected.Count, property, internalFace, frontIsExternal, kind);
                     }
 
-                    Results.Add(EQ.Evaluate(Input(transparent ? "3c.layer" : "3a", layerKey, e, n, identity, AlignmentStatus.Unverified, listing), Configuration));
+                    Results.Add(result);
                 }
             }
+        }
+
+        /// <summary>
+        /// The optical face roles of one opaque panel side (S07 §5.2), or why they are not established. Established only
+        /// from evidence that does not come from the writer's face selector: the raw SAM panel (its spaces in GetSpaces()
+        /// order, adiabatic flag, type and layers) and the native surface it was matched to by geometry (its outside
+        /// boundary and, for an interzone side, the partner surface and construction).
+        /// </summary>
+        private sealed class OpaqueSideRole
+        {
+            public string Problem;
+
+            /// <summary>
+            /// True when the problem is an uninterpretable or contradictory configuration, named as unsupported (BLOCKED
+            /// technical). False when it is a missing native object or an unverified identity, which gate on their own rows.
+            /// </summary>
+            public bool Named;
+
+            public bool Adiabatic;
+
+            public bool Established => Problem == null;
+        }
+
+        private OpaqueSideRole OpaqueRole(ExpectedSpace space, ExpectedPanel panel, NativeSurface surface, IdentityStatus identity, List<ExpectedLayer> expectedLayers, List<IdfObject> nativeLayers, ElementKind kind)
+        {
+            OpaqueSideRole Problem(string problem, bool named) => new OpaqueSideRole { Problem = problem, Named = named };
+
+            if (surface == null)
+            {
+                return Problem("no native surface", false);
+            }
+
+            if (identity != IdentityStatus.Verified)
+            {
+                return Problem("the side's identity is not verified (" + identity + ")", false);
+            }
+
+            if (nativeLayers == null)
+            {
+                return Problem("no native construction", false);
+            }
+
+            // SAM: the panel's spaces, its type and its boundary flags must state one boundary.
+            if (panel.SpaceOrder.Count == 0 || !panel.SpaceOrder.Contains(space.Guid))
+            {
+                return Problem("the panel's SAM spaces (" + panel.SpaceOrder.Count + ") do not include this space", true);
+            }
+
+            if (panel.SpaceOrder.Count > 2 || panel.SpaceOrder.Distinct().Count() != panel.SpaceOrder.Count)
+            {
+                return Problem("the panel's SAM space list is malformed (" + panel.SpaceOrder.Count + " entries, " + panel.SpaceOrder.Distinct().Count() + " distinct)", true);
+            }
+
+            if (panel.PanelType == PanelType.Undefined || panel.PanelType == PanelType.Shade || panel.PanelType == PanelType.SolarPanel || panel.PanelType == PanelType.Air)
+            {
+                return Problem("SAM panel type " + panel.PanelType + " has no supported opaque boundary", true);
+            }
+
+            if (panel.SpaceOrder.Count == 2 && (panel.Adiabatic || IsGround(panel.PanelType)))
+            {
+                return Problem("contradictory SAM boundary: the panel bounds two spaces and is " + (panel.Adiabatic ? "adiabatic" : "a ground type (" + panel.PanelType + ")"), true);
+            }
+
+            // Native: the outside boundary must be exactly the SAM one; any other form (a ground preprocessor, other side
+            // coefficients, a Foundation, an adiabatic panel written as Ground) is not read as one of the four.
+            string expectedBoundary = kind == ElementKind.Internal ? "Surface" : kind == ElementKind.External ? "Outdoors" : panel.Adiabatic ? "Adiabatic" : "Ground";
+            string boundary = NativeModel.Text(surface.Object, 5, "Outside Boundary Condition", out string boundaryProblem);
+            if (boundaryProblem != null)
+            {
+                return Problem("the native outside boundary is unreadable: " + boundaryProblem, true);
+            }
+
+            if (!string.Equals(boundary?.Trim(), expectedBoundary, StringComparison.OrdinalIgnoreCase))
+            {
+                return Problem("the native outside boundary '" + boundary + "' is not the SAM boundary '" + expectedBoundary + "'", true);
+            }
+
+            // Layers: one native layer per SAM layer, so each position has one SAM layer.
+            if (expectedLayers.Count == 0 || nativeLayers.Count != expectedLayers.Count)
+            {
+                return Problem("the native construction has " + nativeLayers.Count + " layer(s) and SAM " + expectedLayers.Count, true);
+            }
+
+            // Interzone: the outside face is the partner's zone face only when the partner names this surface back and
+            // its construction is this one reversed.
+            if (kind == ElementKind.Internal)
+            {
+                string partnerName = NativeModel.Text(surface.Object, 6, "Outside Boundary Condition Object", out string partnerProblem);
+                IdfObject partner = partnerProblem == null ? native.IdfByName("BuildingSurface:Detailed", partnerName) : null;
+                if (partner == null)
+                {
+                    return Problem("the interzone partner surface '" + partnerName + "' is " + (partnerProblem != null ? "unreadable: " + partnerProblem : "not in the IDF"), true);
+                }
+
+                string partnerBoundary = NativeModel.Text(partner, 5, "Outside Boundary Condition", out string _);
+                string partnerObject = NativeModel.Text(partner, 6, "Outside Boundary Condition Object", out string _);
+                if (!string.Equals(partnerBoundary?.Trim(), "Surface", StringComparison.OrdinalIgnoreCase) || !string.Equals(partnerObject?.Trim(), surface.Object.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Problem("the interzone partner '" + partner.Name + "' does not name this surface back (" + partnerBoundary + " '" + partnerObject + "')", true);
+                }
+
+                List<IdfObject> partnerLayers = LayersOf(partner.Value(2, "Construction Name", out string _), null, false);
+                List<string> mirror = nativeLayers.Select(x => x.Name).Reverse().ToList();
+                if (partnerLayers == null || !partnerLayers.Select(x => x.Name).SequenceEqual(mirror, StringComparer.OrdinalIgnoreCase))
+                {
+                    return Problem("the interzone partner's construction is not this side's construction reversed", true);
+                }
+            }
+
+            return new OpaqueSideRole { Adiabatic = panel.Adiabatic };
+        }
+
+        /// <summary>
+        /// A row-3a optical row on a face EnergyPlus does not use (S07 §5.2). It is OUT-OF-ENGINE-SCOPE, informational, only
+        /// when the side's role is established, the layer is an opaque SAM material written as an opaque Material, the SAM
+        /// value is authored (S-VALUE, or S-ZERO: an authored zero is a value) and the native value is read, both in
+        /// [0, 1], and the shared evaluation is a numeric comparison of the two (MATCH, WITHIN-TOLERANCE or
+        /// OUT-OF-TOLERANCE, without any other trigger). Anything else keeps its shared, gated result, with the reason it
+        /// was not excluded; a value outside [0, 1] is INPUT-INVALID (SAM) or EXPORT-DEFECT (native), never compared.
+        /// </summary>
+        private QuantityResult UnusedOpaqueFace(QuantityResult result, OpaqueSideRole role, string side, ExpectedLayer layer, IdfObject nativeLayer, int index, int count, string property, bool internalFace, bool firstSide, ElementKind kind)
+        {
+            QuantityInput input = result.Input;
+            ExpectedValue e = input.Expected;
+            ReaderResult n = input.Native;
+            bool samAuthored = e.State == SamInputState.Value || e.State == SamInputState.Zero;
+
+            string refused = null;
+            if (role == null || !role.Established)
+            {
+                refused = "the side's face role is not established: " + (role?.Problem ?? "not assessed");
+            }
+            else if (!(layer.Material is OpaqueMaterial))
+            {
+                refused = "SAM layer '" + layer.Name + "' is not an opaque material of the frozen library";
+            }
+            else if (nativeLayer == null || !string.Equals(nativeLayer.Type, "Material", StringComparison.OrdinalIgnoreCase))
+            {
+                refused = "the native layer is " + (nativeLayer == null ? "absent" : nativeLayer.Type + " '" + nativeLayer.Name + "'") + ", not an opaque Material";
+            }
+            else if (!samAuthored)
+            {
+                refused = "the SAM value is " + e + ", not an authored value";
+            }
+            else if (!n.HasNumber)
+            {
+                refused = "the native value is " + n + ", not a read value";
+            }
+
+            if (refused == null && !InUnitInterval(e.Value))
+            {
+                QuantityResult invalid = EQ.Evaluate(new QuantityInput
+                {
+                    Definition = input.Definition,
+                    FixtureId = input.FixtureId,
+                    ObjectKey = input.ObjectKey,
+                    Expected = ExpectedValue.Invalid("authored " + property + " " + e.Value.ToString("R", ci) + " of '" + layer.Name + "' is outside [0, 1]"),
+                    Native = n,
+                    Identity = input.Identity,
+                    Alignment = input.Alignment
+                }, Configuration);
+                return Annotated(invalid, "the SAM value is outside [0, 1]");
+            }
+
+            if (refused == null && !InUnitInterval(n.Value))
+            {
+                return new QuantityResult(input, EquivalenceOutcome.ExportDefect, GateStatus.Fail, "The native " + property + " " + n.Value.ToString("R", ci) + " of " + nativeLayer.Type + " '" + nativeLayer.Name + "' is outside [0, 1]; it is not a comparable optical value (SAM " + e + "). Not OUT-OF-ENGINE-SCOPE (" + OpaqueFaceScope + ").", null, null, null, null, null);
+            }
+
+            if (refused == null && result.Outcome != EquivalenceOutcome.Match && result.Outcome != EquivalenceOutcome.WithinTolerance && result.Outcome != EquivalenceOutcome.OutOfTolerance)
+            {
+                refused = "the shared evaluation is " + result.Outcome + ", not a numeric comparison of two valid values";
+            }
+
+            if (refused != null)
+            {
+                return Annotated(result, refused);
+            }
+
+            NumericComparison comparison = EQ.Compare(e.Value, n.Value, input.Definition.Tolerance);
+            string reason = UnusedFaceReason(index, count, internalFace, firstSide, kind, role.Adiabatic);
+            OutOfEngineScopeRow row = new OutOfEngineScopeRow
+            {
+                Quantity = input.Definition.Id,
+                Key = input.ObjectKey,
+                Side = side,
+                Layer = index + 1,
+                LayerCount = count,
+                Property = property,
+                SamFace = internalFace ? "internal" : "external",
+                SamMaterial = layer.Name,
+                NativeObject = nativeLayer.Name,
+                SamValue = e.Value,
+                NativeValue = n.Value,
+                Delta = Math.Abs(n.Value - e.Value),
+                NumericVerdict = comparison.Verdict.ToString(),
+                Differs = !comparison.IsWithin,
+                ScopeReason = reason,
+                Amendment = OpaqueFaceScope
+            };
+
+            QuantityResult scoped = new QuantityResult(input, result.Outcome, result.Status,
+                "OUT-OF-ENGINE-SCOPE (" + OpaqueFaceScope + "): " + reason + "; SAM " + row.SamValue.ToString("R", ci) + ", native " + row.NativeValue.ToString("R", ci) + ", |d| " + row.Delta.ToString("R", ci) + " (" + row.NumericVerdict + "). Informational: EnergyPlus 25.1 does not use this face's optics, so it is not gated; it is not a MATCH and not an accepted limitation.",
+                result.Comparison, null, null, null, null, true);
+            OutOfEngineScope.Add(row);
+            outOfEngineScope.Add(scoped);
+            return scoped;
+        }
+
+        private static bool InUnitInterval(double value)
+        {
+            return value >= 0 && value <= 1;
+        }
+
+        private static QuantityResult Annotated(QuantityResult result, string refused)
+        {
+            return new QuantityResult(result.Input, result.Outcome, result.Status, result.Reason + " Not OUT-OF-ENGINE-SCOPE (" + OpaqueFaceScope + "): " + refused + ".", result.Comparison, result.Proposed, result.OwnerDecisionNamed, result.TechnicalBlockerNamed, result.AcceptedBy, result.IsInformational, result.InformationalElements);
+        }
+
+        /// <summary>Why EnergyPlus does not use a face (S07 §5.2): the outside face of the outermost layer on an interzone, ground or adiabatic side, or a buried layer face.</summary>
+        private static string UnusedFaceReason(int index, int count, bool internalFace, bool firstSide, ElementKind kind, bool adiabatic)
+        {
+            if (index == 0 && internalFace != firstSide)
+            {
+                if (kind == ElementKind.Internal)
+                {
+                    return "interzone surface outer face (the partner side's zone face, gated on that side)";
+                }
+
+                if (kind == ElementKind.GroundOrAdiabatic)
+                {
+                    return adiabatic ? "adiabatic surface outer face" : "ground surface outer face";
+                }
+            }
+
+            return "buried layer face (layer " + (index + 1) + " of " + count + ", SAM " + (internalFace ? "internal" : "external") + " face)";
         }
 
         /// <summary>The SAM face of an opaque optical layer property (<c>internal*</c> / <c>external*</c>) and the same property's other face.</summary>

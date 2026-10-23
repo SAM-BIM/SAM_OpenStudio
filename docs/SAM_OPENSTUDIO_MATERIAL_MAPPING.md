@@ -70,6 +70,12 @@ zone face. SAM stores layers inside → outside from the panel's first space in
   **information SAM-OS-MAT-004 at Summary**; the written value is not stamped as authored, so
   an import keeps the internal value unspecified. S07 lists no default for an internal face,
   so S09 reports those zone-face rows as S-UNSPEC EXPORT-DEFECT, never as a match.
+- **What S09 gates (S07 §5.2, amendment U1, from #33 revision 12).** S09 compares the faces in
+  the table above exactly. Every other face of an opaque layer (buried faces, and the outer
+  face of an interzone, ground or adiabatic side) holds a value EnergyPlus 25.1 does not use:
+  when both values are valid and the face's role is established independently of this
+  writer, the row is reported as OUT-OF-ENGINE-SCOPE (informational, not gated) with both
+  values. The writer itself is unchanged by this.
 - **Single-layer constructions** (one layer is both faces): agreeing faces are written
   normally; on the ground or an adiabatic boundary only the zone face is used, so the
   internal values are written. On an outdoor or interzone surface (including a two-sided

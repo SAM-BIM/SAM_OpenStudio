@@ -13,12 +13,14 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
 {
     /// <summary>
     /// The S09 read-back end to end, offline: export, fresh-process read and compare on the S08 signed-off fixtures with the
-    /// Budapest EPW. Each fixture has complete S07 coverage, and every non-PASS item is single-sided opaque optics, which
-    /// the owner accepted for the reviewed fixture bytes only (NOT PASS, accepted limitation, exit 14). The lighting split is the S07 §5.1 T-LIGHT-SPLIT of the authored p. The ventilation
-    /// policy holds hour by hour, and every targeted mutation is refused.
+    /// Budapest EPW. Each fixture has complete S07 coverage. Opaque optics on faces EnergyPlus does not use are
+    /// OUT-OF-ENGINE-SCOPE (S07 §5.2, amendment U1): informational, not gated, never MATCH. Every gated quantity passes, so
+    /// both fixtures PASS scoped native-input conformance (exit 0); this is not simulation equivalence. The lighting split
+    /// is the S07 §5.1 T-LIGHT-SPLIT of the authored p. The ventilation policy holds hour by hour, and every targeted
+    /// mutation is refused.
     /// </summary>
     [TestFixture]
-    public class ReadBackTests
+    public partial class ReadBackTests
     {
         private string boxRun;
         private string twoRun;
@@ -37,12 +39,13 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         private static string Ic(Guid space, string what) => "space:" + space.ToString("D") + ".ic." + what;
 
         /// <summary>
-        /// The non-PASS items of a fixture, minus the named owner decision (single-sided opaque optics); must be empty. The
-        /// lighting rows have no exception (S07 §5.1 removed the view-coefficient comparison and its DOCUMENTED-DEFAULT).
+        /// The gating non-PASS items of a fixture; must be empty. Since S07 §5.2 (amendment U1) no gated item is excepted:
+        /// the unused-face optics rows are OUT-OF-ENGINE-SCOPE and never in <see cref="OsReport.NonPass"/>. The lighting rows
+        /// have no exception (S07 §5.1 removed the view-coefficient comparison and its DOCUMENTED-DEFAULT).
         /// </summary>
         private static List<ReportItem> Unexplained(OsReport report)
         {
-            return report.NonPass.Where(x => !(x.Outcome == "MappingDifference" && x.Quantity == "3a")).ToList();
+            return report.NonPass.ToList();
         }
 
         private static readonly string[] LightingRows = { "lighting.returnAir", "lighting.radiantTotal", "lighting.visible", "lighting.radiant", "lighting.convective" };
@@ -96,7 +99,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             TestSupport.ChangeCondition(model, TestSupport.BoxSpace, ic => ic.SetValue(InternalConditionParameter.LightingRadiantProportion, 0.0));
             OsReport report = TestSupport.Pipeline(TestSupport.Write(model, "box-p0-zero"), TestSupport.Box, "box-p-zero", out string run);
             Assert.That(Unexplained(report), Is.Empty, string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
-            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), "the optics only, not accepted: the model bytes are not the reviewed fixture's");
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Pass), "every gated row passes; the unused-face optics are informational (S07 §5.2)");
 
             Dictionary<string, QuantityResult> rows = LightingResults(run, TestSupport.Box, TestSupport.BoxSpace);
             foreach (string row in new[] { "lighting.returnAir", "lighting.radiantTotal", "lighting.visible", "lighting.radiant" })
@@ -153,6 +156,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             string label = "box-p-" + what;
             OsReport report = TestSupport.Pipeline(TestSupport.Write(model, label), TestSupport.Box, label, out string run);
             Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), report.Status);
+            Assert.That(report.OutOfEngineScope.Count, Is.EqualTo(box.OutOfEngineScope.Count), "the informational rows coexist and stay visible; they neither hide nor add a blocker");
             List<ReportItem> lighting = Unexplained(report);
             Assert.That(lighting.Select(x => x.Key).OrderBy(x => x), Is.EqualTo(LightingRows.Select(x => Ic(TestSupport.BoxSpace, x)).OrderBy(x => x)), string.Join(" | ", lighting.Select(x => x.Key + " " + x.Outcome)));
             Assert.That(lighting.All(x => x.Outcome == "DocumentedDefault" && x.Status == "BlockedOwnerDecision"), Is.True, string.Join(" | ", lighting.Select(x => x.Key + " " + x.Outcome + " " + x.Status)));
@@ -212,7 +216,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         public void TheBoundarySplits_PEqualOneAndZero_AreValid(double p)
         {
             OsReport report = BoxWithP(p, out string run);
-            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), report.Status);
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Pass), report.Status);
             Assert.That(Unexplained(report), Is.Empty, string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
             Assert.That(report.Unsupported, Is.Empty, string.Join(" | ", report.Unsupported));
 
@@ -285,23 +289,34 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             }
         }
 
-        [Test]
-        public void BothFixtures_HaveCompleteCoverage_AndOnlyTheNamedOwnerDecisionRemains()
+        /// <summary>
+        /// S07 §5.2 (amendment U1): with the unused-face optics OUT-OF-ENGINE-SCOPE, every gated row of both fixtures is in
+        /// the PASS allow-list, so both PASS (exit 0) with complete coverage. This is scoped native-input conformance, not
+        /// simulation equivalence and not Phase B.
+        /// </summary>
+        [TestCase(TestSupport.Box, 319)]
+        [TestCase(TestSupport.Two, 592)]
+        public void BothFixtures_HaveCompleteCoverage_AndPassWithTheUnusedFaceRowsInformational(string fixtureId, int required)
         {
-            foreach (OsReport report in new[] { box, two })
-            {
-                Assert.That(report.Coverage, Is.EqualTo("Complete"), report.FixtureId);
-                Assert.That(report.MissingComparisons, Is.Empty, report.FixtureId);
-                Assert.That(report.Consistency, Is.Empty, report.FixtureId + ": " + string.Join(" | ", report.Consistency));
-                Assert.That(report.FixtureCriteria, Is.Empty, report.FixtureId);
-                Assert.That(Unexplained(report), Is.Empty, report.FixtureId + ": " + string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
-                Assert.That(report.Status, Is.EqualTo(GateStatus.BlockedOwnerDecision.ToString()), report.FixtureId + ": never PASS while the named differences are not accepted (revision 7's acceptance is removed)");
-                Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner));
-                Assert.That(report.NonPass.All(x => x.Outcome == "MappingDifference" && x.Status == GateStatus.BlockedOwnerDecision.ToString()), Is.True, report.FixtureId);
-                Assert.That(report.Supporting.Single(x => x.StartsWith(OsComparison.SingleSidedOpaque + ":", StringComparison.Ordinal)), Does.Contain("on faces EnergyPlus does not use").And.Contain("Every used face"));
-                Assert.That(report.Unsupported, Is.Empty, report.FixtureId);
-                Assert.That(report.Series.All(x => x.Count == 8760), Is.True, "every hourly series covers the year");
-            }
+            OsReport report = fixtureId == TestSupport.Box ? box : two;
+            Assert.That(report.Schema, Is.EqualTo("s09-readback-report/3"));
+            Assert.That(report.Coverage, Is.EqualTo("Complete"), report.FixtureId);
+            Assert.That(report.Required, Is.EqualTo(required));
+            Assert.That(report.Results, Is.EqualTo(required));
+            Assert.That(report.MissingComparisons, Is.Empty, report.FixtureId);
+            Assert.That(report.Consistency, Is.Empty, report.FixtureId + ": " + string.Join(" | ", report.Consistency));
+            Assert.That(report.FixtureCriteria, Is.Empty, report.FixtureId);
+            Assert.That(report.Unsupported, Is.Empty, report.FixtureId);
+            Assert.That(Unexplained(report), Is.Empty, report.FixtureId + ": " + string.Join(" | ", Unexplained(report).Select(x => x.Key + " " + x.Outcome + " " + x.Reason)));
+            Assert.That(report.GatedNonPass, Is.EqualTo(0));
+            Assert.That(report.Status, Is.EqualTo(GateStatus.Pass.ToString()), report.FixtureId);
+            Assert.That(report.GateStatus, Is.EqualTo(GateStatus.Pass.ToString()));
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Pass));
+            Assert.That(report.CountByOutcome.Keys, Has.No.Member("MappingDifference"), "the S09-only OS-MAT-SINGLE-SIDED listing is replaced by S07 §5.2");
+            Assert.That(report.CountByOutcome.Values.Sum(), Is.EqualTo(report.Results), "every result is counted once");
+            Assert.That(report.CountByOutcome[OsComparison.OutOfEngineScopeOutcome], Is.EqualTo(report.OutOfEngineScope.Count));
+            Assert.That(report.Supporting.Single(x => x.StartsWith(OsComparison.OpaqueFaceScope + ":", StringComparison.Ordinal)), Does.Contain("OUT-OF-ENGINE-SCOPE (informational, not gated)").And.Contain("Every used face"));
+            Assert.That(report.Series.All(x => x.Count == 8760), Is.True, "every hourly series covers the year");
         }
 
         // ---- opaque face optics (revision 8) -------------------------------------------------------------------------
@@ -359,6 +374,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                 Assert.That(results.ContainsKey(key), Is.True, key);
                 Assert.That(results[key].IsPass, Is.True, key + ": " + results[key].Outcome + " " + results[key].Reason);
                 Assert.That(results[key].Input.Listing, Is.EqualTo(ContractListing.None), key + ": a used face is never a listed difference");
+                Assert.That(results[key].GatesFixture, Is.True, key + ": a used face is never informational");
             }
 
             OsReport report = fixtureId == TestSupport.Box ? box : two;
@@ -477,15 +493,21 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             Assert.That(failed.All(x => x.Quantity == "3a" && x.Key.Contains("SolarReflectance")), Is.True, string.Join(" | ", failed.Select(x => x.Key + " " + x.Reason)));
         }
 
-        /// <summary>The box with its ground floor built as one Screed layer (faces differ): only the zone face is used, so the writer uses the internal face and S09 compares it exactly.</summary>
+        /// <summary>
+        /// The box with its ground floor built as one Screed layer (faces differ): only the zone face is used, so the writer
+        /// uses the internal face and S09 compares it exactly; its outer face is the ground surface outer face (S07 §5.2).
+        /// </summary>
         [Test]
         public void ASingleLayerGroundFloor_UsesItsZoneFace()
         {
             OsReport report = BoxWithSingleLayer(PanelType.SlabOnGrade, "FIX_Screed", 0.065, "box-single-floor", out string run);
             Assert.That(report.Inputs["writerDiagnostics"], Does.Not.Contain("SAM-OS-MAT-003"));
             Assert.That(report.Unsupported, Is.Empty, string.Join(" | ", report.Unsupported));
-            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.BlockedOwner), report.Status);
-            Assert.That(report.NonPass.All(x => x.Outcome == "MappingDifference"), Is.True, string.Join(" | ", report.NonPass.Where(x => x.Outcome != "MappingDifference").Select(x => x.Key + " " + x.Reason)));
+            Assert.That(report.NonPass, Is.Empty, string.Join(" | ", report.NonPass.Select(x => x.Key + " " + x.Reason)));
+            Assert.That(report.ExitCode, Is.EqualTo(ReadBackExit.Pass), report.Status);
+            List<OutOfEngineScopeRow> floor = report.OutOfEngineScope.Rows.Where(x => x.LayerCount == 1).ToList();
+            Assert.That(floor.Select(x => x.Property).OrderBy(x => x), Is.EqualTo(new[] { "externalEmissivity", "externalLightReflectance", "externalSolarReflectance" }), "the single layer's outer face only");
+            Assert.That(floor.All(x => x.ScopeReason == "ground surface outer face" && x.SamMaterial == "FIX_Screed" && x.Differs), Is.True, string.Join(" | ", floor.Select(x => x.Key + " " + x.ScopeReason)));
         }
 
         /// <summary>The box with its roof built as one Plasterboard layer (faces differ): the writer refuses it (SAM-OS-MAT-003) and S09 names it as unsupported; never PASS.</summary>
