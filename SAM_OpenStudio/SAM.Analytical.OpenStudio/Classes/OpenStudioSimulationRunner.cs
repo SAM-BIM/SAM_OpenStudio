@@ -949,9 +949,9 @@ namespace SAM.Analytical.OpenStudio
 
                 // Zone identity normalisation: Ideal Loads variables key on the system name,
                 // zone-level variables on the ThermalZone name, enclosure variables on the
-                // Space name — all end with the same deterministic SAM Guid suffix. Every
-                // per-zone dictionary is remapped onto the energy key so the result set has
-                // ONE zone identity.
+                // Space name — all share the same deterministic "<SanitizedName>_<GuidFirst8>"
+                // identity after their SAM_<Type>_ prefix. Every per-zone dictionary is remapped
+                // onto the energy key so the result set has ONE zone identity.
                 List<string> zoneKeys = new List<string>(loadSummary.ZoneHeating.Keys);
 
                 return new OpenStudioSimulationResultSet(
@@ -992,39 +992,45 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
-        /// Remaps report keys onto the energy-dictionary zone keys by their shared deterministic
-        /// SAM Guid suffix (last 8 characters, case-insensitive): Ideal Loads variables key on
-        /// the system name, zone-level variables on the ThermalZone name, enclosure variables on
-        /// the Space name — the result set exposes ONE zone identity. Unmatched keys pass
-        /// through unchanged.
+        /// SAM_&lt;Type&gt;_ prefixes of the generated names that report per-zone results: Ideal Loads
+        /// variables key on the system name, zone-level variables on the ThermalZone name,
+        /// enclosure variables on the Space name.
         /// </summary>
-        private static Dictionary<string, double> NormalizeKeys(Dictionary<string, double> source, List<string> zoneKeys)
+        private static readonly string[] zoneIdentityPrefixes = new string[] { "SAM_IdealLoads_", "SAM_ThermalZone_", "SAM_Space_" };
+
+        /// <summary>
+        /// Remaps report keys onto the energy-dictionary zone keys by their shared zone identity
+        /// (see <see cref="ZoneIdentity"/>; case-insensitive) — the result set exposes ONE zone
+        /// identity. A key whose identity matches no zone key, or more than one, passes through
+        /// unchanged: it is never guessed onto a zone. When two report keys resolve to the same
+        /// zone key neither is remapped, so no value overwrites another zone's.
+        /// </summary>
+        /// <remarks>
+        /// A key left under its own name is visible in the result set and its zone's value stays
+        /// missing (never another zone's value): the SAM mapping looks values up by the exact
+        /// Ideal Loads name, so for example the space's UnmetHours is simply not set.
+        /// </remarks>
+        private static Dictionary<string, T> NormalizeKeys<T>(Dictionary<string, T> source, List<string> zoneKeys)
         {
             if (source == null)
             {
                 return null;
             }
 
-            Dictionary<string, double> result = new Dictionary<string, double>();
-            foreach (KeyValuePair<string, double> keyValuePair in source)
+            Dictionary<string, string> targets = new Dictionary<string, string>();
+            Dictionary<string, int> targetCounts = new Dictionary<string, int>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (string key in source.Keys)
             {
-                result[NormalizeKey(keyValuePair.Key, zoneKeys)] = keyValuePair.Value;
+                string target = NormalizeKey(key, zoneKeys);
+                targets[key] = target;
+                targetCounts[target] = (targetCounts.TryGetValue(target, out int count) ? count : 0) + 1;
             }
 
-            return result;
-        }
-
-        private static Dictionary<string, double[]> NormalizeKeys(Dictionary<string, double[]> source, List<string> zoneKeys)
-        {
-            if (source == null)
+            Dictionary<string, T> result = new Dictionary<string, T>();
+            foreach (KeyValuePair<string, T> keyValuePair in source)
             {
-                return null;
-            }
-
-            Dictionary<string, double[]> result = new Dictionary<string, double[]>();
-            foreach (KeyValuePair<string, double[]> keyValuePair in source)
-            {
-                result[NormalizeKey(keyValuePair.Key, zoneKeys)] = keyValuePair.Value;
+                string target = targets[keyValuePair.Key];
+                result[targetCounts[target] > 1 ? keyValuePair.Key : target] = keyValuePair.Value;
             }
 
             return result;
@@ -1032,21 +1038,71 @@ namespace SAM.Analytical.OpenStudio
 
         private static string NormalizeKey(string key, List<string> zoneKeys)
         {
-            if (key == null || zoneKeys == null || zoneKeys.Count == 0 || key.Length < 8)
+            if (key == null || zoneKeys == null || zoneKeys.Count == 0)
             {
                 return key;
             }
 
-            string suffix = key.Substring(key.Length - 8);
+            string identity = ZoneIdentity(key);
+            if (identity == null)
+            {
+                return key;
+            }
+
+            string result = null;
             foreach (string zoneKey in zoneKeys)
             {
-                if (zoneKey != null && zoneKey.Length >= 8 && string.Equals(zoneKey.Substring(zoneKey.Length - 8), suffix, System.StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(ZoneIdentity(zoneKey), identity, System.StringComparison.OrdinalIgnoreCase))
                 {
-                    return zoneKey;
+                    continue;
+                }
+
+                if (result != null)
+                {
+                    // Ambiguous: more than one zone carries this identity.
+                    return key;
+                }
+
+                result = zoneKey;
+            }
+
+            return result ?? key;
+        }
+
+        /// <summary>
+        /// The stable identity of a generated zone-level name
+        /// (<see cref="Core.OpenStudio.Query.OpenStudioName(string, string, System.Guid)"/>): the part
+        /// after the SAM_&lt;Type&gt;_ prefix, "&lt;SanitizedName&gt;_&lt;GuidFirst8&gt;" or just
+        /// "&lt;GuidFirst8&gt;" for an unnamed object. Null when the name has no known prefix or no
+        /// trailing Guid suffix. A " &lt;digits&gt;" ending (OpenStudio's de-duplication of a
+        /// repeated name; generated names never contain spaces) is ignored, so two objects with the
+        /// same generated name share one identity and are treated as ambiguous.
+        /// </summary>
+        private static string ZoneIdentity(string name)
+        {
+            if (name != null)
+            {
+                int index = name.LastIndexOf(' ');
+                if (index > 0 && index < name.Length - 1 && System.Linq.Enumerable.All(name.Substring(index + 1), char.IsDigit))
+                {
+                    name = name.Substring(0, index);
                 }
             }
 
-            return key;
+            if (!Query.TryGetGuidSuffix(name, out _))
+            {
+                return null;
+            }
+
+            foreach (string prefix in zoneIdentityPrefixes)
+            {
+                if (name.Length > prefix.Length && name.StartsWith(prefix, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return name.Substring(prefix.Length);
+                }
+            }
+
+            return null;
         }
 
         private static void FillPeaks(Dictionary<string, List<KeyValuePair<int, double>>> series, Dictionary<string, double> peakLoad, Dictionary<string, int> peakHour)        {
