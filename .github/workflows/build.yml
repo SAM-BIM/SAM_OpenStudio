@@ -295,6 +295,29 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Rebuild failed: $($it.Repo)" }
           }
 
+      - name: Check S11 results read-back projects are built
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $repo = '${{ env.REPO_NAME }}'
+
+          # S11: the reference library and its CLI are members of SAM_OpenStudio.sln and were rebuilt with it above.
+          # Fail if either is missing from the solution or produced no output.
+          $listed = @(& dotnet sln (Join-Path $repo 'SAM_OpenStudio.sln') list)
+          if ($LASTEXITCODE -ne 0) { throw "dotnet sln list failed" }
+          foreach ($p in @('SAM.Analytical.OpenStudio.ResultsReadBack', 'SAM.Analytical.OpenStudio.ResultsReadBack.Cli')) {
+            if (-not ($listed | Where-Object { $_.Trim() -eq "benchmark\$p\$p.csproj" })) { throw "$p is not in SAM_OpenStudio.sln" }
+          }
+          foreach ($f in @(
+            'benchmark/SAM.Analytical.OpenStudio.ResultsReadBack/bin/x64/Release/net8.0/SAM.Analytical.OpenStudio.ResultsReadBack.dll',
+            'benchmark/SAM.Analytical.OpenStudio.ResultsReadBack.Cli/bin/x64/Release/net8.0/os-results-readback.dll'
+          )) {
+            $path = Join-Path $repo $f
+            if (-not (Test-Path $path)) { throw "Expected S11 build output missing: $path" }
+            Write-Host "S11 build output present: $path"
+          }
+
       - name: Run benchmark producer tests (offline)
         shell: pwsh
         run: |
@@ -316,7 +339,7 @@ jobs:
             --logger 'console;verbosity=normal'
           if ($LASTEXITCODE -ne 0) { throw "Benchmark producer tests failed" }
 
-      - name: Run S09 OpenStudio native-input read-back tests (offline)
+      - name: Run S09 native-input and S11 results read-back tests (offline)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -325,6 +348,7 @@ jobs:
 
           # S09: the writer's ventilation policy and the fresh-process OSM/IDF read-back on the S08 signed-off fixtures with
           # the SAM#212 Budapest EPW (from the SAM sibling). OpenStudio SDK NuGet only: no CLI, no EnergyPlus run.
+          # S11: the results round-trip reference on synthetic SQL/ESO files keyed by the S09 exports (no EnergyPlus run).
           $testProject = Join-Path $repo 'benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests/SAM.Analytical.OpenStudio.InputReadBack.Tests.csproj'
           Write-Host "==> Testing: $testProject"
           & dotnet test $testProject `
@@ -332,7 +356,7 @@ jobs:
             '/p:Platform=x64' `
             '/p:SAMVersion=${{ steps.ver.outputs.samversion }}' `
             --logger 'console;verbosity=normal'
-          if ($LASTEXITCODE -ne 0) { throw "S09 read-back tests failed" }
+          if ($LASTEXITCODE -ne 0) { throw "S09/S11 read-back tests failed" }
 
       - name: Upload S09 failure diagnostics
         # Only when a step failed: the bounded text evidence (exit code, stdout/stderr, process identities, file list) the
