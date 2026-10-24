@@ -43,8 +43,17 @@ namespace SAM.Analytical.OpenStudio.Tests
             return Core.OpenStudio.Query.OpenStudioName(type, name, guid).ToUpperInvariant();
         }
 
-        /// <summary>Writes one 24-hour annual run period; each (key, variable) series is constant at its value.</summary>
-        private static string CreateSql(string fileName, IEnumerable<(string Key, string Variable, double Value)> series)
+        /// <summary>EnergyPlus zone names (Zones.ZoneName) of generated rooms: the ThermalZone names.</summary>
+        private static string[] Zones(params (string Name, Guid Guid)[] rooms)
+        {
+            return rooms.Select(x => Name("ThermalZone", x.Name, x.Guid)).ToArray();
+        }
+
+        /// <summary>
+        /// Writes one 24-hour annual run period; each (key, variable) series is constant at its value. The native zone
+        /// inventory (Zones table, as EnergyPlus writes it) lists <paramref name="zoneNames"/>; null omits the table.
+        /// </summary>
+        private static string CreateSql(string fileName, IEnumerable<string> zoneNames, IEnumerable<(string Key, string Variable, double Value)> series)
         {
             string sqlPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, fileName);
             if (File.Exists(sqlPath))
@@ -68,6 +77,17 @@ namespace SAM.Analytical.OpenStudio.Tests
                     Exec("CREATE TABLE ReportDataDictionary (ReportDataDictionaryIndex INTEGER PRIMARY KEY, KeyValue TEXT, Name TEXT, Units TEXT)");
                     Exec("CREATE TABLE ReportData (ReportDataIndex INTEGER PRIMARY KEY, ReportDataDictionaryIndex INTEGER, TimeIndex INTEGER, Value REAL)");
                     Exec("INSERT INTO EnvironmentPeriods VALUES (1, 'SAM_RUNPERIOD_ANNUAL', 3)");
+                    if (zoneNames != null)
+                    {
+                        Exec("CREATE TABLE Zones (ZoneIndex INTEGER PRIMARY KEY, ZoneName TEXT, FloorArea REAL, Volume REAL)");
+                        int zoneIndex = 0;
+                        foreach (string zoneName in zoneNames)
+                        {
+                            zoneIndex++;
+                            Exec(string.Format(System.Globalization.CultureInfo.InvariantCulture, "INSERT INTO Zones VALUES ({0}, {1}, 20, 60)", zoneIndex, zoneName == null ? "NULL" : "'" + zoneName + "'"));
+                        }
+                    }
+
                     for (int hour = 1; hour <= 24; hour++)
                     {
                         Exec(string.Format(System.Globalization.CultureInfo.InvariantCulture, "INSERT INTO Time VALUES ({0}, 2006, 1, 1, {0}, 0, 0, 1)", hour));
@@ -113,12 +133,12 @@ namespace SAM.Analytical.OpenStudio.Tests
             yield return (thermalZone, RelativeHumidity, 40 + scale);
         }
 
-        private static OpenStudioSimulationResultSet Extract(string sqlPath)
+        private static OpenStudioSimulationResultSet Extract(string sqlPath, bool extractTimeSeries = true)
         {
             OpenStudioLoadSummary loadSummary = OpenStudioSimulationRunner.ExtractLoads(sqlPath, out string failureDetail);
             Assert.That(loadSummary, Is.Not.Null, failureDetail);
 
-            OpenStudioSimulationResultSet result = OpenStudioSimulationRunner.ExtractResultSet(sqlPath, loadSummary, true, 0, 0, 0, 0);
+            OpenStudioSimulationResultSet result = OpenStudioSimulationRunner.ExtractResultSet(sqlPath, loadSummary, extractTimeSeries, 0, 0, 0, 0);
             Assert.That(result, Is.Not.Null);
             return result;
         }
@@ -135,6 +155,12 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(results.EquipmentGains[key], Is.EqualTo(Core.OpenStudio.Query.JoulesToKilowattHours(24 * 30 * scale)).Within(1e-12), label + " equipment");
             Assert.That(results.WindowSolarGains[key], Is.EqualTo(Core.OpenStudio.Query.JoulesToKilowattHours(24 * 40 * scale)).Within(1e-12), label + " window solar (Space key)");
             Assert.That(results.InfiltrationGains[key], Is.EqualTo(Core.OpenStudio.Query.JoulesToKilowattHours(24 * 50 * scale)).Within(1e-12), label + " infiltration");
+            if (results.TemperatureSeries == null)
+            {
+                // Series extraction off.
+                return;
+            }
+
             Assert.That(results.TemperatureSeries[key], Is.All.EqualTo(18 + scale), label + " air temperature");
             Assert.That(results.OperativeTemperatureSeries[key], Is.All.EqualTo(19 + scale), label + " operative temperature");
             Assert.That(results.RelativeHumiditySeries[key], Is.All.EqualTo(40 + scale), label + " relative humidity");
@@ -148,7 +174,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         [Test]
         public void SharedGuidPrefix_FixAFixB_EachRoomKeepsItsOwnValues()
         {
-            string sqlPath = CreateSql("zone_identity_shared_prefix.sql", Room("FixA", fixA, 1).Concat(Room("FixB", fixB, 3)));
+            string sqlPath = CreateSql("zone_identity_shared_prefix.sql", Zones(("FixA", fixA), ("FixB", fixB)), Room("FixA", fixA, 1).Concat(Room("FixB", fixB, 3)));
             OpenStudioSimulationResultSet results = Extract(sqlPath);
 
             Assert.That(results.AnnualHeatingEnergy.Count, Is.EqualTo(2));
@@ -170,7 +196,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         [Test]
         public void UniquePrefixes_AndDuplicateDisplayNames_MapAsBefore()
         {
-            string sqlPath = CreateSql("zone_identity_unique_prefix.sql", Room("Office", fixA, 1).Concat(Room("Office", other, 2)));
+            string sqlPath = CreateSql("zone_identity_unique_prefix.sql", Zones(("Office", fixA), ("Office", other)), Room("Office", fixA, 1).Concat(Room("Office", other, 2)));
             OpenStudioSimulationResultSet results = Extract(sqlPath);
 
             AssertRoom(results, "Office", fixA, 1);
@@ -181,7 +207,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         public void SanitizedUnderscoreAndEmptyNames_SharedPrefix_Match()
         {
             // "Office 04" sanitizes to Office_04; "Office_04_A" keeps its underscores; an empty name is just the Guid prefix.
-            string sqlPath = CreateSql("zone_identity_sanitized.sql", Room("Office 04", fixA, 1).Concat(Room("Office_04_A", fixB, 2)).Concat(Room(string.Empty, Guid.Parse("5080c000-0000-0000-0000-0000000000e1"), 4)));
+            string sqlPath = CreateSql("zone_identity_sanitized.sql", Zones(("Office 04", fixA), ("Office_04_A", fixB), (string.Empty, Guid.Parse("5080c000-0000-0000-0000-0000000000e1"))), Room("Office 04", fixA, 1).Concat(Room("Office_04_A", fixB, 2)).Concat(Room(string.Empty, Guid.Parse("5080c000-0000-0000-0000-0000000000e1"), 4)));
             OpenStudioSimulationResultSet results = Extract(sqlPath);
 
             Assert.That(Name("IdealLoads", string.Empty, fixA), Is.EqualTo("SAM_IDEALLOADS_5080C000"));
@@ -198,7 +224,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             List<(string, string, double)> series = Room("FixA", fixA, 1).ToList();
             series.Add((Name("ThermalZone", "Store", fixB), HeatingNotMet, 9));
             series.Add(("RADIANT ENCLOSURE 1", WindowSolar, 9));
-            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_unmatched.sql", series));
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_unmatched.sql", Zones(("FixA", fixA), ("Store", fixB)), series));
 
             AssertRoom(results, "FixA", fixA, 1);
             Assert.That(results.UnmetHeatingHours[Name("ThermalZone", "Store", fixB)], Is.EqualTo(24 * 9), "an unmatched key passes through unchanged");
@@ -211,7 +237,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             // Same sanitized name AND same Guid prefix: OpenStudio de-duplicates the second name with " 1".
             string idealLoads = Name("IdealLoads", "FixA", fixA);
             string thermalZone = Name("ThermalZone", "FixA", fixA);
-            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_ambiguous.sql", new List<(string, string, double)>
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_ambiguous.sql", new[] { thermalZone, thermalZone + " 1" }, new List<(string, string, double)>
             {
                 (idealLoads, HeatingEnergy, 1000),
                 (idealLoads + " 1", HeatingEnergy, 3000),
@@ -228,11 +254,12 @@ namespace SAM.Analytical.OpenStudio.Tests
         [Test]
         public void NumberedSource_OnlyUnnumberedTarget_StaysUnmapped()
         {
-            // The numbered report keys may belong to another, unconditioned room with the same generated name.
+            // The numbered report keys may belong to another, unconditioned room with the same generated name. The
+            // inventory deliberately omits that room: the numbered report keys alone must still refuse the match.
             string idealLoads = Name("IdealLoads", "FixA", fixA);
             string thermalZone = Name("ThermalZone", "FixA", fixA) + " 1";
             string space = Name("Space", "FixA", fixA) + " 1";
-            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_numbered_source.sql", new List<(string, string, double)>
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_numbered_source.sql", new[] { Name("ThermalZone", "FixA", fixA) }, new List<(string, string, double)>
             {
                 (idealLoads, HeatingEnergy, 1000),
                 (thermalZone, HeatingNotMet, 9),
@@ -253,7 +280,7 @@ namespace SAM.Analytical.OpenStudio.Tests
         {
             string idealLoads = Name("IdealLoads", "FixA", fixA) + " 1";
             string thermalZone = Name("ThermalZone", "FixA", fixA);
-            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_numbered_target.sql", new List<(string, string, double)>
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_numbered_target.sql", new[] { thermalZone, thermalZone + " 1" }, new List<(string, string, double)>
             {
                 (idealLoads, HeatingEnergy, 1000),
                 (thermalZone, HeatingNotMet, 9),
@@ -275,7 +302,7 @@ namespace SAM.Analytical.OpenStudio.Tests
             string idealLoads = Name("IdealLoads", "FixA", fixA);
             string thermalZone = Name("ThermalZone", "FixA", fixA);
             string space = Name("Space", "FixA", fixA);
-            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_unconditioned_collision.sql", new List<(string, string, double)>
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_unconditioned_collision.sql", new[] { thermalZone, thermalZone + " 1" }, new List<(string, string, double)>
             {
                 (idealLoads, HeatingEnergy, 1000),
                 (thermalZone, HeatingNotMet, 5),
@@ -294,11 +321,94 @@ namespace SAM.Analytical.OpenStudio.Tests
             Assert.That(results.TemperatureSeries[thermalZone], Is.All.EqualTo(15));
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void HiddenCollision_NativeInventoryOnly_IsNotAssignedToTheConditionedRoom(bool extractTimeSeries)
+        {
+            // The collision is visible only in the native zone inventory: no not-met-time output and no numbered
+            // result key. Room 1 (unconditioned) owns the unnumbered ThermalZone/Space names; room 2 (conditioned)
+            // is "... 1" in Zones but owns the unnumbered Ideal Loads name.
+            string idealLoads = Name("IdealLoads", "FixA", fixA);
+            string thermalZone = Name("ThermalZone", "FixA", fixA);
+            string space = Name("Space", "FixA", fixA);
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_hidden_collision_" + extractTimeSeries + ".sql", new[] { thermalZone, thermalZone + " 1" }, new List<(string, string, double)>
+            {
+                (idealLoads, HeatingEnergy, 1000),
+                (space, WindowSolar, 40),
+                (thermalZone, People, 10),
+                (thermalZone, AirTemperature, 15),
+            }), extractTimeSeries);
+
+            Assert.That(results.UnmetHeatingHours, Is.Empty, "no not-met-time output in this run");
+            Assert.That(results.WindowSolarGains.ContainsKey(idealLoads), Is.False, "scalar, Space key");
+            Assert.That(results.WindowSolarGains[space], Is.EqualTo(Core.OpenStudio.Query.JoulesToKilowattHours(24 * 40)).Within(1e-12));
+            Assert.That(results.PeopleGains.ContainsKey(idealLoads), Is.False, "scalar, ThermalZone key");
+            Assert.That(results.PeopleGains.ContainsKey(thermalZone), Is.True);
+            if (extractTimeSeries)
+            {
+                Assert.That(results.TemperatureSeries.ContainsKey(idealLoads), Is.False, "series");
+                Assert.That(results.TemperatureSeries[thermalZone], Is.All.EqualTo(15));
+            }
+            else
+            {
+                Assert.That(results.TemperatureSeries, Is.Null);
+            }
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void SharedGuidPrefix_DistinctNames_NoUnmetOutput_StillMaps(bool extractTimeSeries)
+        {
+            List<(string Key, string Variable, double Value)> series = Room("FixA", fixA, 1).Concat(Room("FixB", fixB, 3)).Where(x => x.Item2 != HeatingNotMet && x.Item2 != CoolingNotMet).ToList();
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_shared_prefix_no_unmet_" + extractTimeSeries + ".sql", Zones(("FixA", fixA), ("FixB", fixB)), series), extractTimeSeries);
+
+            foreach ((string name, Guid guid, double scale) in new[] { ("FixA", fixA, 1.0), ("FixB", fixB, 3.0) })
+            {
+                string key = Name("IdealLoads", name, guid);
+                Assert.That(results.WindowSolarGains[key], Is.EqualTo(Core.OpenStudio.Query.JoulesToKilowattHours(24 * 40 * scale)).Within(1e-12), name);
+                Assert.That(results.InfiltrationGains[key], Is.EqualTo(Core.OpenStudio.Query.JoulesToKilowattHours(24 * 50 * scale)).Within(1e-12), name);
+                if (extractTimeSeries)
+                {
+                    Assert.That(results.RelativeHumiditySeries[key], Is.All.EqualTo(40 + scale), name);
+                }
+            }
+        }
+
+        [TestCase("no Zones table")]
+        [TestCase("empty Zones table")]
+        [TestCase("null ZoneName")]
+        [TestCase("other zone only")]
+        public void MissingIdentityMetadata_NothingIsRemapped(string inventory)
+        {
+            string[] zoneNames = null;
+            switch (inventory)
+            {
+                case "empty Zones table":
+                    zoneNames = new string[0];
+                    break;
+                case "null ZoneName":
+                    zoneNames = new string[] { null };
+                    break;
+                case "other zone only":
+                    zoneNames = Zones(("FixB", fixB));
+                    break;
+            }
+
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_missing_inventory_" + inventory.Replace(' ', '_') + ".sql", zoneNames, Room("FixA", fixA, 1)));
+
+            string idealLoads = Name("IdealLoads", "FixA", fixA);
+            Assert.That(results.AnnualHeatingEnergy.ContainsKey(idealLoads), Is.True, "energy still read");
+            Assert.That(results.UnmetHeatingHours.ContainsKey(idealLoads), Is.False, "uniqueness cannot be established: " + inventory);
+            Assert.That(results.UnmetHeatingHours[Name("ThermalZone", "FixA", fixA)], Is.EqualTo(24));
+            Assert.That(results.WindowSolarGains.ContainsKey(Name("Space", "FixA", fixA)), Is.True);
+            Assert.That(results.TemperatureSeries.ContainsKey(idealLoads), Is.False);
+        }
+
         [Test]
         public void TwoReportKeysOnOneRoom_NeitherOverwritesTheOther()
         {
             string idealLoads = Name("IdealLoads", "FixA", fixA);
-            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_collision.sql", new List<(string, string, double)>
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_collision.sql", Zones(("FixA", fixA)), new List<(string, string, double)>
             {
                 (idealLoads, HeatingEnergy, 1000),
                 (Name("ThermalZone", "FixA", fixA), HeatingNotMet, 1),
