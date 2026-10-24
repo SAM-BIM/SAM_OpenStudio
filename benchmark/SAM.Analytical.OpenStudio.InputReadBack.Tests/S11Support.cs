@@ -37,11 +37,18 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
     {
         public static string Model(string fixtureId) => TestSupport.Fixture(fixtureId);
 
-        /// <summary>Space B's GUID in s08-fix-two; it shares its first 8 hex digits (5080c000) with space A.</summary>
+        /// <summary>Space A's (FixA) GUID in s08-fix-two.</summary>
+        public const string SpaceAGuid = "5080c000-0000-0000-0000-00000000c0a1";
+
+        /// <summary>Space B's (FixB) GUID in s08-fix-two; it shares its first 8 hex digits (5080c000) with space A.</summary>
         public const string SpaceBGuid = "5080c000-0000-0000-0000-00000000c0b1";
 
-        /// <summary>s08-fix-two with space B re-GUIDed to a distinct 8-digit prefix (the importer's not-met remap needs one).</summary>
-        public static string TwoDistinctPrefix() => Variant(TestSupport.Two, "two-distinct-prefix", (SpaceBGuid, "6181d111-0000-0000-0000-00000000c0b1"));
+        /// <summary>
+        /// The signed-off s08-fix-two fixture, unchanged: FixA and FixB share the GUID prefix 5080c000. The importer
+        /// associates their zone results by name identity proven unique by the SQL Zones inventory (F-S11-1, #35), so no
+        /// re-GUIDed variant is needed.
+        /// </summary>
+        public static string Two() => Model(TestSupport.Two);
 
         /// <summary>A text variant of a signed-off fixture, written once to a stable path (so its export is cached).</summary>
         public static string Variant(string fixtureId, string name, params (string From, string To)[] replacements)

@@ -23,6 +23,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         [Test]
         public void DuplicateSpaceNames_DistinctGeometry_ResolvedByGeometryAndPass()
         {
+            // Same display name: space B gets a distinct GUID prefix, because the same name AND the same prefix give
+            // identical generated names (the separately tracked generated-name identity residual, next test).
             string model = S11Support.Variant(TestSupport.Two, "two-same-name-distinct-prefix", (S11Support.SpaceBGuid, "6181d111-0000-0000-0000-00000000c0b1"), (SpaceBName, SpaceAName));
             AnalyticalModel loaded = Core.Convert.ToSAM<AnalyticalModel>(model).Single();
             List<Space> spaces = loaded.AdjacencyCluster.GetSpaces();
@@ -39,7 +41,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         /// <summary>
         /// Same names AND the shared GUID prefix of the signed-off fixture: the writer's names collide, so OpenStudio makes
         /// one unique. The reference still identifies both spaces by geometry; the production key cross-check then fails
-        /// for the renamed one, which is a production naming collision, not a rejection of duplicate names.
+        /// for the renamed one, which is a production naming collision, not a rejection of duplicate names. This is the
+        /// separately tracked generated-name identity residual (exact-name lookup for identical generated names); F-S11-1
+        /// (#35) deliberately leaves such keys unmapped rather than guessing.
         /// </summary>
         [Test]
         public void DuplicateSpaceNames_SharedGuidPrefix_IdentityStillByGeometry_ProductionKeyCollisionReported()

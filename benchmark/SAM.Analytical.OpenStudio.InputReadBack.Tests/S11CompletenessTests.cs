@@ -207,8 +207,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         [Test]
         public void EveryCompletenessDefect_Blocks([Values] Defect defect)
         {
-            string model = S11Support.TwoDistinctPrefix();
-            SyntheticRun synthetic = SyntheticRun.For(model, "two-distinct");
+            string model = S11Support.Two();
+            SyntheticRun synthetic = SyntheticRun.For(model, "two");
             Break(synthetic, defect);
             S11Case run = S11Support.Evaluate(synthetic, model, "c1-" + defect);
 

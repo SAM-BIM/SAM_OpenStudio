@@ -28,7 +28,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             All,
         }
 
-        private static string Model() => S11Support.TwoDistinctPrefix();
+        private static string Model() => S11Support.Two();
 
         /// <summary>The rows each substitution targets (load type filled in by the test).</summary>
         private static IEnumerable<string> Targets(S11Case run, Substitution substitution, LoadKind kind)
@@ -67,7 +67,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         [Test]
         public void Precondition_EveryTargetedRowDiscriminatesTotalFromSensibleByAMillionTolerances([Values] LoadKind kind)
         {
-            S11Case run = S11Support.Evaluate(SyntheticRun.For(Model(), "two-distinct"), Model(), "f3-precondition-" + kind);
+            S11Case run = S11Support.Evaluate(SyntheticRun.For(Model(), "two"), Model(), "f3-precondition-" + kind);
             Assert.That(run.Compare.Verdict, Is.EqualTo("PASS"), run.Summary());
 
             foreach (string id in Targets(run, Substitution.All, kind))
@@ -97,7 +97,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         public void SensibleSubstitutedForTotal_Fails([Values] Substitution substitution, [Values] LoadKind kind)
         {
             string model = Model();
-            SyntheticRun synthetic = SyntheticRun.For(model, "two-distinct");
+            SyntheticRun synthetic = SyntheticRun.For(model, "two");
             S11Case reference = S11Support.Evaluate(synthetic, model, "f3-reference");
             Assert.That(reference.Compare.Verdict, Is.EqualTo("PASS"), "unmutated control: " + reference.Summary());
             ModelLoadReference sensible = reference.Reference.ModelOf(kind);
@@ -160,7 +160,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         public void MissingTotalBasisNote_Fails()
         {
             string model = Model();
-            S11Case run = S11Support.Evaluate(SyntheticRun.For(model, "two-distinct"), model, "f3-no-note", afterProduce: c => S11Support.EditB1a(c, d => d.Provenance.Notes.Remove(S11Names.TotalBasisNote)));
+            S11Case run = S11Support.Evaluate(SyntheticRun.For(model, "two"), model, "f3-no-note", afterProduce: c => S11Support.EditB1a(c, d => d.Provenance.Notes.Remove(S11Names.TotalBasisNote)));
 
             Assert.That(run.Row("b1a|model|-|totalBasisNote").Status, Is.EqualTo("FAIL"));
             Assert.That(run.Compare.Verdict, Is.EqualTo("FAIL"));

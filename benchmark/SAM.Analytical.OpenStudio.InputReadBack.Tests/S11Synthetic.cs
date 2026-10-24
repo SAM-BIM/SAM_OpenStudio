@@ -139,7 +139,10 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         /// Deterministic, non-round values [J per hour or hr]. Cooling: May-September, EnergyPlus hours 10-19 (1530 hours).
         /// Sensible cooling peaks on 15 July h15; Total peaks on 10 August h14 where the latent is large. Heating likewise in
         /// November-March with a latent (humidification) part. Zone index shifts the magnitudes. Not-met time is whole hours
-        /// unless <paramref name="fractionalUnmet"/> (EnergyPlus reports timestep fractions; SAM stores whole hours).
+        /// (29 heating, 20 cooling, equal in every zone) unless <paramref name="fractionalUnmet"/>: EnergyPlus reports
+        /// timestep fractions, here binary-exact quarter hours that differ per zone so the annual sums are exact and a swap
+        /// between zones is visible. Zone 0: heating 29 x 0.5 = 14.5 h, cooling 19 x 0.75 + 0.5 = 14.75 h; every other
+        /// zone: heating 29 x 0.25 = 7.25 h, cooling 19 x 0.25 + 0.5 = 5.25 h (0.5 on 28 September).
         /// </summary>
         public static double Value(string variable, int zone, int month, int day, int hour, int hourOfYear, bool fractionalUnmet = false)
         {
@@ -162,8 +165,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                 case S11Names.TotalCooling: return sensibleCooling + latentCooling;
                 case S11Names.SensibleHeating: return sensibleHeating;
                 case S11Names.TotalHeating: return sensibleHeating + latentHeating;
-                case S11Names.UnmetHeating: return heating && hour == 7 && day % 5 == 0 ? (fractionalUnmet ? 0.5 : 1.0) : 0;
-                case S11Names.UnmetCooling: return cooling && hour == 16 && day % 7 == 0 ? (fractionalUnmet ? 1.0 / 6.0 : 1.0) : 0;
+                case S11Names.UnmetHeating: return heating && hour == 7 && day % 5 == 0 ? (fractionalUnmet ? (zone == 0 ? 0.5 : 0.25) : 1.0) : 0;
+                case S11Names.UnmetCooling: return cooling && hour == 16 && day % 7 == 0 ? (fractionalUnmet ? (month == 9 && day == 28 ? 0.5 : zone == 0 ? 0.75 : 0.25) : 1.0) : 0;
                 default: throw new ArgumentException(variable);
             }
         }

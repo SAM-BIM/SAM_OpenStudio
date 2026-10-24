@@ -2,9 +2,12 @@
 // Copyright (c) 2020–2026 Michal Dengusiak & Jakub Ziolkowski and contributors
 
 using NUnit.Framework;
+using SAM.Analytical.Benchmark;
+using SAM.Analytical.OpenStudio.Benchmark;
 using SAM.Analytical.OpenStudio.ResultsReadBack;
 using SAM.Analytical.OpenStudio.ResultsReadBack.Cli;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -20,8 +23,8 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         [Test]
         public void ConsistentTwoZoneRun_PassesEveryRow_InSeparateProcesses_AndTheNegativesRefuseCopies()
         {
-            string model = S11Support.TwoDistinctPrefix();
-            S11Case run = S11Support.Prepare(SyntheticRun.For(model, "two-distinct"), model, "two-cli");
+            string model = S11Support.Two();
+            S11Case run = S11Support.Prepare(SyntheticRun.For(model, "two"), model, "two-cli");
 
             Assert.That(S11Support.Cli(out string read, "read", "--run", run.Run, "--model", model, "--fixture-id", TestSupport.Two), Is.EqualTo(0), read);
             Assert.That(S11Support.Cli(out string subject, "subject", "--run", run.Run, "--model", model), Is.EqualTo(0), subject);
@@ -97,46 +100,130 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             Assert.That(output, Does.Contain("eplusout.eso is not the file the read step saw"));
         }
 
-        // ---- findings on the signed-off two-zone fixture (pinned; owner decisions) ------------------------------------
+        // ---- F-S11-1 / F-S11-2 integrated: positive regressions on the signed-off fixtures ------------------------------
 
         /// <summary>
-        /// Finding F-S11-1: both s08-fix-two spaces have GUIDs starting 5080c000, and the importer remaps zone-level keys
-        /// (setpoint not-met time) onto Ideal Loads keys by the last 8 characters, so space B's unmet hours are lost and
-        /// space A's are overwritten. The native identity (geometry) still identifies both zones; S11 FAILS the rows.
+        /// F-S11-1 (SAM_OpenStudio#35): the signed-off s08-fix-two spaces FixA and FixB share the GUID prefix 5080c000.
+        /// Through the production import (SAM-P producer objects, SAM-I AddResults) and B1a each space keeps its own
+        /// zone-specific fractional unmet hours, and the native and production identities stay distinct and agree. Before
+        /// #35 one zone's not-met time overwrote the other's and these rows FAILed; a swap between the zones FAILs too.
         /// </summary>
         [Test]
-        public void Finding_SharedGuidPrefix_ImporterLosesUnmetHoursOfOneZone_S11Fails()
+        public void SignedOffTwoZone_SharedGuidPrefix_EachSpaceKeepsItsOwnResults()
         {
-            string model = S11Support.Model(TestSupport.Two);
-            S11Case run = S11Support.Evaluate(SyntheticRun.For(model, "two"), model, "two-shared-prefix");
+            string model = S11Support.Two();
+            S11Case run = S11Support.Evaluate(SyntheticRun.For(model, "two", fractionalUnmet: true), model, "two-shared-prefix");
 
-            Assert.That(run.Reference.Spaces.All(x => x.IdentityProblem == null), Is.True, "the geometry identity resolves both zones");
-            Assert.That(run.Compare.Verdict, Is.EqualTo("FAIL"));
-            string b = run.Space(run.Synthetic.Zones.FindIndex(x => x.SpaceGuid == Guid.Parse(S11Support.SpaceBGuid)));
-            foreach (string layer in new[] { "samP", "samI", "b1a" })
+            Guid a = Guid.Parse(S11Support.SpaceAGuid);
+            Guid b = Guid.Parse(S11Support.SpaceBGuid);
+            Assert.That(a.ToString("N").Substring(0, 8), Is.EqualTo(b.ToString("N").Substring(0, 8)), "the signed-off fixture's shared prefix");
+            Assert.That(run.Synthetic.Zones.Select(x => x.SpaceGuid), Is.EquivalentTo(new[] { a, b }));
+            Assert.That(run.Compare.Verdict, Is.EqualTo("PASS"), run.Summary());
+            Assert.That(run.Compare.Failed + run.Compare.Blocked, Is.Zero);
+
+            // Native identity: two distinct spaces, zones and Ideal Loads; each is the production key of its own SAM space.
+            Assert.That(run.Reference.Spaces.All(x => x.IdentityProblem == null), Is.True);
+            foreach (Func<SpaceReference, string> part in new Func<SpaceReference, string>[] { x => x.NativeSpace, x => x.Zone, x => x.IdealLoads })
             {
-                Assert.That(run.Row(layer + "|" + b + "|Heating|unmetHours").Status, Is.EqualTo("FAIL"), run.Summary());
+                Assert.That(run.Reference.Spaces.Select(part).Distinct(StringComparer.OrdinalIgnoreCase).Count(), Is.EqualTo(2));
             }
 
-            Assert.That(run.Compare.Rows.Where(x => x.Quantity != "unmetHours" && x.Status != "INFO").All(x => x.Status == "PASS"), Is.True, "only the not-met rows are affected: " + run.Summary());
+            foreach (ProductionKey key in run.Subject.ProductionKeys)
+            {
+                SpaceReference native = run.Reference.Space(key.SpaceGuid);
+                Assert.That(key.IdealLoads, Is.EqualTo(native.IdealLoads).IgnoreCase, key.SpaceName);
+                Assert.That(key.ThermalZone, Is.EqualTo(native.Zone).IgnoreCase, key.SpaceName);
+            }
+
+            List<ResultRow> identity = run.Compare.Rows.Where(x => x.Layer == "identity" && (x.Quantity == "native" || x.Quantity == "idealLoadsKey" || x.Quantity == "zoneKey")).ToList();
+            Assert.That(identity, Has.Count.EqualTo(6));
+            Assert.That(identity.All(x => x.Status == "PASS"), Is.True, run.Summary());
+
+            // Zone-specific fractional unmet hours: exact in the independent reference, and each layer carries its own space's.
+            for (int z = 0; z < run.Synthetic.Zones.Count; z++)
+            {
+                Guid space = run.Synthetic.Zones[z].SpaceGuid;
+                double heating = z == 0 ? 14.5 : 7.25;
+                double cooling = z == 0 ? 14.75 : 5.25;
+                Assert.That(run.Reference.Space(space).Quantities[S11Names.UnmetHeating].Sum, Is.EqualTo(heating));
+                Assert.That(run.Reference.Space(space).Quantities[S11Names.UnmetCooling].Sum, Is.EqualTo(cooling));
+                foreach (string layer in new[] { "samP", "samI", "b1a" })
+                {
+                    Assert.That(run.Row(layer + "|" + run.Space(z) + "|Heating|unmetHours").Subject, Is.EqualTo(heating), layer);
+                    Assert.That(run.Row(layer + "|" + run.Space(z) + "|Cooling|unmetHours").Subject, Is.EqualTo(cooling), layer);
+                }
+            }
+
+            // SAM-I: every annual result is attached to the space it references; no zone or space was left unmatched.
+            List<SubjectResult> annual = run.Subject.SamI.Where(x => x.IsAnnual).ToList();
+            Assert.That(annual, Has.Count.EqualTo(4));
+            Assert.That(annual.All(x => x.AttachedTo.HasValue && Guid.Parse(x.Reference) == x.AttachedTo.Value), Is.True);
+            Assert.That(annual.Select(x => x.AttachedTo.Value).Distinct(), Is.EquivalentTo(new[] { a, b }));
+            Assert.That(run.Subject.SamIDiagnostics.Where(x => x.Contains("matched no SAM space") || x.Contains("No simulation result found")), Is.Empty);
         }
 
         /// <summary>
-        /// Finding F-S11-2: SAM declares SpaceSimulationResult UnmetHours an integer parameter, so a fractional EnergyPlus
-        /// not-met time (timestep fractions) is stored as whole hours. S11 compares the exact sum and FAILS the rows.
+        /// F-S11-2 (SAM#219): fractional EnergyPlus not-met time, 14.5 h heating and 14.75 h cooling (binary-exact), survives
+        /// the production SQL import, a SAM JSON save and reload (the producer's sam.json, and the imported model) and B1a,
+        /// and S11 PASSes. Before SAM#219 the integer metadata rounded half to even (14 and 15) and these rows FAILed.
         /// </summary>
         [Test]
-        public void Finding_FractionalNotMetTime_StoredAsWholeHours_S11Fails()
+        public void FractionalUnmetHours_SurviveSqlImport_SamSaveReload_AndB1a()
         {
             string model = S11Support.Model(TestSupport.Box);
             S11Case run = S11Support.Evaluate(SyntheticRun.For(model, "box", fractionalUnmet: true), model, "box-fractional-unmet");
+            Guid space = run.Synthetic.Zones.Single().SpaceGuid;
 
-            Assert.That(run.Compare.Verdict, Is.EqualTo("FAIL"));
-            ResultRow row = run.Row("b1a|" + run.Space(0) + "|Heating|unmetHours");
-            Assert.That(row.Status, Is.EqualTo("FAIL"));
-            Assert.That(row.Reference, Is.EqualTo(14.5));
-            Assert.That(row.Subject, Is.EqualTo(14));
-            Assert.That(run.Compare.Rows.Where(x => x.Quantity != "unmetHours" && x.Status != "INFO").All(x => x.Status == "PASS"), Is.True, run.Summary());
+            Assert.That(run.Compare.Verdict, Is.EqualTo("PASS"), run.Summary());
+            Assert.That(run.Reference.Space(space).Quantities[S11Names.UnmetHeating].Sum, Is.EqualTo(14.5));
+            Assert.That(run.Reference.Space(space).Quantities[S11Names.UnmetCooling].Sum, Is.EqualTo(14.75));
+            foreach (string layer in new[] { "samP", "samI", "b1a" })
+            {
+                foreach ((string loadType, double expected) in new[] { ("Heating", 14.5), ("Cooling", 14.75) })
+                {
+                    ResultRow row = run.Row(layer + "|" + run.Space(0) + "|" + loadType + "|unmetHours");
+                    Assert.That(row.Status, Is.EqualTo("PASS"), row.Id);
+                    Assert.That(row.Reference, Is.EqualTo(expected), row.Id);
+                    Assert.That(row.Subject, Is.EqualTo(expected), row.Id);
+                }
+            }
+
+            // SQL import (the producer's objects), then saved as sam.json and read back.
+            Assert.That(Unmet(S11Support.Annual(run.Inputs, space, LoadKind.Heating)), Is.EqualTo(14.5));
+            Assert.That(Unmet(S11Support.Annual(run.Inputs, space, LoadKind.Cooling)), Is.EqualTo(14.75));
+            OpenStudioBenchmarkInputs reloaded = OpenStudioBenchmarkInputs.Read(Path.Combine(run.Run, RunLayout.SamResultsFile));
+            Assert.That(Unmet(S11Support.Annual(reloaded, space, LoadKind.Heating)), Is.EqualTo(14.5));
+            Assert.That(Unmet(S11Support.Annual(reloaded, space, LoadKind.Cooling)), Is.EqualTo(14.75));
+
+            // B1a as written.
+            BenchmarkDocument b1a = BenchmarkSerializer.Deserialize(File.ReadAllText(Path.Combine(run.Run, RunLayout.B1aFile)));
+            BenchmarkSpaceResult b1aSpace = b1a.Spaces.Single(x => x.Guid == space.ToString("N"));
+            Assert.That(b1aSpace.Heating.UnmetHours.Value, Is.EqualTo(14.5));
+            Assert.That(b1aSpace.Cooling.UnmetHours.Value, Is.EqualTo(14.75));
+
+            // SAM-I: the SAM_UI/Grasshopper import into the model, saved as SAM JSON and reopened.
+            AdjacencyCluster cluster = new AdjacencyCluster(run.Model.AdjacencyCluster);
+            Analytical.OpenStudio.Modify.AddResults(cluster, Path.Combine(run.Run, "work", "run", "eplusout.sql"), out List<string> _);
+            string saved = Path.Combine(run.Run, "imported-model.json");
+            Assert.That(Core.Convert.ToFile(new AnalyticalModel(run.Model, cluster), saved, Core.SAMFileType.Json), Is.True);
+            AnalyticalModel reopened = Core.Convert.ToSAM<AnalyticalModel>(saved).Single();
+            Space reopenedSpace = reopened.AdjacencyCluster.GetSpaces().Single(x => x.Guid == space);
+            List<SpaceSimulationResult> attached = reopened.AdjacencyCluster.GetResults<SpaceSimulationResult>(reopenedSpace);
+            Assert.That(Unmet(attached.Where(x => IsLoadType(x, LoadKind.Heating))), Is.EqualTo(14.5));
+            Assert.That(Unmet(attached.Where(x => IsLoadType(x, LoadKind.Cooling))), Is.EqualTo(14.75));
+        }
+
+        private static bool IsLoadType(SpaceSimulationResult result, LoadKind kind)
+        {
+            return result.TryGetValue(Analytical.SpaceSimulationResultParameter.LoadType, out string loadType) && loadType == kind.ToString();
+        }
+
+        /// <summary>The unmet hours of the single result, read as a double (the stored value, not a rounded one).</summary>
+        private static double Unmet(IEnumerable<SpaceSimulationResult> results)
+        {
+            SpaceSimulationResult result = results.Single();
+            Assert.That(result.TryGetValue(Analytical.SpaceSimulationResultParameter.UnmetHours, out double value), Is.True);
+            return value;
         }
     }
 }

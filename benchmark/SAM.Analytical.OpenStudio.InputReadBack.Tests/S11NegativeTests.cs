@@ -19,9 +19,9 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
     [TestFixture]
     public class S11NegativeTests
     {
-        private static string Two() => S11Support.TwoDistinctPrefix();
+        private static string Two() => S11Support.Two();
 
-        private static SyntheticRun Synthetic() => SyntheticRun.For(Two(), "two-distinct");
+        private static SyntheticRun Synthetic() => SyntheticRun.For(Two(), "two");
 
         private static void AssertFails(S11Case run, params string[] rows)
         {
