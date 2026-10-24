@@ -954,6 +954,29 @@ namespace SAM.Analytical.OpenStudio
                 // onto the energy key so the result set has ONE zone identity.
                 List<string> zoneKeys = new List<string>(loadSummary.ZoneHeating.Keys);
 
+                Dictionary<string, double> peopleGains = ReadAnnualEnergy(sqlPath, "Zone People Total Heating Energy");
+                Dictionary<string, double> lightingGains = ReadAnnualEnergy(sqlPath, "Zone Lights Total Heating Energy");
+                Dictionary<string, double> equipmentGains = ReadAnnualEnergy(sqlPath, "Zone Electric Equipment Total Heating Energy");
+                // Zone-window-solar variables are Enclosure-scoped in current EnergyPlus
+                // ("Zone Windows ..." was renamed).
+                Dictionary<string, double> windowSolarGains = ReadAnnualEnergy(sqlPath, "Enclosure Windows Total Transmitted Solar Radiation Energy");
+
+                // A numbered name anywhere in the report marks its identity as shared by more than
+                // one room; such identities are never remapped (see CollidingZoneIdentities).
+                HashSet<string> collidingIdentities = CollidingZoneIdentities(
+                    loadSummary.ZoneHeating.Keys,
+                    loadSummary.ZoneCooling.Keys,
+                    unmetHeatingHours?.Keys,
+                    unmetCoolingHours?.Keys,
+                    peopleGains?.Keys,
+                    lightingGains?.Keys,
+                    equipmentGains?.Keys,
+                    windowSolarGains?.Keys,
+                    infiltrationGains?.Keys,
+                    temperatureSeries?.Keys,
+                    operativeTemperatureSeries?.Keys,
+                    relativeHumiditySeries?.Keys);
+
                 return new OpenStudioSimulationResultSet(
                     loadSummary.ZoneHeating,
                     loadSummary.ZoneCooling,
@@ -965,20 +988,18 @@ namespace SAM.Analytical.OpenStudio
                     peakHeatingHourTotal,
                     peakCoolingLoadTotal,
                     peakCoolingHourTotal,
-                    NormalizeKeys(unmetHeatingHours, zoneKeys),
-                    NormalizeKeys(unmetCoolingHours, zoneKeys),
-                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone People Total Heating Energy"), zoneKeys),
-                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone Lights Total Heating Energy"), zoneKeys),
-                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone Electric Equipment Total Heating Energy"), zoneKeys),
-                    // Zone-window-solar variables are Enclosure-scoped in current EnergyPlus
-                    // ("Zone Windows ..." was renamed).
-                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Enclosure Windows Total Transmitted Solar Radiation Energy"), zoneKeys),
-                    NormalizeKeys(infiltrationGains, zoneKeys),
+                    NormalizeKeys(unmetHeatingHours, zoneKeys, collidingIdentities),
+                    NormalizeKeys(unmetCoolingHours, zoneKeys, collidingIdentities),
+                    NormalizeKeys(peopleGains, zoneKeys, collidingIdentities),
+                    NormalizeKeys(lightingGains, zoneKeys, collidingIdentities),
+                    NormalizeKeys(equipmentGains, zoneKeys, collidingIdentities),
+                    NormalizeKeys(windowSolarGains, zoneKeys, collidingIdentities),
+                    NormalizeKeys(infiltrationGains, zoneKeys, collidingIdentities),
                     ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Outdoor Air Sensible Heating Energy"),
                     ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Outdoor Air Sensible Cooling Energy"),
-                    NormalizeKeys(temperatureSeries, zoneKeys),
-                    NormalizeKeys(operativeTemperatureSeries, zoneKeys),
-                    NormalizeKeys(relativeHumiditySeries, zoneKeys),
+                    NormalizeKeys(temperatureSeries, zoneKeys, collidingIdentities),
+                    NormalizeKeys(operativeTemperatureSeries, zoneKeys, collidingIdentities),
+                    NormalizeKeys(relativeHumiditySeries, zoneKeys, collidingIdentities),
                     runtimeSeconds,
                     warningCount,
                     severeCount,
@@ -1001,7 +1022,8 @@ namespace SAM.Analytical.OpenStudio
         /// <summary>
         /// Remaps report keys onto the energy-dictionary zone keys by their shared zone identity
         /// (see <see cref="ZoneIdentity"/>; case-insensitive) — the result set exposes ONE zone
-        /// identity. A key whose identity matches no zone key, or more than one, passes through
+        /// identity. A key is remapped only onto exactly one zone key; otherwise, or when its
+        /// identity is colliding (<paramref name="collidingIdentities"/>), it passes through
         /// unchanged: it is never guessed onto a zone. When two report keys resolve to the same
         /// zone key neither is remapped, so no value overwrites another zone's.
         /// </summary>
@@ -1010,7 +1032,7 @@ namespace SAM.Analytical.OpenStudio
         /// missing (never another zone's value): the SAM mapping looks values up by the exact
         /// Ideal Loads name, so for example the space's UnmetHours is simply not set.
         /// </remarks>
-        private static Dictionary<string, T> NormalizeKeys<T>(Dictionary<string, T> source, List<string> zoneKeys)
+        private static Dictionary<string, T> NormalizeKeys<T>(Dictionary<string, T> source, List<string> zoneKeys, HashSet<string> collidingIdentities)
         {
             if (source == null)
             {
@@ -1021,7 +1043,7 @@ namespace SAM.Analytical.OpenStudio
             Dictionary<string, int> targetCounts = new Dictionary<string, int>(System.StringComparer.OrdinalIgnoreCase);
             foreach (string key in source.Keys)
             {
-                string target = NormalizeKey(key, zoneKeys);
+                string target = NormalizeKey(key, zoneKeys, collidingIdentities);
                 targets[key] = target;
                 targetCounts[target] = (targetCounts.TryGetValue(target, out int count) ? count : 0) + 1;
             }
@@ -1036,15 +1058,15 @@ namespace SAM.Analytical.OpenStudio
             return result;
         }
 
-        private static string NormalizeKey(string key, List<string> zoneKeys)
+        private static string NormalizeKey(string key, List<string> zoneKeys, HashSet<string> collidingIdentities)
         {
             if (key == null || zoneKeys == null || zoneKeys.Count == 0)
             {
                 return key;
             }
 
-            string identity = ZoneIdentity(key);
-            if (identity == null)
+            string identity = ZoneIdentity(key, out bool numbered);
+            if (identity == null || numbered || (collidingIdentities != null && collidingIdentities.Contains(identity)))
             {
                 return key;
             }
@@ -1052,12 +1074,13 @@ namespace SAM.Analytical.OpenStudio
             string result = null;
             foreach (string zoneKey in zoneKeys)
             {
-                if (!string.Equals(ZoneIdentity(zoneKey), identity, System.StringComparison.OrdinalIgnoreCase))
+                string zoneIdentity = ZoneIdentity(zoneKey, out bool zoneNumbered);
+                if (!string.Equals(zoneIdentity, identity, System.StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                if (result != null)
+                if (result != null || zoneNumbered)
                 {
                     // Ambiguous: more than one zone carries this identity.
                     return key;
@@ -1070,22 +1093,56 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
+        /// Identities that more than one room may carry: those of any numbered name
+        /// (see <see cref="ZoneIdentity"/>) among the given keys. OpenStudio numbers a repeated
+        /// name per object type, so an unnumbered Ideal Loads name can belong to the room whose
+        /// ThermalZone/Space names are numbered (an unconditioned room with the same identity has no
+        /// Ideal Loads). The numbered name is therefore evidence of the collision only; it never
+        /// establishes which room an unnumbered or numbered name belongs to.
+        /// </summary>
+        private static HashSet<string> CollidingZoneIdentities(params IEnumerable<string>[] keyCollections)
+        {
+            HashSet<string> result = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (IEnumerable<string> keys in keyCollections)
+            {
+                if (keys == null)
+                {
+                    continue;
+                }
+
+                foreach (string key in keys)
+                {
+                    string identity = ZoneIdentity(key, out bool numbered);
+                    if (identity != null && numbered)
+                    {
+                        result.Add(identity);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// The stable identity of a generated zone-level name
         /// (<see cref="Core.OpenStudio.Query.OpenStudioName(string, string, System.Guid)"/>): the part
         /// after the SAM_&lt;Type&gt;_ prefix, "&lt;SanitizedName&gt;_&lt;GuidFirst8&gt;" or just
         /// "&lt;GuidFirst8&gt;" for an unnamed object. Null when the name has no known prefix or no
-        /// trailing Guid suffix. A " &lt;digits&gt;" ending (OpenStudio's de-duplication of a
-        /// repeated name; generated names never contain spaces) is ignored, so two objects with the
-        /// same generated name share one identity and are treated as ambiguous.
+        /// trailing Guid suffix. A " &lt;digits&gt;" ending is OpenStudio's de-duplication of a
+        /// repeated name (generated names never contain spaces): it is removed from the identity and
+        /// reported through <paramref name="numbered"/>, so callers can treat the identity as
+        /// colliding instead of matching it.
         /// </summary>
-        private static string ZoneIdentity(string name)
+        private static string ZoneIdentity(string name, out bool numbered)
         {
+            numbered = false;
             if (name != null)
             {
                 int index = name.LastIndexOf(' ');
                 if (index > 0 && index < name.Length - 1 && System.Linq.Enumerable.All(name.Substring(index + 1), char.IsDigit))
                 {
                     name = name.Substring(0, index);
+                    numbered = true;
                 }
             }
 

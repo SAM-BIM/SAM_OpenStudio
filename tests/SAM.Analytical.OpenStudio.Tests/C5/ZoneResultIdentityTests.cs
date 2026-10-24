@@ -226,6 +226,75 @@ namespace SAM.Analytical.OpenStudio.Tests
         }
 
         [Test]
+        public void NumberedSource_OnlyUnnumberedTarget_StaysUnmapped()
+        {
+            // The numbered report keys may belong to another, unconditioned room with the same generated name.
+            string idealLoads = Name("IdealLoads", "FixA", fixA);
+            string thermalZone = Name("ThermalZone", "FixA", fixA) + " 1";
+            string space = Name("Space", "FixA", fixA) + " 1";
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_numbered_source.sql", new List<(string, string, double)>
+            {
+                (idealLoads, HeatingEnergy, 1000),
+                (thermalZone, HeatingNotMet, 9),
+                (space, WindowSolar, 40),
+                (thermalZone, AirTemperature, 21),
+            }));
+
+            Assert.That(results.UnmetHeatingHours.ContainsKey(idealLoads), Is.False, "scalar");
+            Assert.That(results.UnmetHeatingHours[thermalZone], Is.EqualTo(24 * 9));
+            Assert.That(results.WindowSolarGains.ContainsKey(idealLoads), Is.False, "scalar, Space key");
+            Assert.That(results.WindowSolarGains.ContainsKey(space), Is.True);
+            Assert.That(results.TemperatureSeries.ContainsKey(idealLoads), Is.False, "series");
+            Assert.That(results.TemperatureSeries[thermalZone], Is.All.EqualTo(21));
+        }
+
+        [Test]
+        public void NumberedTarget_OnlyUnnumberedSource_StaysUnmapped()
+        {
+            string idealLoads = Name("IdealLoads", "FixA", fixA) + " 1";
+            string thermalZone = Name("ThermalZone", "FixA", fixA);
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_numbered_target.sql", new List<(string, string, double)>
+            {
+                (idealLoads, HeatingEnergy, 1000),
+                (thermalZone, HeatingNotMet, 9),
+                (thermalZone, AirTemperature, 21),
+            }));
+
+            Assert.That(results.UnmetHeatingHours.ContainsKey(idealLoads), Is.False, "scalar");
+            Assert.That(results.UnmetHeatingHours[thermalZone], Is.EqualTo(24 * 9));
+            Assert.That(results.TemperatureSeries.ContainsKey(idealLoads), Is.False, "series");
+            Assert.That(results.TemperatureSeries[thermalZone], Is.All.EqualTo(21));
+        }
+
+        [Test]
+        public void CollidingUnconditionedRoom_OnlySourceEntry_IsNotAssignedToTheConditionedRoom()
+        {
+            // Room 1 (unconditioned, created first) owns the unnumbered ThermalZone/Space names; room 2 (conditioned)
+            // got "... 1" for those but the unnumbered Ideal Loads name, because only it has Ideal Loads. Window solar
+            // is reported for room 1 only; the numbered names seen in other variables are the evidence of the collision.
+            string idealLoads = Name("IdealLoads", "FixA", fixA);
+            string thermalZone = Name("ThermalZone", "FixA", fixA);
+            string space = Name("Space", "FixA", fixA);
+            OpenStudioSimulationResultSet results = Extract(CreateSql("zone_identity_unconditioned_collision.sql", new List<(string, string, double)>
+            {
+                (idealLoads, HeatingEnergy, 1000),
+                (thermalZone, HeatingNotMet, 5),
+                (thermalZone + " 1", HeatingNotMet, 7),
+                (space, WindowSolar, 40),
+                (thermalZone, AirTemperature, 15),
+                (thermalZone + " 1", AirTemperature, 21),
+            }));
+
+            Assert.That(results.WindowSolarGains.ContainsKey(idealLoads), Is.False, "the only solar entry is the unconditioned room's");
+            Assert.That(results.WindowSolarGains.ContainsKey(space), Is.True);
+            Assert.That(results.UnmetHeatingHours.ContainsKey(idealLoads), Is.False);
+            Assert.That(results.UnmetHeatingHours[thermalZone], Is.EqualTo(24 * 5));
+            Assert.That(results.UnmetHeatingHours[thermalZone + " 1"], Is.EqualTo(24 * 7));
+            Assert.That(results.TemperatureSeries.ContainsKey(idealLoads), Is.False);
+            Assert.That(results.TemperatureSeries[thermalZone], Is.All.EqualTo(15));
+        }
+
+        [Test]
         public void TwoReportKeysOnOneRoom_NeitherOverwritesTheOther()
         {
             string idealLoads = Name("IdealLoads", "FixA", fixA);
