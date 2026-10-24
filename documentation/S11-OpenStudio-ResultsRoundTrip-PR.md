@@ -114,7 +114,28 @@ independent SQL/ESO read; label total versus sensible cooling (F3).
 
 ## Tests and validation (local, Release x64)
 
-To be completed with the tested content SHA (see the record-only follow-up commit).
+Tested content: `246c8fedd1dcf45618df9241af682feadc1fa9bc` (code, tests, scripts, solution, workflow; this record section
+was added afterwards in a record-only commit). Dependencies as built locally: SAM `b7c2c36a` (`SAM\build`), SAM_Validation
+`2a3acfaf` (`SAM_Validation\build` schema), SAM_Tas `922044fa` (InputEquivalence + linked ReadBackExpected), SAM_SQLite
+`ec2eb86`, all on `sow/2026-Q4`. Machine: Windows 11, VS 18 MSBuild, .NET SDK 10.0.401 targeting net8.0.
+
+| Check | Command (from `SAM_OpenStudio`) | Result |
+|---|---|---|
+| Full solution, as CI | `MSBuild.exe SAM_OpenStudio.sln -t:Restore;Rebuild -p:Configuration=Release -p:Platform=x64 -p:UseSharedCompilation=false "-p:APPDATA=<scratch>" -m -nr:false -v:m` | exit 0, 0 errors; no compiler warning from a new or changed project (existing MSB3277 System.Memory warnings only). `APPDATA` redirected so the Grasshopper post-build did not deploy into `%APPDATA%\SAM` (verified unchanged). |
+| New CI build-check logic, run locally | the `Check S11 results read-back projects are built` step body | both projects listed in the solution; both outputs present |
+| Producer tests | `dotnet test benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests -c Release -p:Platform=x64 --no-build --filter "TestCategory!=Simulation"` | 58 passed, 0 failed (51 existing + 7 `S11ProducerTests`) |
+| Read-back tests (S09 + S11) | `dotnet test benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests -c Release -p:Platform=x64 --no-build` | 197 passed, 0 failed, 0 skipped, 5 min 9 s (120 existing S09 + 77 S11) |
+| S09 behaviour-neutral replay (offline, saved runs) | `os-input-readback compare --run C:\TasOut\s09\acc7-u1\<box\|two> --fixture-id s08-fix-<box\|two> --rule-set approved --out <scratch>` before and after the extraction | exit 0 both; `report.txt` byte-identical to committed `acceptance-2026-10-23/runs/<box\|two>/report-approved.txt` (`868a5808…b959fe`, `9e3a3f0e…a6c466d`) |
+| Scripts | Windows PowerShell 5.1 `Parser.ParseFile` on the three `.ps1`; `Run-S11-Results.ps1 -Phase run` without `-ConfirmEngineRuns` | 0 parse errors, ASCII only; the run phase stops with exit 70 before creating anything |
+
+The S11 tests include: the consistent two-zone run PASSing with `read`, `subject`, `compare` in three processes and the
+four CLI negatives on copies (control 0, deleted hour 11, duplicated hour 11, Sensible substitution 10, original
+unchanged); 22 completeness defects each BLOCKING (shared, one-sided, count-preserving shift, absent series/zone, repeated
+ESO id, second dictionary entry, extra hour, Feb 29, warmup rows, merged design-day rows, non-annual/leap RunPeriod,
+second ESO RunPeriod block, DST stamp) with the paired production-reader check for the shared ones; the F3 precondition
+(every targeted row >= 10^6 tolerances, other peak hour) and 8 substitutions (consumption, space peak, model peak, all;
+heating and cooling) each FAILing with no BLOCKED row; zero rule, ties, value slips, C3-C9, closure, identity and source
+scan. Hosted CI has not run yet (see the PR description for the head and checks).
 
 ## Remaining limitations and risks
 
