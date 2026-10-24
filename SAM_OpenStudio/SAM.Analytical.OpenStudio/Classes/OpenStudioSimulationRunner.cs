@@ -949,10 +949,34 @@ namespace SAM.Analytical.OpenStudio
 
                 // Zone identity normalisation: Ideal Loads variables key on the system name,
                 // zone-level variables on the ThermalZone name, enclosure variables on the
-                // Space name — all end with the same deterministic SAM Guid suffix. Every
-                // per-zone dictionary is remapped onto the energy key so the result set has
-                // ONE zone identity.
+                // Space name — all share the same deterministic "<SanitizedName>_<GuidFirst8>"
+                // identity after their SAM_<Type>_ prefix. Every per-zone dictionary is remapped
+                // onto the energy key so the result set has ONE zone identity.
                 List<string> zoneKeys = new List<string>(loadSummary.ZoneHeating.Keys);
+
+                Dictionary<string, double> peopleGains = ReadAnnualEnergy(sqlPath, "Zone People Total Heating Energy");
+                Dictionary<string, double> lightingGains = ReadAnnualEnergy(sqlPath, "Zone Lights Total Heating Energy");
+                Dictionary<string, double> equipmentGains = ReadAnnualEnergy(sqlPath, "Zone Electric Equipment Total Heating Energy");
+                // Zone-window-solar variables are Enclosure-scoped in current EnergyPlus
+                // ("Zone Windows ..." was renamed).
+                Dictionary<string, double> windowSolarGains = ReadAnnualEnergy(sqlPath, "Enclosure Windows Total Transmitted Solar Radiation Energy");
+
+                // Only identities proven unique by the native zone inventory, and never numbered in
+                // any key read here, are remapped (see UniqueZoneIdentities).
+                HashSet<string> uniqueIdentities = UniqueZoneIdentities(
+                    ReadZoneNames(sqlPath),
+                    loadSummary.ZoneHeating.Keys,
+                    loadSummary.ZoneCooling.Keys,
+                    unmetHeatingHours?.Keys,
+                    unmetCoolingHours?.Keys,
+                    peopleGains?.Keys,
+                    lightingGains?.Keys,
+                    equipmentGains?.Keys,
+                    windowSolarGains?.Keys,
+                    infiltrationGains?.Keys,
+                    temperatureSeries?.Keys,
+                    operativeTemperatureSeries?.Keys,
+                    relativeHumiditySeries?.Keys);
 
                 return new OpenStudioSimulationResultSet(
                     loadSummary.ZoneHeating,
@@ -965,20 +989,18 @@ namespace SAM.Analytical.OpenStudio
                     peakHeatingHourTotal,
                     peakCoolingLoadTotal,
                     peakCoolingHourTotal,
-                    NormalizeKeys(unmetHeatingHours, zoneKeys),
-                    NormalizeKeys(unmetCoolingHours, zoneKeys),
-                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone People Total Heating Energy"), zoneKeys),
-                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone Lights Total Heating Energy"), zoneKeys),
-                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Zone Electric Equipment Total Heating Energy"), zoneKeys),
-                    // Zone-window-solar variables are Enclosure-scoped in current EnergyPlus
-                    // ("Zone Windows ..." was renamed).
-                    NormalizeKeys(ReadAnnualEnergy(sqlPath, "Enclosure Windows Total Transmitted Solar Radiation Energy"), zoneKeys),
-                    NormalizeKeys(infiltrationGains, zoneKeys),
+                    NormalizeKeys(unmetHeatingHours, zoneKeys, uniqueIdentities),
+                    NormalizeKeys(unmetCoolingHours, zoneKeys, uniqueIdentities),
+                    NormalizeKeys(peopleGains, zoneKeys, uniqueIdentities),
+                    NormalizeKeys(lightingGains, zoneKeys, uniqueIdentities),
+                    NormalizeKeys(equipmentGains, zoneKeys, uniqueIdentities),
+                    NormalizeKeys(windowSolarGains, zoneKeys, uniqueIdentities),
+                    NormalizeKeys(infiltrationGains, zoneKeys, uniqueIdentities),
                     ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Outdoor Air Sensible Heating Energy"),
                     ReadAnnualEnergy(sqlPath, "Zone Ideal Loads Outdoor Air Sensible Cooling Energy"),
-                    NormalizeKeys(temperatureSeries, zoneKeys),
-                    NormalizeKeys(operativeTemperatureSeries, zoneKeys),
-                    NormalizeKeys(relativeHumiditySeries, zoneKeys),
+                    NormalizeKeys(temperatureSeries, zoneKeys, uniqueIdentities),
+                    NormalizeKeys(operativeTemperatureSeries, zoneKeys, uniqueIdentities),
+                    NormalizeKeys(relativeHumiditySeries, zoneKeys, uniqueIdentities),
                     runtimeSeconds,
                     warningCount,
                     severeCount,
@@ -992,61 +1014,226 @@ namespace SAM.Analytical.OpenStudio
         }
 
         /// <summary>
-        /// Remaps report keys onto the energy-dictionary zone keys by their shared deterministic
-        /// SAM Guid suffix (last 8 characters, case-insensitive): Ideal Loads variables key on
-        /// the system name, zone-level variables on the ThermalZone name, enclosure variables on
-        /// the Space name — the result set exposes ONE zone identity. Unmatched keys pass
-        /// through unchanged.
+        /// SAM_&lt;Type&gt;_ prefixes of the generated names that report per-zone results: Ideal Loads
+        /// variables key on the system name, zone-level variables on the ThermalZone name,
+        /// enclosure variables on the Space name.
         /// </summary>
-        private static Dictionary<string, double> NormalizeKeys(Dictionary<string, double> source, List<string> zoneKeys)
+        private static readonly string[] zoneIdentityPrefixes = new string[] { "SAM_IdealLoads_", "SAM_ThermalZone_", "SAM_Space_" };
+
+        /// <summary>
+        /// Remaps report keys onto the energy-dictionary zone keys by their shared zone identity
+        /// (see <see cref="ZoneIdentity"/>; case-insensitive) — the result set exposes ONE zone
+        /// identity. A key is remapped only when its identity is proven unique
+        /// (<paramref name="uniqueIdentities"/>) and it matches exactly one zone key; otherwise it
+        /// passes through unchanged: it is never guessed onto a zone. When two report keys resolve
+        /// to the same zone key neither is remapped, so no value overwrites another zone's.
+        /// </summary>
+        /// <remarks>
+        /// A key left under its own name is visible in the result set and its zone's value stays
+        /// missing (never another zone's value): the SAM mapping looks values up by the exact
+        /// Ideal Loads name, so for example the space's UnmetHours is simply not set.
+        /// </remarks>
+        private static Dictionary<string, T> NormalizeKeys<T>(Dictionary<string, T> source, List<string> zoneKeys, HashSet<string> uniqueIdentities)
         {
             if (source == null)
             {
                 return null;
             }
 
-            Dictionary<string, double> result = new Dictionary<string, double>();
-            foreach (KeyValuePair<string, double> keyValuePair in source)
+            Dictionary<string, string> targets = new Dictionary<string, string>();
+            Dictionary<string, int> targetCounts = new Dictionary<string, int>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (string key in source.Keys)
             {
-                result[NormalizeKey(keyValuePair.Key, zoneKeys)] = keyValuePair.Value;
+                string target = NormalizeKey(key, zoneKeys, uniqueIdentities);
+                targets[key] = target;
+                targetCounts[target] = (targetCounts.TryGetValue(target, out int count) ? count : 0) + 1;
+            }
+
+            Dictionary<string, T> result = new Dictionary<string, T>();
+            foreach (KeyValuePair<string, T> keyValuePair in source)
+            {
+                string target = targets[keyValuePair.Key];
+                result[targetCounts[target] > 1 ? keyValuePair.Key : target] = keyValuePair.Value;
             }
 
             return result;
         }
 
-        private static Dictionary<string, double[]> NormalizeKeys(Dictionary<string, double[]> source, List<string> zoneKeys)
+        private static string NormalizeKey(string key, List<string> zoneKeys, HashSet<string> uniqueIdentities)
         {
-            if (source == null)
-            {
-                return null;
-            }
-
-            Dictionary<string, double[]> result = new Dictionary<string, double[]>();
-            foreach (KeyValuePair<string, double[]> keyValuePair in source)
-            {
-                result[NormalizeKey(keyValuePair.Key, zoneKeys)] = keyValuePair.Value;
-            }
-
-            return result;
-        }
-
-        private static string NormalizeKey(string key, List<string> zoneKeys)
-        {
-            if (key == null || zoneKeys == null || zoneKeys.Count == 0 || key.Length < 8)
+            if (key == null || zoneKeys == null || zoneKeys.Count == 0 || uniqueIdentities == null)
             {
                 return key;
             }
 
-            string suffix = key.Substring(key.Length - 8);
+            string identity = ZoneIdentity(key, out bool numbered);
+            if (identity == null || numbered || !uniqueIdentities.Contains(identity))
+            {
+                return key;
+            }
+
+            string result = null;
             foreach (string zoneKey in zoneKeys)
             {
-                if (zoneKey != null && zoneKey.Length >= 8 && string.Equals(zoneKey.Substring(zoneKey.Length - 8), suffix, System.StringComparison.OrdinalIgnoreCase))
+                string zoneIdentity = ZoneIdentity(zoneKey, out bool zoneNumbered);
+                if (!string.Equals(zoneIdentity, identity, System.StringComparison.OrdinalIgnoreCase))
                 {
-                    return zoneKey;
+                    continue;
+                }
+
+                if (result != null || zoneNumbered)
+                {
+                    // Ambiguous: more than one zone carries this identity.
+                    return key;
+                }
+
+                result = zoneKey;
+            }
+
+            return result ?? key;
+        }
+
+        /// <summary>
+        /// Zone identities (see <see cref="ZoneIdentity"/>) proven to belong to exactly one room:
+        /// carried by exactly one, unnumbered, name in the native zone inventory
+        /// (<paramref name="zoneNames"/>, the SQL Zones table, which lists every room whatever
+        /// outputs were requested) and by no numbered name among <paramref name="keyCollections"/>.
+        /// OpenStudio numbers a repeated name per object type, so an unnumbered Ideal Loads name can
+        /// belong to the room whose ThermalZone/Space names are numbered (an unconditioned room with
+        /// the same identity has no Ideal Loads); a numbered name is evidence of a collision only and
+        /// never establishes which room a name belongs to. No inventory (table absent or unreadable):
+        /// uniqueness cannot be established and the result is empty.
+        /// </summary>
+        private static HashSet<string> UniqueZoneIdentities(List<string> zoneNames, params IEnumerable<string>[] keyCollections)
+        {
+            HashSet<string> result = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            if (zoneNames == null)
+            {
+                return result;
+            }
+
+            HashSet<string> colliding = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (string zoneName in zoneNames)
+            {
+                string identity = ZoneIdentity(zoneName, out bool numbered);
+                if (identity == null)
+                {
+                    continue;
+                }
+
+                if (numbered || !result.Add(identity))
+                {
+                    colliding.Add(identity);
                 }
             }
 
-            return key;
+            foreach (IEnumerable<string> keys in keyCollections)
+            {
+                if (keys == null)
+                {
+                    continue;
+                }
+
+                foreach (string key in keys)
+                {
+                    string identity = ZoneIdentity(key, out bool numbered);
+                    if (identity != null && numbered)
+                    {
+                        colliding.Add(identity);
+                    }
+                }
+            }
+
+            result.ExceptWith(colliding);
+            return result;
+        }
+
+        /// <summary>
+        /// Reads the native zone inventory (SQL <c>Zones.ZoneName</c>, one row per EnergyPlus zone).
+        /// Null when the file, the table or the column cannot be read, so callers can tell "no
+        /// inventory" from an empty one.
+        /// </summary>
+        private static List<string> ReadZoneNames(string sqlPath)
+        {
+            if (string.IsNullOrWhiteSpace(sqlPath) || !File.Exists(sqlPath))
+            {
+                return null;
+            }
+
+            try
+            {
+                using (System.Data.SQLite.SQLiteConnection connection = new System.Data.SQLite.SQLiteConnection(new System.Data.SQLite.SQLiteConnectionStringBuilder { DataSource = sqlPath, ReadOnly = true, FailIfMissing = true }.ConnectionString))
+                {
+                    connection.Open();
+
+                    using (System.Data.SQLite.SQLiteCommand exists = connection.CreateCommand())
+                    {
+                        exists.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'Zones'";
+                        if (System.Convert.ToInt32(exists.ExecuteScalar()) == 0)
+                        {
+                            return null;
+                        }
+                    }
+
+                    List<string> result = new List<string>();
+                    using (System.Data.SQLite.SQLiteCommand command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT ZoneName FROM Zones ORDER BY ZoneIndex";
+                        using (System.Data.SQLite.SQLiteDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                result.Add(ReadString(reader, 0));
+                            }
+                        }
+                    }
+
+                    return result;
+                }
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The stable identity of a generated zone-level name
+        /// (<see cref="Core.OpenStudio.Query.OpenStudioName(string, string, System.Guid)"/>): the part
+        /// after the SAM_&lt;Type&gt;_ prefix, "&lt;SanitizedName&gt;_&lt;GuidFirst8&gt;" or just
+        /// "&lt;GuidFirst8&gt;" for an unnamed object. Null when the name has no known prefix or no
+        /// trailing Guid suffix. A " &lt;digits&gt;" ending is OpenStudio's de-duplication of a
+        /// repeated name (generated names never contain spaces): it is removed from the identity and
+        /// reported through <paramref name="numbered"/>, so callers can treat the identity as
+        /// colliding instead of matching it.
+        /// </summary>
+        private static string ZoneIdentity(string name, out bool numbered)
+        {
+            numbered = false;
+            if (name != null)
+            {
+                int index = name.LastIndexOf(' ');
+                if (index > 0 && index < name.Length - 1 && System.Linq.Enumerable.All(name.Substring(index + 1), char.IsDigit))
+                {
+                    name = name.Substring(0, index);
+                    numbered = true;
+                }
+            }
+
+            if (!Query.TryGetGuidSuffix(name, out _))
+            {
+                return null;
+            }
+
+            foreach (string prefix in zoneIdentityPrefixes)
+            {
+                if (name.Length > prefix.Length && name.StartsWith(prefix, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return name.Substring(prefix.Length);
+                }
+            }
+
+            return null;
         }
 
         private static void FillPeaks(Dictionary<string, List<KeyValuePair<int, double>>> series, Dictionary<string, double> peakLoad, Dictionary<string, int> peakHour)        {
