@@ -13,7 +13,7 @@
   </PropertyGroup>
 
   <!--
-    S09 tests. Offline: no OpenStudio CLI and no EnergyPlus. The export uses the OpenStudio SDK NuGet in-process; the read
+    S09 and S11 tests. Offline: no OpenStudio CLI and no EnergyPlus (S11 uses synthetic SQL/ESO files on S09 exports). The export uses the OpenStudio SDK NuGet in-process; the read
     and compare steps run os-input-readback.exe in fresh processes, as the acceptance does. The Budapest EPW is the SAM#212
     committed file in the sibling SAM checkout (SAM/SAM/SAM.Tests/Resources/Weather), decompressed and hash-checked.
   -->
@@ -28,12 +28,19 @@
   <ItemGroup>
     <ProjectReference Include="..\SAM.Analytical.OpenStudio.InputReadBack\SAM.Analytical.OpenStudio.InputReadBack.csproj" />
     <ProjectReference Include="..\SAM.Analytical.OpenStudio.InputReadBack.Cli\SAM.Analytical.OpenStudio.InputReadBack.Cli.csproj" />
+    <!-- S11 results round-trip: the reference library and its harness (subject capture, negatives) run here offline. -->
+    <ProjectReference Include="..\SAM.Analytical.OpenStudio.ResultsReadBack\SAM.Analytical.OpenStudio.ResultsReadBack.csproj" />
+    <ProjectReference Include="..\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\SAM.Analytical.OpenStudio.ResultsReadBack.Cli.csproj" />
+    <ProjectReference Include="..\SAM.Analytical.OpenStudio.Benchmark\SAM.Analytical.OpenStudio.Benchmark.csproj" />
     <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Core.OpenStudio\SAM.Core.OpenStudio.csproj" />
     <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Geometry.OpenStudio\SAM.Geometry.OpenStudio.csproj" />
     <ProjectReference Include="..\..\SAM_OpenStudio\SAM.Analytical.OpenStudio\SAM.Analytical.OpenStudio.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="SAM.Analytical.Benchmark">
+      <HintPath>..\..\..\SAM_Validation\build\SAM.Analytical.Benchmark.dll</HintPath>
+    </Reference>
     <Reference Include="SAM.Core">
       <HintPath>..\..\..\SAM\build\SAM.Core.dll</HintPath>
     </Reference>

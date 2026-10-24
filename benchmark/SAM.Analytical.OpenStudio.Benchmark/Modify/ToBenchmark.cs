@@ -26,11 +26,34 @@ namespace SAM.Analytical.OpenStudio.Benchmark
         /// missing or out of range is <c>available:false</c> with a null value. A measured zero
         /// stays a value of 0. Peak load and its hour are coupled: a peak with no valid hour-of-year
         /// is emitted as unavailable rather than a misleading zero.
+        /// <para>
+        /// S11 rules: an all-zero peak (load exactly 0) is a measured load of 0 with NO hour — every
+        /// hour of the year ties, so no hour is the peak hour (the SAM result's hour 0 is the earliest
+        /// of that full-year tie and is not published). An annual consumption whose result set carried
+        /// no zone key is unavailable, not 0 kWh. A successful document carries the
+        /// <see cref="TotalBasisNote"/> (F3): cooling and heating are the EnergyPlus Ideal Loads
+        /// supply-air Total energies, cooling including latent.
+        /// </para>
         /// </remarks>
         /// <param name="analyticalModel">The neutral source model (provides GUIDs, names, areas and volumes).</param>
         /// <param name="openStudioBenchmarkContext">Run context: result set, hashes and provenance.</param>
         /// <returns>The benchmark document, or null when either argument is null.</returns>
         public static BenchmarkDocument ToBenchmark(this AnalyticalModel analyticalModel, OpenStudioBenchmarkContext openStudioBenchmarkContext)
+        {
+            return ToBenchmark(analyticalModel, openStudioBenchmarkContext, BenchmarkInputs(analyticalModel, openStudioBenchmarkContext));
+        }
+
+        /// <summary>
+        /// The F3 basis label on every successful OpenStudio B1a document. The values are not changed:
+        /// the route always reported the Ideal Loads Total energies; this states it.
+        /// </summary>
+        public const string TotalBasisNote = "Cooling metrics are EnergyPlus Ideal Loads Supply Air Total cooling (sensible + latent); heating is Total heating.";
+
+        /// <summary>
+        /// The SAM result objects the document is mapped from, built once from the context's result set
+        /// through the established SAM mappings. Null when either argument is null.
+        /// </summary>
+        public static OpenStudioBenchmarkInputs BenchmarkInputs(this AnalyticalModel analyticalModel, OpenStudioBenchmarkContext openStudioBenchmarkContext)
         {
             if (analyticalModel == null || openStudioBenchmarkContext == null)
             {
@@ -38,20 +61,49 @@ namespace SAM.Analytical.OpenStudio.Benchmark
             }
 
             OpenStudioSimulationResultSet resultSet = openStudioBenchmarkContext.ResultSet;
-            AnalyticalModelSimulationResult modelResult = resultSet?.ToSAM(analyticalModel);
-            List<SpaceSimulationResult> spaceResults = resultSet?.ToSAM_SpaceSimulationResults(analyticalModel) ?? new List<SpaceSimulationResult>();
+            return new OpenStudioBenchmarkInputs
+            {
+                ModelResult = resultSet?.ToSAM(analyticalModel),
+                SpaceResults = resultSet?.ToSAM_SpaceSimulationResults(analyticalModel) ?? new List<SpaceSimulationResult>(),
+                DesignLoadResults = openStudioBenchmarkContext.SpaceDesignLoadResults?.ToList() ?? new List<SpaceSimulationResult>(),
+                HeatingConsumptionKeyed = resultSet?.AnnualHeatingEnergy.Count > 0,
+                CoolingConsumptionKeyed = resultSet?.AnnualCoolingEnergy.Count > 0,
+            };
+        }
+
+        /// <summary>
+        /// Maps exactly the given <paramref name="openStudioBenchmarkInputs"/> instances (S11: the objects
+        /// that produce the document are the ones captured beside it). The context supplies provenance only.
+        /// </summary>
+        /// <returns>The benchmark document, or null when any argument is null.</returns>
+        public static BenchmarkDocument ToBenchmark(this AnalyticalModel analyticalModel, OpenStudioBenchmarkContext openStudioBenchmarkContext, OpenStudioBenchmarkInputs openStudioBenchmarkInputs)
+        {
+            if (analyticalModel == null || openStudioBenchmarkContext == null || openStudioBenchmarkInputs == null)
+            {
+                return null;
+            }
+
+            AnalyticalModelSimulationResult modelResult = openStudioBenchmarkInputs.ModelResult;
+            List<SpaceSimulationResult> spaceResults = openStudioBenchmarkInputs.SpaceResults ?? new List<SpaceSimulationResult>();
 
             return new BenchmarkDocument
             {
                 SchemaVersion = BenchmarkSchema.CurrentVersion,
                 Provenance = Provenance(openStudioBenchmarkContext, modelResult, spaceResults),
-                Model = Model(modelResult),
-                Spaces = Spaces(analyticalModel, spaceResults, openStudioBenchmarkContext.SpaceDesignLoadResults),
+                Model = Model(modelResult, openStudioBenchmarkInputs),
+                Spaces = Spaces(analyticalModel, spaceResults, openStudioBenchmarkInputs.DesignLoadResults),
             };
         }
 
         private static BenchmarkProvenance Provenance(OpenStudioBenchmarkContext context, AnalyticalModelSimulationResult modelResult, IEnumerable<SpaceSimulationResult> spaceResults)
         {
+            List<string> notes = new List<string>(context.Notes ?? new List<string>());
+            if (context.State == RunState.Success && !notes.Contains(TotalBasisNote))
+            {
+                notes.Add(TotalBasisNote);
+                notes.Sort(StringComparer.Ordinal);
+            }
+
             return new BenchmarkProvenance
             {
                 SourceModelName = context.SourceModelName,
@@ -76,7 +128,7 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                 State = context.State,
                 ResultSources = ResultSources(modelResult, spaceResults),
                 Warnings = new List<string>(context.Warnings ?? new List<string>()),
-                Notes = new List<string>(context.Notes ?? new List<string>()),
+                Notes = notes,
             };
         }
 
@@ -103,7 +155,7 @@ namespace SAM.Analytical.OpenStudio.Benchmark
             return sources.ToList();
         }
 
-        private static BenchmarkModelResult Model(AnalyticalModelSimulationResult modelResult)
+        private static BenchmarkModelResult Model(AnalyticalModelSimulationResult modelResult, OpenStudioBenchmarkInputs inputs)
         {
             (MetricValue heatingLoad, MetricValue heatingHour) = Peak(
                 Double(modelResult, AnalyticalModelSimulationResultParameter.PeakHeatingLoad),
@@ -117,8 +169,13 @@ namespace SAM.Analytical.OpenStudio.Benchmark
 
             return new BenchmarkModelResult
             {
-                ConsumptionHeating = NonNegative(Double(modelResult, AnalyticalModelSimulationResultParameter.ConsumptionHeating), MetricUnit.KilowattHour),
-                ConsumptionCooling = NonNegative(Double(modelResult, AnalyticalModelSimulationResultParameter.ConsumptionCooling), MetricUnit.KilowattHour),
+                // No zone key: the result set's empty sum is not a measured 0 kWh.
+                ConsumptionHeating = inputs.HeatingConsumptionKeyed
+                    ? NonNegative(Double(modelResult, AnalyticalModelSimulationResultParameter.ConsumptionHeating), MetricUnit.KilowattHour)
+                    : MetricValue.Unavailable(MetricUnit.KilowattHour),
+                ConsumptionCooling = inputs.CoolingConsumptionKeyed
+                    ? NonNegative(Double(modelResult, AnalyticalModelSimulationResultParameter.ConsumptionCooling), MetricUnit.KilowattHour)
+                    : MetricValue.Unavailable(MetricUnit.KilowattHour),
                 PeakHeatingLoad = heatingLoad,
                 PeakHeatingHour = heatingHour,
                 PeakCoolingLoad = coolingLoad,
@@ -203,12 +260,19 @@ namespace SAM.Analytical.OpenStudio.Benchmark
         /// <summary>
         /// A peak load and its hour-of-year, coupled: both are available only when the load is a
         /// finite non-negative number and the hour is an integer in 0..8759; otherwise both are
-        /// unavailable (a peak without a valid hour is missing, never a measured zero).
+        /// unavailable (a peak without a valid hour is missing, never a measured zero). A load of
+        /// exactly 0 is available with its hour unavailable: an all-zero series ties at every hour,
+        /// so it has no peak hour (S11 zero rule, symmetric with S10).
         /// </summary>
         private static (MetricValue load, MetricValue hour) Peak(double? loadValue, int? hourValue, MetricUnit loadUnit)
         {
             bool hourValid = hourValue.HasValue && hourValue.Value >= 0 && hourValue.Value <= 8759;
             bool loadValid = loadValue.HasValue && IsFinite(loadValue.Value) && loadValue.Value >= 0;
+            if (hourValid && loadValid && loadValue.Value == 0)
+            {
+                return (MetricValue.AvailableValue(0, loadUnit), MetricValue.Unavailable(MetricUnit.HourOfYear));
+            }
+
             if (hourValid && loadValid)
             {
                 return (MetricValue.AvailableValue(loadValue.Value, loadUnit), MetricValue.AvailableValue(hourValue.Value, MetricUnit.HourOfYear));

@@ -59,6 +59,11 @@ namespace SAM.Analytical.OpenStudio.Benchmark
             string modelPath = BenchmarkCliPaths.ValidateInputFile(arguments.RequireOption("model"));
             string weatherPath = BenchmarkCliPaths.ValidateInputFile(arguments.RequireOption("weather"));
             string outputPath = BenchmarkCliPaths.ValidateOutputFile(arguments.RequireOption("out"));
+            string samResultsPath = arguments.GetOption("sam-results") == null ? null : BenchmarkCliPaths.ValidateOutputFile(arguments.GetOption("sam-results"));
+            if (samResultsPath != null && string.Equals(Path.GetFullPath(samResultsPath), Path.GetFullPath(outputPath), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("--sam-results must not be the --out benchmark file.");
+            }
 
             // Provenance hashes (B1a helpers, exactly per SCHEMA.md "Canonical model hashing").
             string sourceFileHash = BenchmarkHash.ComputeSha256(File.ReadAllBytes(modelPath));
@@ -152,9 +157,28 @@ namespace SAM.Analytical.OpenStudio.Benchmark
                 // producer-generated notes added above, so both arrays are deterministic.
                 Modify.ApplyConversionDiagnostics(context, Concat(conversionResult?.Diagnostics, designLoadDiagnostics));
 
-                BenchmarkDocument document = model.ToBenchmark(context);
-                return Emit(document, outputPath, success, standardOutput);
+                // The SAM result objects are built once and the document is mapped from exactly these
+                // instances; --sam-results writes the same instances after the document (S11 subject capture).
+                OpenStudioBenchmarkInputs inputs = model.BenchmarkInputs(context);
+                BenchmarkDocument document = model.ToBenchmark(context, inputs);
+                int exitCode = Emit(document, outputPath, success, standardOutput);
+                if (samResultsPath != null)
+                {
+                    WriteSamResults(inputs, samResultsPath, standardOutput);
+                }
+
+                return exitCode;
             }
+        }
+
+        /// <summary>
+        /// Writes the SAM result objects that produced the document (<see cref="OpenStudioBenchmarkInputs"/>,
+        /// SAM JSON) and reports their SHA-256, which the S11 run manifest records.
+        /// </summary>
+        internal static void WriteSamResults(OpenStudioBenchmarkInputs inputs, string path, TextWriter standardOutput)
+        {
+            inputs.Write(path);
+            standardOutput.WriteLine("Wrote " + path + " (" + BenchmarkHash.ComputeSha256(File.ReadAllBytes(path)) + ", the SAM result objects of the document).");
         }
 
         /// <summary>
@@ -385,6 +409,7 @@ namespace SAM.Analytical.OpenStudio.Benchmark
         private const string Usage =
             "Usage: benchmark-openstudio --model <model.json> --weather <weather.epw> --out <benchmark-OpenStudio.json>\n" +
             "                            [--work <run-directory>] [--sam-commit <sha>] [--runner-commit <sha>]\n" +
+            "                            [--sam-results <sam-results.json>]\n" +
             "\n" +
             "Exit codes: 0 success, 2 usage error, 3 input/IO/serialization error, 4 validation failure, 5 producer failure.";
     }

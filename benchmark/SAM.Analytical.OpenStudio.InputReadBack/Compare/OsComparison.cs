@@ -330,64 +330,21 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
 
         // ---- spaces, surfaces, apertures --------------------------------------------------------------------------------
 
-        private sealed class NativeSurface
-        {
-            public IdfObject Object;
-            public List<double[]> Vertices;
-            public string Problem;
-        }
-
-        private List<NativeSurface> SurfacesOf(string spaceName)
-        {
-            List<NativeSurface> result = new List<NativeSurface>();
-            foreach (IdfObject surface in native.Idf("BuildingSurface:Detailed"))
-            {
-                if (!string.Equals(surface.Value(4, "Space Name", out string _), spaceName, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                IdfObject zone = native.IdfByName("Zone", surface.Value(3));
-                List<double[]> vertices = native.Vertices(surface, 11, zone, out string problem);
-                result.Add(new NativeSurface { Object = surface, Vertices = vertices, Problem = problem });
-            }
-
-            return result;
-        }
-
         private void CompareSpace(ExpectedSpace space, List<string> matchedSpaces, List<IdfObject> matchedSurfaces, List<IdfObject> matchedSubSurfaces)
         {
             string key = Keys.Space(space.Guid);
             string carrier = "_" + space.Guid.ToString("N").Substring(0, 8);
-            List<Polygon3D> expectedPolygons = space.Panels.Select(x => x.Outer).ToList();
 
             // Identity: the native space whose surfaces are, one to one, the space's panel polygons (geometry alone). The
-            // name suffix the writer mints from the SAM GUID may only contradict that match, never make it.
-            string nativeSpace = null;
-            GeometryMatchResult match = null;
-            List<NativeSurface> surfaces = null;
-            foreach (IdfObject candidate in native.Idf("Space"))
+            // name suffix the writer mints from the SAM GUID may only contradict that match, never make it. The match is the
+            // shared NativeZoneIdentity (also the S11 results reference), unchanged in behaviour.
+            NativeSpaceMatch spaceMatch = NativeZoneIdentity.MatchSpace(native, space);
+            string nativeSpace = spaceMatch.NativeSpace;
+            GeometryMatchResult match = spaceMatch.Match;
+            List<NativeSurface> surfaces = spaceMatch.Surfaces;
+            if (spaceMatch.Ambiguous)
             {
-                List<NativeSurface> candidateSurfaces = SurfacesOf(candidate.Name);
-                if (candidateSurfaces.Any(x => x.Vertices == null))
-                {
-                    continue;
-                }
-
-                GeometryMatchResult candidateMatch = EQ.MatchPolygons(expectedPolygons, candidateSurfaces.Select(x => OsGeometry.ToPolygon3D(x.Vertices)).ToList());
-                if (candidateMatch.IsBijection)
-                {
-                    if (nativeSpace != null)
-                    {
-                        nativeSpace = null;
-                        Supporting.Add(key + ": more than one native space matches its geometry");
-                        break;
-                    }
-
-                    nativeSpace = candidate.Name;
-                    match = candidateMatch;
-                    surfaces = candidateSurfaces;
-                }
+                Supporting.Add(key + ": more than one native space matches its geometry");
             }
 
             IdentityStatus identity;
@@ -2100,31 +2057,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack
 
         private IdfObject IdealLoadsOf(IdfObject zone)
         {
-            if (zone == null)
-            {
-                return null;
-            }
-
-            IdfObject connections = native.Idf("ZoneHVAC:EquipmentConnections").FirstOrDefault(x => string.Equals(x.Value(0, "Zone Name", out string _), zone.Name, StringComparison.OrdinalIgnoreCase));
-            IdfObject list = native.IdfByName("ZoneHVAC:EquipmentList", connections?.Value(1, "Zone Conditioning Equipment List Name", out string _));
-            if (list == null)
-            {
-                return null;
-            }
-
-            List<IdfObject> idealLoads = new List<IdfObject>();
-            for (int i = 1; i + 1 < list.Fields.Count; i++)
-            {
-                if (string.Equals(list.Value(i), "ZoneHVAC:IdealLoadsAirSystem", StringComparison.OrdinalIgnoreCase))
-                {
-                    IdfObject o = native.IdfByName("ZoneHVAC:IdealLoadsAirSystem", list.Value(i + 1));
-                    if (o != null)
-                    {
-                        idealLoads.Add(o);
-                    }
-                }
-            }
-
+            List<IdfObject> idealLoads = NativeZoneIdentity.IdealLoadsOf(native, zone);
             if (idealLoads.Count > 1)
             {
                 Consistency.Add("zone '" + zone.Name + "' has " + idealLoads.Count + " Ideal Loads systems");
