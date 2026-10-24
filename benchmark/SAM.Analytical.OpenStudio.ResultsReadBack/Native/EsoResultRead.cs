@@ -94,17 +94,30 @@ namespace SAM.Analytical.OpenStudio.ResultsReadBack
                     continue;
                 }
 
-                if (!variable.IsMeter && wanted.Contains(variable.Name) && string.Equals(variable.Frequency, "Hourly", StringComparison.OrdinalIgnoreCase))
+                if (!variable.IsMeter && wanted.Contains(variable.Name))
                 {
+                    // Every dictionary entry of a required variable is judged: Hourly entries are the series, any other
+                    // reporting frequency for the same key is unsupported and blocks it (its values are not read).
                     string seriesKey = S11Names.SeriesKey(Canonical(variable.Name), variable.Key);
+                    bool hourly = string.Equals(variable.Frequency, "Hourly", StringComparison.OrdinalIgnoreCase);
                     if (!result.Series.TryGetValue(seriesKey, out ChannelSeries series))
                     {
-                        series = new ChannelSeries { Channel = "eso", Variable = Canonical(variable.Name), Key = variable.Key, Units = variable.Units };
+                        series = new ChannelSeries { Channel = "eso", Variable = Canonical(variable.Name), Key = variable.Key, Units = hourly ? variable.Units : null };
                         result.Series[seriesKey] = series;
                     }
 
+                    if (!hourly)
+                    {
+                        series.Problem("S11-C1", "unsupported reporting frequency '" + variable.Frequency + "' (report id " + variable.Id + "; only Hourly is permitted)");
+                        continue;
+                    }
+
                     series.DictionaryEntries++;
-                    if (!string.Equals(series.Units, variable.Units, StringComparison.Ordinal))
+                    if (series.Units == null)
+                    {
+                        series.Units = variable.Units;
+                    }
+                    else if (!string.Equals(series.Units, variable.Units, StringComparison.Ordinal))
                     {
                         series.Units = series.Units + "," + variable.Units;
                     }

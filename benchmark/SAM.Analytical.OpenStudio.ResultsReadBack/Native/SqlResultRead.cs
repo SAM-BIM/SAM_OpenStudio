@@ -37,7 +37,8 @@ namespace SAM.Analytical.OpenStudio.ResultsReadBack
 
     /// <summary>
     /// The SQL channel: eplusout.sql opened read-only with raw System.Data.SQLite (no OpenStudio SqlFile, no production
-    /// reader). Every Hourly series of the S11 variables, for every key, is read row by row with its Time stamp; nothing is
+    /// reader). Every dictionary entry of the S11 variables is judged (any frequency other than Hourly blocks its key), and
+    /// every Hourly series, for every key, is read row by row with its Time stamp; nothing is
     /// summed or filtered by SQL, so a missing, repeated or foreign row stays visible to <see cref="Completeness"/>.
     /// </summary>
     public sealed class SqlResultRead
@@ -48,7 +49,11 @@ namespace SAM.Analytical.OpenStudio.ResultsReadBack
         public List<string> EnergyPlusVersions { get; set; } = new List<string>();
         public List<SqlEnvironment> Environments { get; set; } = new List<SqlEnvironment>();
 
-        /// <summary>The RunPeriod environment (EnvironmentType 3 named as the in.idf RunPeriod), or null with <see cref="EnvironmentProblem"/>.</summary>
+        /// <summary>
+        /// The RunPeriod environment: the ONLY EnvironmentType 3 (weather-run) environment, which must be named as the in.idf
+        /// RunPeriod; otherwise null with <see cref="EnvironmentProblem"/>. The production reader reads every type-3
+        /// environment, so a second one (whatever its name) would be summed there and must not be ignored here.
+        /// </summary>
         public long? RunPeriodEnvironment { get; set; }
         public string EnvironmentProblem { get; set; }
 
@@ -81,14 +86,14 @@ namespace SAM.Analytical.OpenStudio.ResultsReadBack
                     result.EnergyPlusVersions = Query(connection, "SELECT EnergyPlusVersion FROM Simulations ORDER BY SimulationIndex", null, r => r.IsDBNull(0) ? null : r.GetString(0));
                     result.Environments = Query(connection, "SELECT EnvironmentPeriodIndex, EnvironmentName, EnvironmentType FROM EnvironmentPeriods ORDER BY EnvironmentPeriodIndex", null, r => new SqlEnvironment { Index = r.GetInt64(0), Name = r.IsDBNull(1) ? null : r.GetString(1), Type = r.IsDBNull(2) ? -1 : r.GetInt64(2) });
 
-                    List<SqlEnvironment> runPeriod = result.Environments.Where(x => x.Type == 3 && calendar.RunPeriodName != null && string.Equals(x.Name, calendar.RunPeriodName, StringComparison.OrdinalIgnoreCase)).ToList();
-                    if (runPeriod.Count == 1)
+                    List<SqlEnvironment> weatherRuns = result.Environments.Where(x => x.Type == 3).ToList();
+                    if (weatherRuns.Count == 1 && calendar.RunPeriodName != null && string.Equals(weatherRuns[0].Name, calendar.RunPeriodName, StringComparison.OrdinalIgnoreCase))
                     {
-                        result.RunPeriodEnvironment = runPeriod[0].Index;
+                        result.RunPeriodEnvironment = weatherRuns[0].Index;
                     }
                     else
                     {
-                        result.EnvironmentProblem = runPeriod.Count + " SQL environments of type 3 are named '" + calendar.RunPeriodName + "' (exactly one is required); environments: " + string.Join(", ", result.Environments.Select(x => x.Name + " (type " + x.Type + ")"));
+                        result.EnvironmentProblem = weatherRuns.Count + " SQL environment(s) of type 3 (exactly one, named '" + calendar.RunPeriodName + "', is required); environments: " + string.Join(", ", result.Environments.Select(x => x.Name + " (type " + x.Type + ")"));
                     }
 
                     foreach (string variable in S11Names.IdealLoadsVariables.Concat(S11Names.ZoneVariables))
@@ -130,19 +135,27 @@ namespace SAM.Analytical.OpenStudio.ResultsReadBack
 
         private static void ReadVariable(SQLiteConnection connection, SqlResultRead result, string variable)
         {
-            List<DictionaryEntry> entries = Query(connection, "SELECT ReportDataDictionaryIndex, KeyValue, Units, ReportingFrequency FROM ReportDataDictionary WHERE Name = @name AND IsMeter = 0 ORDER BY ReportDataDictionaryIndex", new Dictionary<string, object> { ["@name"] = variable }, r => new DictionaryEntry { Index = r.GetInt64(0), Key = r.IsDBNull(1) ? string.Empty : r.GetString(1), Units = r.IsDBNull(2) ? null : r.GetString(2), Frequency = r.IsDBNull(3) ? null : r.GetString(3) });
-            foreach (IGrouping<string, DictionaryEntry> group in entries.Where(x => string.Equals(x.Frequency, "Hourly", StringComparison.OrdinalIgnoreCase)).GroupBy(x => x.Key.ToUpperInvariant()))
+            List<DictionaryEntry> entries = Query(connection, "SELECT ReportDataDictionaryIndex, KeyValue, Units, ReportingFrequency FROM ReportDataDictionary WHERE Name = @name COLLATE NOCASE AND IsMeter = 0 ORDER BY ReportDataDictionaryIndex", new Dictionary<string, object> { ["@name"] = variable }, r => new DictionaryEntry { Index = r.GetInt64(0), Key = r.IsDBNull(1) ? string.Empty : r.GetString(1), Units = r.IsDBNull(2) ? null : r.GetString(2), Frequency = r.IsDBNull(3) ? null : r.GetString(3) });
+            // Every dictionary entry of a required variable is judged: the Hourly ones are the series, any other reporting
+            // frequency for the same key is unsupported and blocks it (the production reader does not filter frequency).
+            foreach (IGrouping<string, DictionaryEntry> group in entries.GroupBy(x => x.Key.ToUpperInvariant()))
             {
+                List<DictionaryEntry> hourly = group.Where(x => string.Equals(x.Frequency, "Hourly", StringComparison.OrdinalIgnoreCase)).ToList();
                 ChannelSeries series = new ChannelSeries
                 {
                     Channel = "sql",
                     Variable = variable,
                     Key = group.First().Key,
-                    Units = string.Join(",", group.Select(x => x.Units).Distinct()),
-                    DictionaryEntries = group.Count(),
+                    Units = string.Join(",", hourly.Select(x => x.Units).Distinct()),
+                    DictionaryEntries = hourly.Count,
                 };
 
-                foreach (DictionaryEntry entry in group)
+                foreach (DictionaryEntry entry in group.Except(hourly))
+                {
+                    series.Problem("S11-C1", "unsupported reporting frequency '" + entry.Frequency + "' (ReportDataDictionaryIndex " + entry.Index + "; only Hourly is permitted)");
+                }
+
+                foreach (DictionaryEntry entry in hourly)
                 {
                     ReadRows(connection, result, series, entry.Index);
                 }

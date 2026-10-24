@@ -26,6 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- S11: the offline stand-in harness the acceptance-driver tests (S11DriverTests) give Run-S11-Results.ps1. -->
+    <None Include="S11DriverStandIn.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SAM.Analytical.OpenStudio.InputReadBack\SAM.Analytical.OpenStudio.InputReadBack.csproj" />
     <ProjectReference Include="..\SAM.Analytical.OpenStudio.InputReadBack.Cli\SAM.Analytical.OpenStudio.InputReadBack.Cli.csproj" />
     <!-- S11 results round-trip: the reference library and its harness (subject capture, negatives) run here offline. -->

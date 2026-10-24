@@ -44,14 +44,20 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             LeapRunPeriod,
             SecondRunPeriodEnvironmentEso,
             DaylightSavingStampBoth,
+            SqlExtraTimestepFrequencyZeroValue,
+            EsoExtraTimestepFrequencyZeroValue,
+            SqlSecondWeatherRunEnvironmentOtherName,
         }
 
         /// <summary>The defects present identically in both files (the paired production-reader check applies to them).</summary>
         private static readonly Defect[] Shared =
         {
             Defect.MissingHourBoth, Defect.DuplicatedHourBothSameValue, Defect.DuplicatedHourBothDifferentValue, Defect.CountPreservingShiftBoth,
-            Defect.ExtraHourBoth, Defect.February29Both, Defect.DesignDayRowsMergedIntoRunPeriodBoth,
+            Defect.ExtraHourBoth, Defect.February29Both, Defect.DesignDayRowsMergedIntoRunPeriodBoth, Defect.SqlSecondWeatherRunEnvironmentOtherName,
         };
+
+        /// <summary>A second weather-run (EnvironmentType 3) environment, named otherwise; the production reader reads every type-3 environment.</summary>
+        public const string OtherWeatherRun = "WEATHER FILE RUN PERIOD 2";
 
         private static void Break(SyntheticRun run, Defect defect)
         {
@@ -153,6 +159,36 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                 case Defect.DaylightSavingStampBoth:
                     run.EditSeries(true, true, s => s.First(p => p.Month == 7 && p.Day == 7 && p.Hour == 13).Dst = 1);
                     break;
+                case Defect.SqlExtraTimestepFrequencyZeroValue:
+                    // The hourly series stays complete; the additional frequency alone (with a zero value) must block it.
+                    run.SqlEdit = connection =>
+                    {
+                        using (SQLiteCommand command = connection.CreateCommand())
+                        {
+                            command.CommandText = "INSERT INTO ReportDataDictionary (IsMeter, Type, IndexGroup, TimestepType, KeyValue, Name, ReportingFrequency, Units) VALUES (0, 'Sum', 'System', 'HVAC System', @k, @n, 'HVAC System Timestep', 'J')";
+                            command.Parameters.AddWithValue("@k", run.Zones[0].IdealLoads);
+                            command.Parameters.AddWithValue("@n", S11Names.TotalCooling);
+                            command.ExecuteNonQuery();
+                            command.CommandText = "INSERT INTO ReportData (TimeIndex, ReportDataDictionaryIndex, Value) VALUES ((SELECT MIN(TimeIndex) FROM Time), (SELECT MAX(ReportDataDictionaryIndex) FROM ReportDataDictionary), 0)";
+                            command.ExecuteNonQuery();
+                        }
+                    };
+                    break;
+                case Defect.EsoExtraTimestepFrequencyZeroValue:
+                    // As the review reproduction: a second dictionary entry at TimeStep frequency and one zero record.
+                    run.EsoEdit = lines =>
+                    {
+                        lines.Insert(lines.IndexOf("End of Data Dictionary"), "999999,1," + run.Zones[0].IdealLoads + "," + S11Names.TotalCooling + " [J] !TimeStep");
+                        int stamp = lines.FindIndex(x => Regex.IsMatch(x, @"^2,\d+, 7, 7, 0,13, 0\.00,60\.00"));
+                        lines.Insert(stamp + 1, "999999,0");
+                        return lines;
+                    };
+                    break;
+                case Defect.SqlSecondWeatherRunEnvironmentOtherName:
+                    run.SqlEnvironments.Add(new KeyValuePair<string, int>(OtherWeatherRun, 3));
+                    run.EsoEnvironments.Add(OtherWeatherRun);
+                    run.EditSeries(true, true, s => s.AddRange(Enumerable.Range(1, 24).Select(h => new SyntheticPoint { Month = 1, Day = 1, Hour = h, Value = 5, Environment = OtherWeatherRun })));
+                    break;
             }
         }
 
@@ -179,7 +215,17 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             Assert.That(run.Compare.Verdict, Is.EqualTo("BLOCKED"), run.Summary());
             Assert.That(run.Compare.Failed, Is.Zero, "a completeness defect blocks, it is not a value failure: " + run.Summary());
             string reasons = string.Join(" ", run.Compare.Rows.Where(x => x.Status == "BLOCKED").Select(x => x.Reason)) + " " + string.Join(" ", run.Reference.GlobalBlocks);
-            Assert.That(reasons, Does.Contain("S11-C1").Or.Contain("calendar").Or.Contain("eso:"), reasons);
+            Assert.That(reasons, Does.Contain("S11-C1").Or.Contain("calendar").Or.Contain("eso:").Or.Contain("sql:"), reasons);
+            if (defect == Defect.SqlExtraTimestepFrequencyZeroValue || defect == Defect.EsoExtraTimestepFrequencyZeroValue)
+            {
+                Assert.That(reasons, Does.Contain("unsupported reporting frequency"), reasons);
+                Assert.That(run.Row("b1a|" + run.Space(1) + "|Cooling|peakLoad").Status, Is.EqualTo("PASS"), "only the key with the extra frequency blocks");
+            }
+
+            if (defect == Defect.SqlSecondWeatherRunEnvironmentOtherName)
+            {
+                Assert.That(string.Join(" ", run.Reference.GlobalBlocks), Does.Contain("2 SQL environment(s) of type 3"));
+            }
 
             // Rows that do not depend on the broken series keep their verdict (each check blocks only dependent rows).
             if (defect == Defect.MissingHourSqlOnly || defect == Defect.SeriesInSqlAbsentFromEso)
