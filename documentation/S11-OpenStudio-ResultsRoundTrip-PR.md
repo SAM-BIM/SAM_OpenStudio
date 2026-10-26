@@ -23,7 +23,13 @@ independent SQL/ESO read; label total versus sensible cooling (F3).
   `43e3541c3cdcc8b0a43f4c73f062db694aafbdf2`); see "Integration of F-S11-1 and F-S11-2".
   No engine run, Ready, merge, SAM_UI run, S12 or Phase B acceptance.
 - Tested content SHA: see "Tests and validation" (recorded after each code commit, in a record-only commit).
-- Next: independent review of the integrated head, then a separately authorised Revision 2 (real-run acceptance).
+- The integrated head `01344e65` was independently reviewed (2026-10-26): **ACCEPT for the offline integration only**
+  (machine-local `SAM-BIM\.review-s11-integration-20261026\REVIEW.md`).
+- **Revision 2 (owner-authorised 2026-10-26): BLOCKED before engine execution.** The controlled receipt build succeeded,
+  but `Run-S11-Results.ps1 -Phase run` stopped in its preflight (exit 70) because the driver's `Git` helper calls itself
+  instead of `git.exe`, so no HEAD can be read for a real receipt. **0 of the 2 authorised engine attempts were used**;
+  no simulation, readback, compare or negative ran. See "Revision 2 execution (2026-10-26): BLOCKED".
+- Next: owner decision on the bounded driver correction recommended there; Revision 2 is then repeated on a new receipt.
 
 ## Owner directions applied (2026-10-24)
 
@@ -154,6 +160,108 @@ synthetic generator's.
   #35 leaves such keys unmapped and `ToSAM_SpaceSimulationResults` looks values up by the exact generated name. Not
   present on the signed-off fixtures; pinned by `S11IdentityTests.DuplicateSpaceNames_SharedGuidPrefix_...`.
 
+## Revision 2 execution (2026-10-26): BLOCKED before engine execution
+
+**Authorisation.** The owner authorised exactly two OpenStudio simulations (box and two-zone, one attempt each, no retry),
+then the readback, compare and negative phases, evidence packing, record/description update, commit and push. Ready,
+merge, S12, Phase B acceptance, `PROJECT_PROGRESS.md`, the roadmap and other repositories are excluded.
+
+**Result: BLOCKED. Engine attempts used: 0 of 2.** No `benchmark-openstudio` process, EnergyPlus or OpenStudio
+simulation started. The acceptance root holds only the driver's `summary-run.json` (`STOPPED`, exit 70). There is no SQL,
+ESO, `in.idf`, B1a, `sam.json`, readback, compare or negative output, so no acceptance criterion (completeness, comparison
+rows, SAM-P/SAM-I/B1a agreement, closure, negatives, OD-7) has been evaluated on real data.
+
+**Workspace (machine-local).**
+- Root: `SAM-BIM\.s11r2-20261026\`. Fresh Git clones of `github.com/SAM-BIM/*` (fetch and push verified) sit under
+  `ws\` as siblings, mapped temporarily as `R:` for Windows path length. Each clone was checked out at its pin:
+  - SAM_OpenStudio `01344e659528ec49a746d9c165ee3914d7b1cca0` (branch `feature/s11-openstudio-results-roundtrip`);
+  - SAM `457defbb033fa4a58128f2395b87587f0210c608`;
+  - SAM_Tas `922044fa9ca35062979689f4e359ea85bee577dd`;
+  - SAM_Validation `2a3acfafb3919b4a0b81d67ef16a4b9d1e222f5d`;
+  - SAM_SQLite `ec2eb86d00cac6e4cadf52b429f9d293eeabbd5e`.
+- Redirected for every step: `APPDATA`, `LOCALAPPDATA`, `TEMP`/`TMP`, `DOTNET_CLI_HOME` and the NuGet caches, all to
+  `.s11r2-20261026\env\` (`scripts\env.ps1`). No Grasshopper project was built and nothing was written to `%APPDATA%\SAM`.
+- Existing checkouts, their `build/` folders, `.s11i`, earlier reviews and historical `C:\TasOut` evidence were not touched.
+
+**Inputs (verified).**
+- Fixtures `s08-fix-box.json` `45524172…acd08` and `s08-fix-two.json` `20da9b58…9baa0`, equal to `SHA256SUMS.txt`.
+- Budapest EPW decompressed from SAM `457defbb` `SAM/SAM.Tests/Resources/Weather/HUN_BU_Budapest.Met.Center.128400_TMYx.epw.gz`
+  (`24b14f83…`) to `.s11r2-20261026\weather\budapest.epw`, `472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3`.
+- Portable CLI `SAM-BIM\.icon-migration\runtime\OpenStudio-3.10.0+86d7e215a1-Windows\bin\openstudio.exe`; `--version`
+  prints `3.10.0+86d7e215a1`.
+
+**Build (local, succeeded).**
+- `SAM.Core.SQLite` was built first: `MSBuild.exe R:\SAM_SQLite\SAM_SQLite\SAM.Core.SQLite\SAM.Core.SQLite.csproj -restore
+  -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=ec2eb86d… -nr:false -v:m` (exit 0; the stamp is present).
+- Then `Build-S11-Receipt.ps1` ran with its defaults from the R: clone (exit 0, 0 errors). The receipt
+  (`s11-build-receipt.json`, 51 files, `c057cf47ca82c2eb5d61fd5ea2f714a059184d19bc48cf4a748747ceffa2f602`) records the
+  four clean HEADs.
+- C# warnings are only in the SAM core projects (Core 618, Geometry 3, Analytical 2; existing). SAM_Validation and the
+  SAM_OpenStudio projects have none; there are 50 existing MSB3277 warnings.
+- All five clones were still clean at their pins after the build.
+
+| Fresh DLL (identical in the producer and harness folders) | SHA-256 |
+|---|---|
+| `SAM.Analytical.dll` (SAM `457defbb`) | `feac8dab69ff3483384cac4fa19a376e528c681f7e0037023442360bcaf23977` |
+| `SAM.Analytical.OpenStudio.dll` | `deddf7140715cf59942c912d363e7ef4a93627b5adf2e8a217b74552c4364489` |
+| `SAM.Analytical.Benchmark.dll` (SAM_Validation `2a3acfaf`) | `17766896e9f2eb7eb80b0fcb555b68983df7ed9217c85ebd1c72ec1992970935` |
+| `SAM.Core.SQLite.dll` (SAM_SQLite `ec2eb86d`) | `3d1d9033a4edce3644c65a15644b2e96513a25f722684a03c806659825e514ee` |
+| `benchmark-openstudio.dll` | `5866ce57cd878d55d065e7d708b9ae51a87355c9d2af6e0434b3934164271de2` |
+| `os-results-readback.dll` | `def1a9f7b612ad77182d40dcd4f28ad07ea5650f13d2c38b3dd1338e349cc73a` |
+
+These differ from historical builds, which is expected for a new build path; the receipt lists every `.dll`/`.exe`.
+
+**Run phase (stopped in preflight).**
+- Command: `Run-S11-Results.ps1 -Phase run -Root C:\TasOut\s11\r2-20261026 -WeatherEpw <budapest.epw>
+  -WeatherEpwSha256 472ffb4e… -OpenStudioCli <portable 3.10.0 openstudio.exe> -OpenStudioCliVersion 3.10.0+86d7e215a1
+  -BuildReceipt <R: receipt> -BenchmarkExe <R: benchmark-openstudio.exe> -HarnessExe <R: os-results-readback.exe>
+  -ConfirmEngineRuns`. The root was new; no engine process was running.
+- Started 17:08:46Z and stopped 17:15:19Z: `STOPPED: R:\SAM is not clean at the receipt commit 457defbb…`, exit 70.
+- The stop came from `Test-Receipt` (`Run-S11-Results.ps1:146-151`), which runs before the fixture, EPW and CLI checks
+  and before any simulation.
+- At that moment `R:\SAM` was clean at `457defbb` (`git status` showed 0 entries; no file under any clone was newer
+  than the receipt).
+
+**Diagnosis (defect in the driver; the checkout was not dirty).**
+- `Run-S11-Results.ps1:103-106` defines `function Git([string]$Directory) { ... & git -C $Directory @args 2>$null }`.
+- In PowerShell a function shadows an application of the same name, case-insensitively. So `& git` inside `Git` calls
+  `Git` again: inside the helper, `(Get-Command git).CommandType` is `Function`.
+- The recursion ends in a call-depth overflow. `2>$null` and `ErrorActionPreference = 'Continue'` swallow it, so the
+  helper returns nothing after about 200 s per call.
+- The replayed helper (`proof-git-recursion.txt`) returned `head=[]` after 192.4 s, with the recorded error
+  `System.Management.Automation.RuntimeException: The script failed due to call depth overflow.` The `Test-Receipt`
+  replay (`diag-receipt-1.txt`) returned an empty HEAD after 194.1 s.
+- Consequences: `Test-Receipt` sees an empty HEAD for the first receipt commit and stops all three phases (run, readback
+  and negative) on every real receipt. The run phase's `$runnerHead`/`$samHead` (`:239-240`) would also be empty.
+- `git.exe` called directly returns `457defbb…` at once.
+- Why the offline tests missed it: `S11DriverTests` writes every stand-in receipt with `"commits": []`
+  (`S11DriverTests.cs:102`), so neither the commit check nor the head lookup was ever executed.
+- `Build-S11-Receipt.ps1:61-66` is not affected while `C:\Program Files\Git\cmd\git.exe` exists, because it calls `& $git`
+  with that full path. Its fallback `$git = 'git'` would recurse the same way.
+
+**Bounded correction recommended (not implemented here; it needs an owner decision and the usual review).**
+- **Driver:** in `Run-S11-Results.ps1`, resolve git as an application, e.g.
+  `$gitExe = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source`, and call
+  `& $gitExe`. Alternatively rename the helper (e.g. `Invoke-Git`). Fail closed when git exits non-zero or prints no
+  40-hex HEAD, instead of swallowing the error.
+- **Receipt build:** apply the same application resolution to the fallback in `Build-S11-Receipt.ps1`.
+- **Tests:** add `S11DriverTests` cases with a receipt that lists a real temporary Git repository:
+  - clean at the recorded commit → passes the check;
+  - dirty or at another commit → 70;
+  - the run phase records non-empty `runnerCommit`/`samCommit` using the inert producer stand-in.
+- **Out of scope for the correction:** fixtures, tolerances, gates, metric definitions and production code.
+- **Afterwards:** a new receipt build at the corrected runner commit, then Revision 2 under a fresh owner instruction.
+  The engine allowance (2 attempts) is unused.
+
+**Evidence.**
+- Committed: `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-10-26/`, holding the stopped
+  `summary-run.json`, the receipt, `SHA256SUMS.txt` (written by `Pack-S11-Evidence.ps1 -Root C:\TasOut\s11\r2-20261026
+  -Label revision-2-2026-10-26`) and a README.
+- Machine-local (copy before switching computers):
+  - `C:\TasOut\s11\r2-20261026\summary-run.json` (`192ec65f…`);
+  - `SAM-BIM\.s11r2-20261026\` (`scripts\`, `logs\`: build logs, `phase-run.log`, `phase-commands.txt`,
+    `diag-receipt-1.txt`, `proof-git-recursion.txt`, `engine-check.txt`; `hashes\`; `weather\`; `ws\` clones and builds).
+
 ## Work completed
 
 | Plan item (section 6) | Implementation |
@@ -281,6 +389,8 @@ Recommendation: fix both before Revision 2 (real acceptance), each in its own PR
   on the base); tests `S11ResultsTests.cs` (two replacements), `S11Support.cs` (`Two()`, `SpaceAGuid`; re-GUIDed variant
   removed), `S11Synthetic.cs` (fractional not-met profile), `S11CompletenessTests.cs`, `S11F3Tests.cs`,
   `S11NegativeTests.cs` (signed-off fixture), `S11IdentityTests.cs` (comments); this record.
+- Revision 2 attempt (2026-10-26, documentation only): `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-10-26/`
+  (stopped `summary-run.json`, receipt, `SHA256SUMS.txt`, README); this record. No code, test or script change.
 - Not changed by this PR: importer, writer, SQL readers, schema, SAM_UI, SAM_Tas, SAM core, S10, fixtures, tolerances,
   metric definitions, comparison gates, scripts, workflow.
 
@@ -345,15 +455,24 @@ No EnergyPlus or OpenStudio run, no acceptance phase and no Grasshopper deployme
 - Separately tracked, not blocking on these fixtures (see the integration section): AddResults suffix-only
   design-day/surface lookups and the generated-name identity residual. SAM#219's Revit compatibility is deferred by the
   owner (SAM_Revit is not touched). S10's declared heating design-day hour limitation is unchanged.
-- `Build-S11-Receipt.ps1` and the run phase have not been executed. The readback/negative driver logic is now tested
-  offline against stand-ins (`S11DriverTests`), not against a real receipt or real run folders.
+- `Build-S11-Receipt.ps1` has now run successfully on clean clones (2026-10-26). **Revision 2 is BLOCKED by a driver
+  defect:** `Run-S11-Results.ps1`'s `Git` helper recurses into itself (`:103-106`), so `Test-Receipt` stops every phase
+  with exit 70 on a real receipt. The offline driver tests never listed a receipt commit (`S11DriverTests.cs:102`), so
+  they could not catch it. The bounded correction is recommended in "Revision 2 execution"; it is not implemented here.
+  The run, readback and negative phases have still not processed a real run.
 - The full-solution local build redirects `APPDATA` because the Grasshopper post-build deploys into `%APPDATA%\SAM`.
 
 ## Recommended next step
 
-Independent review of the integrated head (another model or session, High effort, new session, Plan mode, read-only),
-focused on the two replacement regressions, the retirement of the re-GUIDed variant and the dependency provenance; it
-should rebuild against merged SAM Q4 itself. After acceptance the owner decides whether to authorise Revision 2: exactly
-2 `benchmark-openstudio` runs on the signed-off fixtures with the portable OpenStudio 3.10.0 (plan section 9), then
-read/subject/compare/negative and an independent evidence review. Recommended executor: Claude Code / Claude Opus 5.5 /
-High / new session / Build (fail-closed engine evidence). Not authorised by this record.
+1. **Owner decision** on the bounded driver correction ("Revision 2 execution", "Bounded correction recommended").
+   - Scope: `Run-S11-Results.ps1` git resolution, the same hardening of the `Build-S11-Receipt.ps1` fallback, and
+     `S11DriverTests` with a real Git commit in the receipt.
+   - Code and offline tests only, on this Draft PR; no engine run.
+   - Recommended executor: Claude Code / Claude Opus 5.5 / High / new session / Build mode. It is a small, test-first
+     script fix.
+2. **Independent review** of that correction.
+3. **Revision 2 repeated** under a fresh owner instruction: a new receipt build at the corrected head, then exactly 2
+   `benchmark-openstudio` runs (the allowance is still unused), readback/compare/negative and packing.
+4. **Independent review of the real-run evidence.**
+
+None of this is authorised by this record.
