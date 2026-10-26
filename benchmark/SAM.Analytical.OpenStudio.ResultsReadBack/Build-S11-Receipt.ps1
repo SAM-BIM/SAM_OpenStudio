@@ -58,8 +58,10 @@ function Sha([string]$Path) {
     finally { $stream.Dispose() }
 }
 
+# git.exe itself, never a bare 'git': inside the Git function below that name resolves to the function and recurses.
 $git = 'C:\Program Files\Git\cmd\git.exe'
-if (-not (Test-Path $git)) { $git = 'git' }
+if (-not (Test-Path -LiteralPath $git -PathType Leaf)) { $git = @(Get-Command git -CommandType Application -ErrorAction SilentlyContinue)[0].Source }
+if (-not $git) { Refuse 'git.exe not found' }
 
 function Git([string]$Directory) {
     $ErrorActionPreference = 'Continue'

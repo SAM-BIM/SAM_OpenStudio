@@ -100,9 +100,25 @@ function Sha([string]$Path) {
     finally { $stream.Dispose() }
 }
 
-function Git([string]$Directory) {
+# git.exe in Directory; a git that cannot be found or exits nonzero stops the phase. The application is resolved
+# explicitly: a bare 'git' inside a function named Git resolves to the function itself, which recursed into a swallowed
+# call-depth overflow and an empty HEAD (Revision 2, 2026-10-26).
+function Invoke-Git([string]$Directory) {
+    if (-not $script:gitExe) {
+        $script:gitExe = @(Get-Command git -CommandType Application -ErrorAction SilentlyContinue)[0].Source
+        if (-not $script:gitExe) { Stop-Phase 'git.exe not found on PATH' }
+    }
     $ErrorActionPreference = 'Continue'
-    & git -C $Directory @args 2>$null
+    $global:LASTEXITCODE = $null
+    $output = @(& $script:gitExe -C $Directory @args 2>$null)
+    if ($global:LASTEXITCODE -ne 0) { Stop-Phase "git -C $Directory $($args -join ' ') exited $global:LASTEXITCODE" }
+    return $output
+}
+
+function Get-Head([string]$Directory) {
+    $head = (Invoke-Git $Directory rev-parse HEAD | Out-String).Trim()
+    if ($head -cnotmatch '^[0-9a-f]{40}$') { Stop-Phase "HEAD of $Directory is not a full commit SHA ('$head')" }
+    return $head
 }
 
 # A step's exit code; a step that cannot start or reports none stops the phase.
@@ -145,9 +161,9 @@ function Test-Receipt {
         if (-not $listed.ContainsKey($file)) { Stop-Phase "$file is not a file of the build receipt $BuildReceipt" }
     }
     foreach ($commit in @($receipt.commits)) {
-        $head = (Git $commit.repository rev-parse HEAD | Out-String).Trim()
-        $status = @(Git $commit.repository status --porcelain --untracked-files=all)
-        if ($head -ne $commit.commit -or $status.Count -gt 0) { Stop-Phase "$($commit.repository) is not clean at the receipt commit $($commit.commit)" }
+        $head = Get-Head $commit.repository
+        $status = @(Invoke-Git $commit.repository status --porcelain --untracked-files=all)
+        if ($head -ne $commit.commit -or $status.Count -gt 0) { Stop-Phase "$($commit.repository) is not clean at the receipt commit $($commit.commit) (HEAD $head, $($status.Count) change(s))" }
     }
 }
 
@@ -236,8 +252,8 @@ if ($Phase -eq 'run') {
     $cliVersion = (& $OpenStudioCli --version | Out-String).Trim()
     if ($cliVersion -ne $OpenStudioCliVersion) { Stop-Phase "OpenStudio CLI version '$cliVersion' is not $OpenStudioCliVersion" }
 
-    $runnerHead = (Git $repository rev-parse HEAD | Out-String).Trim()
-    $samHead = (Git (Join-Path $workspace 'SAM') rev-parse HEAD | Out-String).Trim()
+    $runnerHead = Get-Head $repository
+    $samHead = Get-Head (Join-Path $workspace 'SAM')
     foreach ($run in $runs) {
         $fixtureId, $label = $run
         $dir = Join-Path $Root $label

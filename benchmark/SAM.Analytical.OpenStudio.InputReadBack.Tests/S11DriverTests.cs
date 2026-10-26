@@ -14,10 +14,11 @@ using System.Text.Json.Nodes;
 namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
 {
     /// <summary>
-    /// The acceptance driver Run-S11-Results.ps1 (readback and negative phases) under Windows PowerShell 5.1 with
-    /// stand-in commands (S11DriverStandIn.ps1 for the harness, an inert file for the producer): no engine starts, no
-    /// model is loaded, nothing is built or deployed. The run directories are stand-in files described by their own
-    /// run-manifest.json and a stand-in build receipt. The driver must stop (70) on any infrastructure or integrity
+    /// The acceptance driver Run-S11-Results.ps1 (readback and negative phases, and the run phase on inert stand-ins)
+    /// under Windows PowerShell 5.1 with stand-in commands (S11DriverStandIn.ps1 for the harness, an inert file for the
+    /// producer and the OpenStudio CLI): no engine starts, no model is loaded, nothing is built or deployed. The run
+    /// directories are stand-in files described by their own run-manifest.json and a stand-in build receipt, whose commits
+    /// are real temporary Git checkouts where a test needs them. The driver must stop (70) on any infrastructure or integrity
     /// failure without reading an earlier report, collect numerical FAIL/BLOCKED for both fixtures and finish nonzero, and
     /// fail on an unexpected negative outcome or a changed original.
     /// </summary>
@@ -29,6 +30,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         private sealed class Driver
         {
             public string Directory;
+            public string Script = S11DriverTests.Script();
             public string Root;
             public string Bin;
             public string Receipt;
@@ -78,8 +80,90 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             }
         }
 
-        /// <summary>Two produced runs (stand-in files), their manifests, the stand-in harness and producer, and a receipt listing them.</summary>
-        private static Driver Arrange(string label)
+        /// <summary>git in a test checkout (its own identity, no hooks or signing); the test fails on a nonzero exit.</summary>
+        private static string Git(string directory, params string[] arguments)
+        {
+            ProcessStartInfo info = new ProcessStartInfo("git") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+            foreach (string argument in new[] { "-C", directory, "-c", "user.name=S11DriverTests", "-c", "user.email=s11-driver-tests@example.invalid", "-c", "commit.gpgsign=false" }.Concat(arguments))
+            {
+                info.ArgumentList.Add(argument);
+            }
+
+            using (Process process = Process.Start(info))
+            {
+                System.Threading.Tasks.Task<string> error = process.StandardError.ReadToEndAsync();
+                string output = process.StandardOutput.ReadToEnd();
+                Assert.That(process.WaitForExit(60000), Is.True, "git " + string.Join(" ", arguments) + " did not finish");
+                Assert.That(process.ExitCode, Is.EqualTo(0), "git " + string.Join(" ", arguments) + ": " + error.Result);
+                return output.Trim();
+            }
+        }
+
+        private readonly List<string> checkouts = new List<string>();
+
+        /// <summary>
+        /// A new directory for test checkouts under the short system temp path: below the test work directory a checkout's
+        /// .git\objects paths exceed MAX_PATH, which git refuses without core.longpaths. Removed after the test.
+        /// </summary>
+        private string NewCheckouts()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "s11g-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            System.IO.Directory.CreateDirectory(path);
+            checkouts.Add(path);
+            return path;
+        }
+
+        [TearDown]
+        public void RemoveCheckouts()
+        {
+            foreach (string path in checkouts.Where(System.IO.Directory.Exists))
+            {
+                // Git writes its objects read-only.
+                foreach (string file in System.IO.Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)) File.SetAttributes(file, FileAttributes.Normal);
+                System.IO.Directory.Delete(path, true);
+            }
+
+            checkouts.Clear();
+        }
+
+        /// <summary>A real Git checkout of directory (created with a tracked file when empty): everything committed; returns its HEAD.</summary>
+        private static string NewRepository(string directory)
+        {
+            System.IO.Directory.CreateDirectory(directory);
+            if (!System.IO.Directory.EnumerateFileSystemEntries(directory).Any()) File.WriteAllText(Path.Combine(directory, "tracked.txt"), "tracked");
+            Git(directory, "init", "-q");
+            Git(directory, "config", "core.autocrlf", "false");
+            Git(directory, "add", "-A");
+            Git(directory, "commit", "-q", "--no-verify", "-m", "S11 driver test checkout");
+            string head = Git(directory, "rev-parse", "HEAD");
+            Assert.That(head, Does.Match("^[0-9a-f]{40}$"));
+            Assert.That(Git(directory, "status", "--porcelain", "--untracked-files=all"), Is.Empty);
+            return head;
+        }
+
+        private static JsonArray Commits(params (string Repository, string Commit)[] commits) => new JsonArray(commits.Select(x => (JsonNode)new JsonObject { ["repository"] = x.Repository, ["commit"] = x.Commit }).ToArray());
+
+        /// <summary>
+        /// The inert producer of the run phase: records its arguments, writes stand-in files where benchmark-openstudio
+        /// writes its outputs and exits 0. It starts no engine and reads no model.
+        /// </summary>
+        private const string RunProducer =
+            "param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Items)\r\n" +
+            "$options = @{}\r\n" +
+            "for ($i = 0; $i + 1 -lt $Items.Count; $i += 2) { $options[$Items[$i].TrimStart('-')] = $Items[$i + 1] }\r\n" +
+            "Add-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.txt') -Value ('PRODUCER STAND-IN|' + ($Items -join ' '))\r\n" +
+            "$run = Join-Path $options['work'] 'run'\r\n" +
+            "New-Item -ItemType Directory -Force -Path $run | Out-Null\r\n" +
+            "foreach ($file in @('in.idf', 'eplusout.sql', 'eplusout.eso')) { [IO.File]::WriteAllText((Join-Path $run $file), \"stand-in $file\") }\r\n" +
+            "[IO.File]::WriteAllText($options['out'], '{ \"stand-in\": \"b1a\" }')\r\n" +
+            "[IO.File]::WriteAllText($options['sam-results'], '{ \"stand-in\": \"sam\" }')\r\n" +
+            "exit 0\r\n";
+
+        /// <summary>
+        /// Two produced runs (stand-in files), their manifests, the stand-in harness and producer, and a receipt listing them
+        /// with the commits <paramref name="commits"/> returns (none by default).
+        /// </summary>
+        private static Driver Arrange(string label, Func<Driver, JsonArray> commits = null, string producer = null)
         {
             Driver driver = new Driver { Directory = S11Support.NewRun("driver-" + label) };
             driver.Root = Path.Combine(driver.Directory, "acc");
@@ -88,7 +172,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             driver.Harness = Path.Combine(driver.Bin, "os-results-readback.ps1");
             File.Copy(Path.Combine(TestContext.CurrentContext.TestDirectory, "S11DriverStandIn.ps1"), driver.Harness);
             driver.Producer = Path.Combine(driver.Bin, "benchmark-openstudio.ps1");
-            File.WriteAllText(driver.Producer, "Add-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.txt') -Value 'PRODUCER STARTED'\r\nexit 99\r\n");
+            File.WriteAllText(driver.Producer, producer ?? "Add-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.txt') -Value 'PRODUCER STARTED'\r\nexit 99\r\n");
             File.WriteAllText(Path.Combine(driver.Bin, "os-results-readback.dll"), "stand-in harness assembly");
             File.WriteAllText(Path.Combine(driver.Bin, "benchmark-openstudio.dll"), "stand-in producer assembly");
 
@@ -99,7 +183,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
                 files.Add(new JsonObject { ["path"] = Path.Combine(driver.Bin, file), ["sha256"] = Sha(Path.Combine(driver.Bin, file)) });
             }
 
-            File.WriteAllText(driver.Receipt, new JsonObject { ["schema"] = "s11-build-receipt/1", ["commits"] = new JsonArray(), ["files"] = files }.ToJsonString());
+            File.WriteAllText(driver.Receipt, new JsonObject { ["schema"] = "s11-build-receipt/1", ["commits"] = commits?.Invoke(driver) ?? new JsonArray(), ["files"] = files }.ToJsonString());
 
             foreach ((string fixture, string run) in Runs)
             {
@@ -136,7 +220,7 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             File.WriteAllText(Path.Combine(driver.Bin, "scenario.json"), driver.Scenario.ToJsonString());
             string powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
             ProcessStartInfo info = new ProcessStartInfo(powershell) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", Script(), "-Phase", phase, "-Root", driver.Root, "-BuildReceipt", driver.Receipt, "-HarnessExe", driver.Harness, "-BenchmarkExe", driver.Producer }.Concat(extra))
+            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", driver.Script, "-Phase", phase, "-Root", driver.Root, "-BuildReceipt", driver.Receipt, "-HarnessExe", driver.Harness, "-BenchmarkExe", driver.Producer }.Concat(extra))
             {
                 info.ArgumentList.Add(argument);
             }
@@ -428,6 +512,122 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             Assert.That(driver.Exit, Is.EqualTo(70), driver.Describe());
             Assert.That(driver.Output, Does.Contain("-ConfirmEngineRuns"));
             Assert.That(System.IO.Directory.Exists(driver.Root), Is.False);
+        }
+
+        // ---- receipt commits on real Git checkouts (Revision 2 stopped here: the driver's Git helper called itself) -------
+
+        [Test]
+        public void ReceiptCheckoutCleanAtItsCommit_Passes([Values("readback", "negative")] string phase)
+        {
+            Driver driver = Act(Arrange("receipt-clean", d => { string repository = Path.Combine(NewCheckouts(), "repo"); return Commits((repository, NewRepository(repository))); }), phase);
+
+            Assert.That(driver.Exit, Is.EqualTo(0), driver.Describe());
+            Assert.That(driver.Calls, Has.Some.StartsWith("two"), "both runs were processed");
+        }
+
+        public enum Checkout
+        {
+            Modified,
+            Untracked,
+            AnotherCommit,
+            Missing,
+        }
+
+        [Test]
+        public void ReceiptCheckoutNotCleanAtItsCommit_StopsAt70BeforeAnyStep([Values] Checkout checkout, [Values("readback", "negative")] string phase)
+        {
+            string repository = null;
+            Driver driver = Arrange("receipt-" + checkout, d => { repository = Path.Combine(NewCheckouts(), "repo"); return Commits((repository, NewRepository(repository))); });
+            switch (checkout)
+            {
+                case Checkout.Modified: File.AppendAllText(Path.Combine(repository, "tracked.txt"), "x"); break;
+                case Checkout.Untracked: File.WriteAllText(Path.Combine(repository, "untracked.txt"), "x"); break;
+                case Checkout.AnotherCommit:
+                    File.AppendAllText(Path.Combine(repository, "tracked.txt"), "x");
+                    Git(repository, "commit", "-q", "--no-verify", "-a", "-m", "another commit");
+                    break;
+                case Checkout.Missing: System.IO.Directory.Move(repository, repository + "-moved"); break;
+            }
+
+            Act(driver, phase);
+
+            Assert.That(driver.Exit, Is.EqualTo(70), driver.Describe());
+            Assert.That(driver.Output, Does.Contain(checkout == Checkout.Missing ? "STOPPED: git -C " + repository + " rev-parse HEAD exited" : "STOPPED: " + repository + " is not clean at the receipt commit"));
+            Assert.That(driver.Calls, Is.Empty, "a receipt that does not hold stops before any step");
+        }
+
+        /// <summary>
+        /// The run phase in a workspace of real checkouts: SAM_OpenStudio (a copy of this driver and the signed-off fixtures)
+        /// and, unless <paramref name="sam"/> is false, SAM; the receipt lists both. The OpenStudio CLI and the producer are
+        /// inert stand-ins, the EPW a stand-in file with its own hash.
+        /// </summary>
+        private Driver ArrangeRunWorkspace(string label, bool sam, out string workspace, out string runnerHead, out string samHead)
+        {
+            string root = NewCheckouts(), runnerCommit = null, samCommit = null;
+            Driver driver = Arrange(label, d =>
+            {
+                string runner = Path.Combine(root, "SAM_OpenStudio");
+                string script = Path.Combine(runner, "benchmark", "SAM.Analytical.OpenStudio.ResultsReadBack", "Run-S11-Results.ps1");
+                string fixtures = Path.Combine(runner, "benchmark", "SAM.Analytical.OpenStudio.InputReadBack", "Fixtures");
+                System.IO.Directory.CreateDirectory(Path.GetDirectoryName(script));
+                System.IO.Directory.CreateDirectory(fixtures);
+                File.Copy(d.Script, script);
+                foreach (string file in new[] { "SHA256SUMS.txt", "s08-fix-box.json", "s08-fix-two.json" })
+                {
+                    File.Copy(Path.Combine(Path.GetDirectoryName(Fixture("s08-fix-box")), file), Path.Combine(fixtures, file));
+                }
+
+                d.Script = script;
+                runnerCommit = NewRepository(runner);
+                if (!sam) return Commits((runner, runnerCommit));
+                samCommit = NewRepository(Path.Combine(root, "SAM"));
+                return Commits((runner, runnerCommit), (Path.Combine(root, "SAM"), samCommit));
+            }, RunProducer);
+
+            System.IO.Directory.Delete(driver.Root, true);
+            File.WriteAllText(Path.Combine(driver.Bin, "openstudio.ps1"), "Write-Output '3.10.0+stand-in'\r\n");
+            File.WriteAllText(Path.Combine(driver.Directory, "stand-in.epw"), "stand-in EPW");
+            workspace = root;
+            runnerHead = runnerCommit;
+            samHead = samCommit;
+            return driver;
+        }
+
+        private static string[] RunArguments(Driver driver)
+        {
+            string epw = Path.Combine(driver.Directory, "stand-in.epw");
+            return new[] { "-ConfirmEngineRuns", "-WeatherEpw", epw, "-WeatherEpwSha256", Sha(epw), "-OpenStudioCli", Path.Combine(driver.Bin, "openstudio.ps1"), "-OpenStudioCliVersion", "3.10.0+stand-in" };
+        }
+
+        [Test]
+        public void Run_ReceiptOfRealCheckouts_RecordsTheRunnerAndSamCommits()
+        {
+            Driver driver = ArrangeRunWorkspace("run-commits", true, out string _, out string runnerHead, out string samHead);
+            Act(driver, "run", RunArguments(driver));
+
+            Assert.That(driver.Exit, Is.EqualTo(0), driver.Describe());
+            Assert.That((string)driver.Summary("run")["result"], Is.EqualTo("SIMULATED"));
+            string[] produced = driver.Calls.Where(x => x.StartsWith("PRODUCER STAND-IN|", StringComparison.Ordinal)).ToArray();
+            Assert.That(produced, Has.Length.EqualTo(2), driver.Describe());
+            Assert.That(produced, Has.All.Contain("--runner-commit " + runnerHead + " --sam-commit " + samHead));
+            foreach (string run in Runs.Select(x => x.Label))
+            {
+                JsonNode manifest = JsonNode.Parse(File.ReadAllText(driver.RunFile(run, "run-manifest.json")));
+                Assert.That((string)manifest["runnerCommit"], Does.Match("^[0-9a-f]{40}$").And.EqualTo(runnerHead));
+                Assert.That((string)manifest["samCommit"], Does.Match("^[0-9a-f]{40}$").And.EqualTo(samHead));
+            }
+        }
+
+        [Test]
+        public void Run_WithoutTheSamCheckout_StopsAt70BeforeTheProducer()
+        {
+            Driver driver = ArrangeRunWorkspace("run-no-sam", false, out string workspace, out string _, out string _);
+            Act(driver, "run", RunArguments(driver));
+
+            Assert.That(driver.Exit, Is.EqualTo(70), driver.Describe());
+            Assert.That(driver.Output, Does.Contain("STOPPED: git -C " + Path.Combine(workspace, "SAM") + " rev-parse HEAD exited"));
+            Assert.That(driver.Calls, Is.Empty, "no producer starts without both commits");
+            Assert.That(File.Exists(driver.RunFile("box", "run-manifest.json")), Is.False);
         }
     }
 }
