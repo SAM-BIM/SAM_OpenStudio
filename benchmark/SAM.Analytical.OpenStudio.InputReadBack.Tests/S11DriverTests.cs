@@ -80,23 +80,70 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             }
         }
 
+        private sealed class ProcessResult
+        {
+            public int Exit;
+            public string Output;
+            public string Error;
+            public bool TimedOut;
+        }
+
+        /// <summary>
+        /// Runs a process to completion within <paramref name="timeoutMilliseconds"/>: stdout and stderr are drained
+        /// concurrently while it runs, so neither a full pipe nor a blocking read can outlast the timeout. When the process,
+        /// or a descendant still holding its output pipes, has not finished in time, the whole process tree is terminated
+        /// and the result says <see cref="ProcessResult.TimedOut"/>.
+        /// </summary>
+        private static ProcessResult RunProcess(ProcessStartInfo info, int timeoutMilliseconds)
+        {
+            info.UseShellExecute = false;
+            info.RedirectStandardOutput = true;
+            info.RedirectStandardError = true;
+            Stopwatch watch = Stopwatch.StartNew();
+            using (Process process = Process.Start(info))
+            {
+                System.Threading.Tasks.Task<string> output = process.StandardOutput.ReadToEndAsync();
+                System.Threading.Tasks.Task<string> error = process.StandardError.ReadToEndAsync();
+                bool exited = process.WaitForExit(timeoutMilliseconds);
+                int remaining = Math.Max(0, timeoutMilliseconds - (int)watch.ElapsedMilliseconds);
+                bool drained = exited && System.Threading.Tasks.Task.WaitAll(new System.Threading.Tasks.Task[] { output, error }, remaining);
+                if (!drained)
+                {
+                    try { process.Kill(true); }
+                    catch (InvalidOperationException) { }
+                    catch (System.ComponentModel.Win32Exception) { }
+
+                    process.WaitForExit(30000);
+                    System.Threading.Tasks.Task.WaitAll(new System.Threading.Tasks.Task[] { output, error }, 30000);
+                    return new ProcessResult
+                    {
+                        Exit = process.HasExited ? process.ExitCode : -1,
+                        Output = output.IsCompletedSuccessfully ? output.Result : string.Empty,
+                        Error = error.IsCompletedSuccessfully ? error.Result : string.Empty,
+                        TimedOut = true,
+                    };
+                }
+
+                process.WaitForExit();
+                return new ProcessResult { Exit = process.ExitCode, Output = output.Result, Error = error.Result };
+            }
+        }
+
+        private static string WindowsPowerShell() => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+
         /// <summary>git in a test checkout (its own identity, no hooks or signing); the test fails on a nonzero exit.</summary>
         private static string Git(string directory, params string[] arguments)
         {
-            ProcessStartInfo info = new ProcessStartInfo("git") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+            ProcessStartInfo info = new ProcessStartInfo("git");
             foreach (string argument in new[] { "-C", directory, "-c", "user.name=S11DriverTests", "-c", "user.email=s11-driver-tests@example.invalid", "-c", "commit.gpgsign=false" }.Concat(arguments))
             {
                 info.ArgumentList.Add(argument);
             }
 
-            using (Process process = Process.Start(info))
-            {
-                System.Threading.Tasks.Task<string> error = process.StandardError.ReadToEndAsync();
-                string output = process.StandardOutput.ReadToEnd();
-                Assert.That(process.WaitForExit(60000), Is.True, "git " + string.Join(" ", arguments) + " did not finish");
-                Assert.That(process.ExitCode, Is.EqualTo(0), "git " + string.Join(" ", arguments) + ": " + error.Result);
-                return output.Trim();
-            }
+            ProcessResult result = RunProcess(info, 60000);
+            Assert.That(result.TimedOut, Is.False, "git " + string.Join(" ", arguments) + " did not finish within 60 s; its process tree was terminated");
+            Assert.That(result.Exit, Is.EqualTo(0), "git " + string.Join(" ", arguments) + ": " + result.Error);
+            return result.Output.Trim();
         }
 
         private readonly List<string> checkouts = new List<string>();
@@ -218,21 +265,16 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
         private static Driver Act(Driver driver, string phase, params string[] extra)
         {
             File.WriteAllText(Path.Combine(driver.Bin, "scenario.json"), driver.Scenario.ToJsonString());
-            string powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
-            ProcessStartInfo info = new ProcessStartInfo(powershell) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+            ProcessStartInfo info = new ProcessStartInfo(WindowsPowerShell());
             foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", driver.Script, "-Phase", phase, "-Root", driver.Root, "-BuildReceipt", driver.Receipt, "-HarnessExe", driver.Harness, "-BenchmarkExe", driver.Producer }.Concat(extra))
             {
                 info.ArgumentList.Add(argument);
             }
 
-            using (Process process = Process.Start(info))
-            {
-                System.Threading.Tasks.Task<string> error = process.StandardError.ReadToEndAsync();
-                string output = process.StandardOutput.ReadToEnd();
-                Assert.That(process.WaitForExit(120000), Is.True, "the driver did not finish");
-                driver.Exit = process.ExitCode;
-                driver.Output = output + error.Result;
-            }
+            ProcessResult result = RunProcess(info, 120000);
+            driver.Exit = result.Exit;
+            driver.Output = result.Output + result.Error;
+            Assert.That(result.TimedOut, Is.False, "the driver did not finish within 120 s; its process tree was terminated" + Environment.NewLine + driver.Output);
 
             Assert.That(driver.Calls, Has.None.EqualTo("PRODUCER STARTED"), "the producer (engine) must never start in these phases");
             return driver;
@@ -628,6 +670,138 @@ namespace SAM.Analytical.OpenStudio.InputReadBack.Tests
             Assert.That(driver.Output, Does.Contain("STOPPED: git -C " + Path.Combine(workspace, "SAM") + " rev-parse HEAD exited"));
             Assert.That(driver.Calls, Is.Empty, "no producer starts without both commits");
             Assert.That(File.Exists(driver.RunFile("box", "run-manifest.json")), Is.False);
+        }
+
+        // ---- the test process runner itself -----------------------------------------------------------------------------
+
+        /// <summary>
+        /// A process that never finishes, with a child that inherits its output pipes: the timeout is effective while both
+        /// streams are drained, and the parent and the child are both terminated.
+        /// </summary>
+        [Test]
+        public void ProcessThatOutlivesItsTimeout_IsTerminatedWithItsChildren()
+        {
+            string ids = Path.Combine(NewCheckouts(), "ids.txt");
+            string script =
+                "$child = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList '-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 600' -NoNewWindow -PassThru; " +
+                "Set-Content -LiteralPath '" + ids + "' -Value @($PID, $child.Id); " +
+                "Write-Output ('x' * 200000); [Console]::Error.WriteLine('y' * 200000); Start-Sleep -Seconds 600";
+            ProcessStartInfo info = new ProcessStartInfo(WindowsPowerShell());
+            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-Command", script }) info.ArgumentList.Add(argument);
+
+            Stopwatch watch = Stopwatch.StartNew();
+            ProcessResult result = RunProcess(info, 20000);
+
+            Assert.That(result.TimedOut, Is.True);
+            Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(90)), "the timeout bounds the wait");
+            Assert.That(File.Exists(ids), Is.True, "the parent started its child before the timeout");
+            int[] started = File.ReadAllLines(ids).Where(x => x.Trim().Length > 0).Select(x => int.Parse(x.Trim())).ToArray();
+            Assert.That(started, Has.Length.EqualTo(2));
+            foreach (int id in started)
+            {
+                Process process;
+                try { process = Process.GetProcessById(id); }
+                catch (ArgumentException) { continue; }
+
+                using (process)
+                {
+                    Assert.That(process.WaitForExit(10000), Is.True, "process " + id + " of the timed-out tree is still running");
+                }
+            }
+        }
+
+        // ---- Build-S11-Receipt.ps1: refusals leave no receipt (Revision 2: invalidate before git discovery) ---------------
+
+        private static string ReceiptScript() => Path.Combine(Path.GetDirectoryName(Script()), "Build-S11-Receipt.ps1");
+
+        /// <summary>
+        /// Build-S11-Receipt.ps1 on a workspace of four sibling folders under <paramref name="workspace"/>, with an earlier
+        /// receipt in place. MSBuild is a path that does not exist, so nothing is ever built: every outcome is a refusal.
+        /// </summary>
+        private static ProcessResult BuildReceipt(string workspace, string receipt, string gitExe, string path = null)
+        {
+            File.WriteAllText(receipt, "{ \"schema\": \"s11-build-receipt/1\", \"note\": \"an earlier build's receipt\" }");
+            ProcessStartInfo info = new ProcessStartInfo(WindowsPowerShell());
+            List<string> arguments = new List<string> { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ReceiptScript(), "-RunnerRepository", Path.Combine(workspace, "SAM_OpenStudio"), "-BuildReceipt", receipt, "-MSBuild", Path.Combine(workspace, "no-msbuild", "MSBuild.exe") };
+            if (gitExe != null) arguments.AddRange(new[] { "-GitExe", gitExe });
+            foreach (string argument in arguments) info.ArgumentList.Add(argument);
+            if (path != null) info.Environment["PATH"] = path;
+
+            ProcessResult result = RunProcess(info, 120000);
+            Assert.That(result.TimedOut, Is.False, "Build-S11-Receipt.ps1 did not finish within 120 s; its process tree was terminated" + Environment.NewLine + result.Output + result.Error);
+            return result;
+        }
+
+        private static readonly string[] Repositories = { "SAM", "SAM_Validation", "SAM_Tas", "SAM_OpenStudio" };
+
+        [Test]
+        public void Receipt_GitMissing_Exits3AndNoReceiptRemains()
+        {
+            string workspace = NewCheckouts();
+            foreach (string repository in Repositories) System.IO.Directory.CreateDirectory(Path.Combine(workspace, repository, ".git"));
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            string path = system + ";" + Path.Combine(system, "WindowsPowerShell", "v1.0");
+            Assert.That(path.Split(';').Any(x => File.Exists(Path.Combine(x, "git.exe")) || File.Exists(Path.Combine(x, "git.cmd"))), Is.False, "precondition: the child PATH has no git");
+            string receipt = Path.Combine(workspace, "s11-build-receipt.json");
+
+            ProcessResult result = BuildReceipt(workspace, receipt, Path.Combine(workspace, "no-git", "git.exe"), path);
+
+            Assert.That(result.Exit, Is.EqualTo(3), result.Output + result.Error);
+            Assert.That(result.Output, Does.Contain("REFUSED (no receipt written): git.exe not found"));
+            Assert.That(File.Exists(receipt), Is.False, "the earlier receipt must not survive a refused build");
+        }
+
+        /// <summary>A git.exe stand-in (a .cmd) that prints a full SHA for rev-parse and exits nonzero for one subcommand.</summary>
+        [TestCase("rev-parse", "rev-parse HEAD exited 1")]
+        [TestCase("status", "status --porcelain --untracked-files=all exited 128")]
+        public void Receipt_GitExitsNonzero_Exits3AndNoReceiptRemains(string failing, string reason)
+        {
+            string workspace = NewCheckouts();
+            foreach (string repository in Repositories) System.IO.Directory.CreateDirectory(Path.Combine(workspace, repository, ".git"));
+            string git = Path.Combine(workspace, "stand-in-git", "git.cmd");
+            System.IO.Directory.CreateDirectory(Path.GetDirectoryName(git));
+            File.WriteAllText(git,
+                "@echo off\r\n" +
+                (failing == "rev-parse" ? "if \"%3\"==\"rev-parse\" (echo 0123456789abcdef0123456789abcdef01234567& exit /b 1)\r\n" : "if \"%3\"==\"rev-parse\" (echo 0123456789abcdef0123456789abcdef01234567& exit /b 0)\r\n") +
+                (failing == "status" ? "if \"%3\"==\"status\" exit /b 128\r\n" : string.Empty) +
+                "exit /b 0\r\n");
+            string receipt = Path.Combine(workspace, "s11-build-receipt.json");
+
+            ProcessResult result = BuildReceipt(workspace, receipt, git);
+
+            Assert.That(result.Exit, Is.EqualTo(3), result.Output + result.Error);
+            Assert.That(result.Output, Does.Contain("REFUSED (no receipt written): git -C " + Path.Combine(workspace, "SAM") + " " + reason));
+            Assert.That(File.Exists(receipt), Is.False);
+        }
+
+        [Test]
+        public void Receipt_CheckoutNotClean_Exits3AndNoReceiptRemains()
+        {
+            string workspace = NewCheckouts();
+            foreach (string repository in Repositories) NewRepository(Path.Combine(workspace, repository));
+            File.WriteAllText(Path.Combine(workspace, "SAM_Tas", "untracked.txt"), "x");
+            string receipt = Path.Combine(workspace, "s11-build-receipt.json");
+
+            ProcessResult result = BuildReceipt(workspace, receipt, null);
+
+            Assert.That(result.Exit, Is.EqualTo(3), result.Output + result.Error);
+            Assert.That(result.Output, Does.Contain("REFUSED (no receipt written): " + Path.Combine(workspace, "SAM_Tas") + " has 1 uncommitted or untracked change(s)"));
+            Assert.That(File.Exists(receipt), Is.False);
+        }
+
+        /// <summary>The positive control of the git checks: real clean checkouts pass them and the build is refused only later.</summary>
+        [Test]
+        public void Receipt_CleanCheckouts_PassTheGitChecks_LaterRefusalStillLeavesNoReceipt()
+        {
+            string workspace = NewCheckouts();
+            foreach (string repository in Repositories) NewRepository(Path.Combine(workspace, repository));
+            string receipt = Path.Combine(workspace, "s11-build-receipt.json");
+
+            ProcessResult result = BuildReceipt(workspace, receipt, null);
+
+            Assert.That(result.Exit, Is.EqualTo(3), result.Output + result.Error);
+            Assert.That(result.Output, Does.Contain("REFUSED (no receipt written): MSBuild not found"));
+            Assert.That(File.Exists(receipt), Is.False);
         }
     }
 }

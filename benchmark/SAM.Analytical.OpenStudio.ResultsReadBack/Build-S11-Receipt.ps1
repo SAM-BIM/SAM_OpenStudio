@@ -15,14 +15,18 @@
 #      by this build and carries its checkout's stamp; every SAM\build library beside the executables is byte-identical
 #      to its SAM\build copy.
 #   4. The receipt (default: s11-build-receipt.json beside os-results-readback.exe) records the commits, the commands and
-#      the sha256 of every .dll/.exe in both executable folders. It is removed first, so a refused build leaves none.
+#      the sha256 of every .dll/.exe in both executable folders. Any earlier receipt is removed before anything else is
+#      checked (git discovery included), so a refused build (exit 3) never leaves a receipt behind.
+#   Every git call must exit 0: a git.exe that cannot be found, or that exits nonzero, refuses the build (exit 3).
 #
 # Usage (Windows PowerShell 5.1; the defaults are this workspace's paths):
 #   powershell -ExecutionPolicy Bypass -File Build-S11-Receipt.ps1
 param(
     [string]$MSBuild = 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe',
     [string]$RunnerRepository = '',
-    [string]$BuildReceipt = ''
+    [string]$BuildReceipt = '',
+    # git.exe to use; when this file does not exist, git.exe is resolved as an application on PATH.
+    [string]$GitExe = 'C:\Program Files\Git\cmd\git.exe'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,6 +51,13 @@ function Refuse([string]$Reason) {
     exit 3
 }
 
+# A receipt of an earlier build is invalid from here on: removed before git discovery or any other check can refuse.
+try {
+    if (Test-Path -LiteralPath $BuildReceipt) { Remove-Item -LiteralPath $BuildReceipt -Force }
+}
+catch { Refuse "the earlier receipt $BuildReceipt could not be removed: $($_.Exception.Message)" }
+if (Test-Path -LiteralPath $BuildReceipt) { Refuse "the earlier receipt $BuildReceipt is still present" }
+
 # SHA-256 through .NET (Get-FileHash is a module function Windows PowerShell 5.1 may not autoload in a child host).
 function Sha([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
@@ -58,22 +69,27 @@ function Sha([string]$Path) {
     finally { $stream.Dispose() }
 }
 
-# git.exe itself, never a bare 'git': inside the Git function below that name resolves to the function and recurses.
-$git = 'C:\Program Files\Git\cmd\git.exe'
-if (-not (Test-Path -LiteralPath $git -PathType Leaf)) { $git = @(Get-Command git -CommandType Application -ErrorAction SilentlyContinue)[0].Source }
-if (-not $git) { Refuse 'git.exe not found' }
+# git.exe itself, never a bare 'git' (inside a function named Git that name resolves to the function and recurses).
+$git = $null
+if ($GitExe -and (Test-Path -LiteralPath $GitExe -PathType Leaf)) { $git = [IO.Path]::GetFullPath($GitExe) }
+else { $git = @(Get-Command git -CommandType Application -ErrorAction SilentlyContinue | ForEach-Object { $_.Source }) | Select-Object -First 1 }
+if (-not $git) { Refuse "git.exe not found ('$GitExe' does not exist and PATH has no git application)" }
 
-function Git([string]$Directory) {
+# git in Directory; refuses unless it exits 0.
+function Invoke-Git([string]$Directory) {
     $ErrorActionPreference = 'Continue'
-    & $git -C $Directory @args 2>$null
+    $global:LASTEXITCODE = $null
+    $output = @(& $git -C $Directory @args 2>$null)
+    $code = $global:LASTEXITCODE
+    if ($code -ne 0) { Refuse "git -C $Directory $($args -join ' ') exited $(if ($null -eq $code) { 'without an exit code' } else { $code })" }
+    return $output
 }
 
 function Clean-Head([string]$Directory) {
     if (-not (Test-Path (Join-Path $Directory '.git'))) { Refuse "$Directory is not a git checkout" }
-    $head = (Git $Directory rev-parse HEAD | Out-String).Trim()
-    if ($head -notmatch '^[0-9a-f]{40}$') { Refuse "HEAD of $Directory is not a full commit SHA ('$head')" }
-    $status = @(Git $Directory status --porcelain --untracked-files=all)
-    if ($LASTEXITCODE -ne 0) { Refuse "git status failed in $Directory" }
+    $head = (Invoke-Git $Directory rev-parse HEAD | Out-String).Trim()
+    if ($head -cnotmatch '^[0-9a-f]{40}$') { Refuse "HEAD of $Directory is not a full commit SHA ('$head')" }
+    $status = @(Invoke-Git $Directory status --porcelain --untracked-files=all)
     if ($status.Count -gt 0) { Refuse "$Directory has $($status.Count) uncommitted or untracked change(s), e.g. $($status[0])" }
     return $head
 }
@@ -83,7 +99,6 @@ function Test-Stamp([string]$Path, [string]$Commit) {
     return $text.Contains('+' + $Commit)
 }
 
-if (Test-Path -LiteralPath $BuildReceipt) { Remove-Item -LiteralPath $BuildReceipt -Force }
 $heads = [ordered]@{}
 foreach ($repository in @($SamRepository, $ValidationRepository, $TasRepository, $RunnerRepository)) { $heads[$repository] = Clean-Head $repository }
 if (-not (Test-Path -LiteralPath $MSBuild)) { Refuse "MSBuild not found: $MSBuild" }
@@ -148,7 +163,7 @@ $files = @(Get-ChildItem -LiteralPath $benchmarkDir, $harnessDir -File | Where-O
     note = 'Written by Build-S11-Receipt.ps1 after a successful controlled build of clean checkouts; Run-S11-Results.ps1 verifies it and never writes it.'
     startedUtc = $started.ToString('o'); completedUtc = (Get-Date).ToUniversalTime().ToString('o'); machine = $env:COMPUTERNAME
     msbuild = $MSBuild; commands = $commands
-    commits = @($heads.Keys | ForEach-Object { [ordered]@{ repository = $_; commit = $heads[$_]; branch = (Git $_ rev-parse --abbrev-ref HEAD | Out-String).Trim() } })
+    commits = @($heads.Keys | ForEach-Object { [ordered]@{ repository = $_; commit = $heads[$_]; branch = (Invoke-Git $_ rev-parse --abbrev-ref HEAD | Out-String).Trim() } })
     benchmarkExe = $benchmarkExe; harnessExe = $harnessExe
     stamped = $stamped; files = $files
 } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 $BuildReceipt
