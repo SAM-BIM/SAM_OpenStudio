@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>SAM.Analytical.OpenStudio.ResultsReadBack</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!--
+    S11 OpenStudio results round-trip reference (SAM documentation/SIMULATION_ROADMAP_Q4_2026.md row S11).
+
+    Independence: this library references neither SAM.Analytical.OpenStudio nor SAM.Core.OpenStudio nor the OpenStudio SDK.
+    It reads eplusout.sql (System.Data.SQLite, read-only) and eplusout.eso (its own text reader) as two channels that share
+    no reader code, builds the expected calendar from the run's in.idf RunPeriod, and takes the space identity from the S09
+    native identity (geometry bijection + IDF equipment chain, SAM.Analytical.OpenStudio.InputReadBack). The production
+    importer and producer run only in the CLI's subject step.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SAM.Analytical.OpenStudio.InputReadBack\SAM.Analytical.OpenStudio.InputReadBack.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Benchmark schema (B1a), to read the produced document. Built into SAM_Validation\build by CI before this repo. -->
+    <Reference Include="SAM.Analytical.Benchmark">
+      <HintPath>..\..\..\SAM_Validation\build\SAM.Analytical.Benchmark.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SAM.Core">
+      <HintPath>..\..\..\SAM\build\SAM.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="SAM.Geometry">
+      <HintPath>..\..\..\SAM\build\SAM.Geometry.dll</HintPath>
+    </Reference>
+    <Reference Include="SAM.Analytical">
+      <HintPath>..\..\..\SAM\build\SAM.Analytical.dll</HintPath>
+    </Reference>
+    <Reference Include="SAM.Architectural">
+      <HintPath>..\..\..\SAM\build\SAM.Architectural.dll</HintPath>
+    </Reference>
+    <Reference Include="SAM.Weather">
+      <HintPath>..\..\..\SAM\build\SAM.Weather.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

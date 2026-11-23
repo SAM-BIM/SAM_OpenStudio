@@ -1,0 +1,3 @@
+﻿read: C:\TasOut\s11\r2-20261123\box\reference.json (1 spaces, 0 global block(s), 12 series judged)
+subject: C:\TasOut\s11\r2-20261123\box\subject.json (closure identical, 2 SAM-I space results)
+compare: PASS (54 PASS, 0 FAIL, 0 BLOCKED of 54); C:\TasOut\s11\r2-20261123\box\compare\compare.json

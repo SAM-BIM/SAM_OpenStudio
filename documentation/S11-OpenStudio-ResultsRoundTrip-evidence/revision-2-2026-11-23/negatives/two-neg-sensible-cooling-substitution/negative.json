@@ -1,0 +1,14 @@
+{
+  "Case": "neg-sensible-cooling-substitution",
+  "Source": "C:\\TasOut\\s11\\r2-20261123\\two",
+  "ExpectedExit": 10,
+  "Mutation": "producer objects and SAM-I carry the reference Sensible cooling (consumption 974.567253160985 kWh for Total 1141.48664358622 kWh); B1a re-mapped from the mutated objects",
+  "SourceSha256": {
+    "b1a.json": "7319160a864ce3311481df3a4a42e53a44d1b767cb0b3e8627c8e5cbf574b0c1",
+    "sam.json": "7864ac4498c8a48a436f0839f0dc2e21466ccceb916c702869190a40277d7832",
+    "eplusout.sql": "feab1b64f59d26facc2d18c37202007c9b019bcd71e631e3966374389c5cddb5",
+    "eplusout.eso": "b493f69f5f347cdf8d9ad58360f1f61518a294e25cdfe4adf4c2b18886130401",
+    "in.idf": "a088a07af52247b74f0a3a1fe88596dd2e250b67486e488a92d882c1a44857d5"
+  },
+  "CreatedUtc": "2026-11-23T12:10:52.3780776Z"
+}

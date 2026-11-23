@@ -27,7 +27,9 @@
       "SAM.Analytical.OpenStudio"
     ],
     "warnings": [],
-    "notes": []
+    "notes": [
+      "Cooling metrics are EnergyPlus Ideal Loads Supply Air Total cooling (sensible \u002B latent); heating is Total heating."
+    ]
   },
   "model": {
     "consumptionHeating": {

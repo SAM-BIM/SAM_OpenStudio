@@ -234,7 +234,8 @@ namespace SAM.Analytical.OpenStudio.Benchmark.Tests
 
             BenchmarkDocument document = model.ToBenchmark(emptyDiagnostics);
             Assert.That(document.Provenance.Warnings, Is.Not.Null.And.Empty, "Empty arrays still serialize as valid empty arrays");
-            Assert.That(document.Provenance.Notes, Is.Not.Null.And.Empty);
+            // S11 F3: the only note on a successful document with no diagnostics is the Total-basis label.
+            Assert.That(document.Provenance.Notes, Is.EqualTo(new[] { Modify.TotalBasisNote }));
             Assert.That(BenchmarkValidator.Validate(document).IsValid, Is.True, "An empty-diagnostic document stays schema-valid");
         }
 

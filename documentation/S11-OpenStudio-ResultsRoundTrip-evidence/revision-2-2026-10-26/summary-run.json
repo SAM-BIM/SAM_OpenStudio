@@ -1,0 +1,14 @@
+﻿{
+    "phase":  "run",
+    "started":  "2026-10-26T17:08:46.7523039Z",
+    "root":  "C:\\TasOut\\s11\\r2-20261026",
+    "buildReceipt":  "R:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\s11-build-receipt.json",
+    "harness":  "R:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\os-results-readback.exe",
+    "runs":  [
+
+             ],
+    "stopped":  "R:\\SAM is not clean at the receipt commit 457defbb033fa4a58128f2395b87587f0210c608",
+    "exit":  70,
+    "result":  "STOPPED",
+    "finished":  "2026-10-26T17:15:19.0050007Z"
+}

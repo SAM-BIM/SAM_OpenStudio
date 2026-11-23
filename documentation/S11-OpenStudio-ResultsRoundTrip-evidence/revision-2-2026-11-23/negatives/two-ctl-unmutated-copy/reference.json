@@ -1,0 +1,721 @@
+{
+  "Schema": "s11-reference/1",
+  "ProcessId": 26852,
+  "ProcessStartedUtc": "2026-11-23T12:10:37.2421223Z",
+  "StartedUtc": "2026-11-23T12:10:37.4682326Z",
+  "FinishedUtc": "2026-11-23T12:10:38.6847188Z",
+  "ReaderAssemblySha256": "eb64b2a81b85ed2bf8a518f8d051df3f7f57a617ba4ecbb4baa8967533534ab2",
+  "FixtureId": "s08-fix-two",
+  "ModelPath": "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.InputReadBack\\Fixtures\\s08-fix-two.json",
+  "ModelSha256": "20da9b586345e9fc67dc6308e6da1578b9bc41b3c694dbdab37e9c677959baa0",
+  "IdfPath": "C:\\TasOut\\s11\\r2-20261123\\negatives\\two-ctl-unmutated-copy\\work\\run\\in.idf",
+  "IdfSha256Before": "a088a07af52247b74f0a3a1fe88596dd2e250b67486e488a92d882c1a44857d5",
+  "IdfSha256After": "a088a07af52247b74f0a3a1fe88596dd2e250b67486e488a92d882c1a44857d5",
+  "SqlPath": "C:\\TasOut\\s11\\r2-20261123\\negatives\\two-ctl-unmutated-copy\\work\\run\\eplusout.sql",
+  "SqlSha256Before": "feab1b64f59d26facc2d18c37202007c9b019bcd71e631e3966374389c5cddb5",
+  "SqlSha256After": "feab1b64f59d26facc2d18c37202007c9b019bcd71e631e3966374389c5cddb5",
+  "EsoPath": "C:\\TasOut\\s11\\r2-20261123\\negatives\\two-ctl-unmutated-copy\\work\\run\\eplusout.eso",
+  "EsoSha256Before": "b493f69f5f347cdf8d9ad58360f1f61518a294e25cdfe4adf4c2b18886130401",
+  "EsoSha256After": "b493f69f5f347cdf8d9ad58360f1f61518a294e25cdfe4adf4c2b18886130401",
+  "RunPeriod": "RunPeriod \u0027SAM_RunPeriod\u0027: 1/1/2006 to 12/31/2006",
+  "CalendarHours": 8760,
+  "SqlEnergyPlusVersions": [
+    "EnergyPlus, Version 25.1.0-1c11a3d85f, YMD=2026.11.23 13:09"
+  ],
+  "EsoProgramVersion": "Program Version,EnergyPlus, Version 25.1.0-1c11a3d85f, YMD=2026.11.23 13:09",
+  "SqlEnvironments": [
+    "SAM_RUNPERIOD (type 3)"
+  ],
+  "EsoEnvironments": [
+    "SAM_RUNPERIOD"
+  ],
+  "SqlOtherEnvironmentRows": 0,
+  "GlobalBlocks": [],
+  "Checks": [
+    {
+      "Id": "S11-C1",
+      "Scope": "calendar",
+      "Status": "PASS",
+      "Detail": "RunPeriod \u0027SAM_RunPeriod\u0027: 1/1/2006 to 12/31/2006: 8760 expected hourly intervals"
+    },
+    {
+      "Id": "S11-C1",
+      "Scope": "files and RunPeriod environment",
+      "Status": "PASS",
+      "Detail": "SQL environment and one ESO RunPeriod block found; files unchanged by the read"
+    },
+    {
+      "Id": "S11-C9",
+      "Scope": "EnergyPlus version",
+      "Status": "PASS",
+      "Detail": "SQL Simulations: EnergyPlus, Version 25.1.0-1c11a3d85f, YMD=2026.11.23 13:09; ESO: Program Version,EnergyPlus, Version 25.1.0-1c11a3d85f, YMD=2026.11.23 13:09"
+    },
+    {
+      "Id": "S11-C5",
+      "Scope": "identity 5080c00000000000000000000000c0a1",
+      "Status": "PASS",
+      "Detail": "\u0027FixA\u0027 = native space \u0027SAM_Space_FixA_5080c000\u0027 (6 surfaces one to one), zone \u0027SAM_ThermalZone_FixA_5080c000\u0027, Ideal Loads \u0027SAM_IdealLoads_FixA_5080c000\u0027; name carrier agrees"
+    },
+    {
+      "Id": "S11-C5",
+      "Scope": "identity 5080c00000000000000000000000c0b1",
+      "Status": "PASS",
+      "Detail": "\u0027FixB\u0027 = native space \u0027SAM_Space_FixB_5080c000\u0027 (6 surfaces one to one), zone \u0027SAM_ThermalZone_FixB_5080c000\u0027, Ideal Loads \u0027SAM_IdealLoads_FixB_5080c000\u0027; name carrier agrees"
+    },
+    {
+      "Id": "S11-C5",
+      "Scope": "report keys",
+      "Status": "PASS",
+      "Detail": "every SQL and ESO key is an identified Zone or Ideal Loads"
+    },
+    {
+      "Id": "S11-C6",
+      "Scope": "Heating 5080c00000000000000000000000c0a1",
+      "Status": "PASS",
+      "Detail": "Total \u003E= Sensible every hour; annual latent 35612627.61498913 J"
+    },
+    {
+      "Id": "S11-C6",
+      "Scope": "Cooling 5080c00000000000000000000000c0a1",
+      "Status": "PASS",
+      "Detail": "Total \u003E= Sensible every hour; annual latent 368339665.65867126 J"
+    },
+    {
+      "Id": "S11-C6",
+      "Scope": "Heating 5080c00000000000000000000000c0b1",
+      "Status": "PASS",
+      "Detail": "Total \u003E= Sensible every hour; annual latent 234260528.74992797 J"
+    },
+    {
+      "Id": "S11-C6",
+      "Scope": "Cooling 5080c00000000000000000000000c0b1",
+      "Status": "PASS",
+      "Detail": "Total \u003E= Sensible every hour; annual latent 232570139.8721895 J"
+    },
+    {
+      "Id": "S11-C7",
+      "Scope": "Heating sql",
+      "Status": "PASS",
+      "Detail": "sql DistrictHeatingWater:Facility (Zone Timestep, 52560 rows) 5599693253.219481 J vs zones 5599693253.219529 J, |delta| 4.76837158203125E-05"
+    },
+    {
+      "Id": "S11-C7",
+      "Scope": "Heating eso",
+      "Status": "PASS",
+      "Detail": "eso DistrictHeatingWater:Facility (TimeStep, 52560 rows) 5599693253.219481 J vs zones 5599693253.219529 J, |delta| 4.76837158203125E-05"
+    },
+    {
+      "Id": "S11-C7",
+      "Scope": "Cooling sql",
+      "Status": "PASS",
+      "Detail": "sql DistrictCooling:Facility (Zone Timestep, 52560 rows) 4109351916.9103966 J vs zones 4109351916.910392 J, |delta| 4.76837158203125E-06"
+    },
+    {
+      "Id": "S11-C7",
+      "Scope": "Cooling eso",
+      "Status": "PASS",
+      "Detail": "eso DistrictCooling:Facility (TimeStep, 52560 rows) 4109351916.9103966 J vs zones 4109351916.910392 J, |delta| 4.76837158203125E-06"
+    },
+    {
+      "Id": "S11-C8",
+      "Scope": "sizing",
+      "Status": "INFO",
+      "Detail": "ZoneSizes rows: 0 (judged against designDaySource in compare)"
+    }
+  ],
+  "Completeness": [
+    {
+      "Channel": "sql",
+      "Variable": "Zone Ideal Loads Supply Air Total Heating Energy",
+      "Key": "SAM_IDEALLOADS_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Ideal Loads Supply Air Total Heating Energy",
+      "Key": "SAM_IDEALLOADS_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Ideal Loads Supply Air Total Cooling Energy",
+      "Key": "SAM_IDEALLOADS_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Ideal Loads Supply Air Total Cooling Energy",
+      "Key": "SAM_IDEALLOADS_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Ideal Loads Supply Air Sensible Heating Energy",
+      "Key": "SAM_IDEALLOADS_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Ideal Loads Supply Air Sensible Heating Energy",
+      "Key": "SAM_IDEALLOADS_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Ideal Loads Supply Air Sensible Cooling Energy",
+      "Key": "SAM_IDEALLOADS_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Ideal Loads Supply Air Sensible Cooling Energy",
+      "Key": "SAM_IDEALLOADS_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Heating Setpoint Not Met Time",
+      "Key": "SAM_THERMALZONE_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Heating Setpoint Not Met Time",
+      "Key": "SAM_THERMALZONE_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Cooling Setpoint Not Met Time",
+      "Key": "SAM_THERMALZONE_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Cooling Setpoint Not Met Time",
+      "Key": "SAM_THERMALZONE_FIXA_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Ideal Loads Supply Air Total Heating Energy",
+      "Key": "SAM_IDEALLOADS_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Ideal Loads Supply Air Total Heating Energy",
+      "Key": "SAM_IDEALLOADS_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Ideal Loads Supply Air Total Cooling Energy",
+      "Key": "SAM_IDEALLOADS_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Ideal Loads Supply Air Total Cooling Energy",
+      "Key": "SAM_IDEALLOADS_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Ideal Loads Supply Air Sensible Heating Energy",
+      "Key": "SAM_IDEALLOADS_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Ideal Loads Supply Air Sensible Heating Energy",
+      "Key": "SAM_IDEALLOADS_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Ideal Loads Supply Air Sensible Cooling Energy",
+      "Key": "SAM_IDEALLOADS_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Ideal Loads Supply Air Sensible Cooling Energy",
+      "Key": "SAM_IDEALLOADS_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Heating Setpoint Not Met Time",
+      "Key": "SAM_THERMALZONE_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Heating Setpoint Not Met Time",
+      "Key": "SAM_THERMALZONE_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "sql",
+      "Variable": "Zone Cooling Setpoint Not Met Time",
+      "Key": "SAM_THERMALZONE_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    },
+    {
+      "Channel": "eso",
+      "Variable": "Zone Cooling Setpoint Not Met Time",
+      "Key": "SAM_THERMALZONE_FIXB_5080C000",
+      "DictionaryEntries": 1,
+      "Expected": 8760,
+      "Found": 8760,
+      "Missing": 0,
+      "Duplicated": 0,
+      "Extra": 0,
+      "Examples": [],
+      "Problems": [],
+      "Complete": true
+    }
+  ],
+  "Spaces": [
+    {
+      "SpaceGuid": "5080c000-0000-0000-0000-00000000c0a1",
+      "SpaceName": "FixA",
+      "NativeSpace": "SAM_Space_FixA_5080c000",
+      "Zone": "SAM_ThermalZone_FixA_5080c000",
+      "IdealLoads": "SAM_IdealLoads_FixA_5080c000",
+      "SurfacePairs": 6,
+      "NameCarrierAgrees": true,
+      "IdentityProblem": null,
+      "Area": 24.3,
+      "Volume": 74.115,
+      "Quantities": {
+        "Zone Ideal Loads Supply Air Total Heating Energy": {
+          "Variable": "Zone Ideal Loads Supply Air Total Heating Energy",
+          "Key": "SAM_IdealLoads_FixA_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 1849133546.4683063,
+          "Peak": 6329034.948968605,
+          "PeakWatts": 1758.0652636023904,
+          "PeakHour": 751,
+          "TieCount": 1,
+          "AllZero": false
+        },
+        "Zone Ideal Loads Supply Air Total Cooling Energy": {
+          "Variable": "Zone Ideal Loads Supply Air Total Cooling Energy",
+          "Key": "SAM_IdealLoads_FixA_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 3654601519.41184,
+          "Peak": 4816868.7245333055,
+          "PeakWatts": 1338.0190901481403,
+          "PeakHour": 5701,
+          "TieCount": 1,
+          "AllZero": false
+        },
+        "Zone Ideal Loads Supply Air Sensible Heating Energy": {
+          "Variable": "Zone Ideal Loads Supply Air Sensible Heating Energy",
+          "Key": "SAM_IdealLoads_FixA_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 1813520918.8533173,
+          "Peak": 5889203.700093255,
+          "PeakWatts": 1635.889916692571,
+          "PeakHour": 751,
+          "TieCount": 1,
+          "AllZero": false
+        },
+        "Zone Ideal Loads Supply Air Sensible Cooling Energy": {
+          "Variable": "Zone Ideal Loads Supply Air Sensible Cooling Energy",
+          "Key": "SAM_IdealLoads_FixA_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 3286261853.753184,
+          "Peak": 4410215.362107236,
+          "PeakWatts": 1225.0598228075655,
+          "PeakHour": 5701,
+          "TieCount": 1,
+          "AllZero": false
+        },
+        "Zone Heating Setpoint Not Met Time": {
+          "Variable": "Zone Heating Setpoint Not Met Time",
+          "Key": "SAM_ThermalZone_FixA_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 0,
+          "Peak": 0,
+          "PeakWatts": "NaN",
+          "PeakHour": 0,
+          "TieCount": 8760,
+          "AllZero": true
+        },
+        "Zone Cooling Setpoint Not Met Time": {
+          "Variable": "Zone Cooling Setpoint Not Met Time",
+          "Key": "SAM_ThermalZone_FixA_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 0,
+          "Peak": 0,
+          "PeakWatts": "NaN",
+          "PeakHour": 0,
+          "TieCount": 8760,
+          "AllZero": true
+        }
+      },
+      "BasisProblems": {},
+      "LatentJoules": {
+        "Heating": 35612627.61498913,
+        "Cooling": 368339665.65867126
+      }
+    },
+    {
+      "SpaceGuid": "5080c000-0000-0000-0000-00000000c0b1",
+      "SpaceName": "FixB",
+      "NativeSpace": "SAM_Space_FixB_5080c000",
+      "Zone": "SAM_ThermalZone_FixB_5080c000",
+      "IdealLoads": "SAM_IdealLoads_FixB_5080c000",
+      "SurfacePairs": 6,
+      "NameCarrierAgrees": true,
+      "IdentityProblem": null,
+      "Area": 19.439999999999998,
+      "Volume": 59.29199999999999,
+      "Quantities": {
+        "Zone Ideal Loads Supply Air Total Heating Energy": {
+          "Variable": "Zone Ideal Loads Supply Air Total Heating Energy",
+          "Key": "SAM_IdealLoads_FixB_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 3750559706.751223,
+          "Peak": 3069826.27648764,
+          "PeakWatts": 852.7295212465667,
+          "PeakHour": 918,
+          "TieCount": 1,
+          "AllZero": false
+        },
+        "Zone Ideal Loads Supply Air Total Cooling Energy": {
+          "Variable": "Zone Ideal Loads Supply Air Total Cooling Energy",
+          "Key": "SAM_IdealLoads_FixB_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 454750397.4985519,
+          "Peak": 1349647.3381615619,
+          "PeakWatts": 374.9020383782116,
+          "PeakHour": 5033,
+          "TieCount": 1,
+          "AllZero": false
+        },
+        "Zone Ideal Loads Supply Air Sensible Heating Energy": {
+          "Variable": "Zone Ideal Loads Supply Air Sensible Heating Energy",
+          "Key": "SAM_IdealLoads_FixB_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 3516299178.0013003,
+          "Peak": 2815224.1605567876,
+          "PeakWatts": 782.0067112657744,
+          "PeakHour": 918,
+          "TieCount": 1,
+          "AllZero": false
+        },
+        "Zone Ideal Loads Supply Air Sensible Cooling Energy": {
+          "Variable": "Zone Ideal Loads Supply Air Sensible Cooling Energy",
+          "Key": "SAM_IdealLoads_FixB_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 222180257.62636214,
+          "Peak": 776151.8665941177,
+          "PeakWatts": 215.59774072058826,
+          "PeakHour": 4385,
+          "TieCount": 1,
+          "AllZero": false
+        },
+        "Zone Heating Setpoint Not Met Time": {
+          "Variable": "Zone Heating Setpoint Not Met Time",
+          "Key": "SAM_ThermalZone_FixB_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 0,
+          "Peak": 0,
+          "PeakWatts": "NaN",
+          "PeakHour": 0,
+          "TieCount": 8760,
+          "AllZero": true
+        },
+        "Zone Cooling Setpoint Not Met Time": {
+          "Variable": "Zone Cooling Setpoint Not Met Time",
+          "Key": "SAM_ThermalZone_FixB_5080c000",
+          "Available": true,
+          "BlockReasons": [],
+          "Sum": 0,
+          "Peak": 0,
+          "PeakWatts": "NaN",
+          "PeakHour": 0,
+          "TieCount": 8760,
+          "AllZero": true
+        }
+      },
+      "BasisProblems": {},
+      "LatentJoules": {
+        "Heating": 234260528.74992797,
+        "Cooling": 232570139.8721895
+      }
+    }
+  ],
+  "Model": [
+    {
+      "Kind": "Heating",
+      "Total": {
+        "Available": true,
+        "ConsumptionKwh": 1555.470348116536,
+        "CoincidentPeakKw": 2.487849842801424,
+        "PeakHour": 775,
+        "TieCount": 1,
+        "AllZero": false
+      },
+      "Sensible": {
+        "Available": true,
+        "ConsumptionKwh": 1480.505582459616,
+        "CoincidentPeakKw": 2.3065431244699917,
+        "PeakHour": 775,
+        "TieCount": 1,
+        "AllZero": false
+      },
+      "MeterProblem": null
+    },
+    {
+      "Kind": "Cooling",
+      "Total": {
+        "Available": true,
+        "ConsumptionKwh": 1141.48664358622,
+        "CoincidentPeakKw": 1.497093318807568,
+        "PeakHour": 5701,
+        "TieCount": 1,
+        "AllZero": false
+      },
+      "Sensible": {
+        "Available": true,
+        "ConsumptionKwh": 974.567253160985,
+        "CoincidentPeakKw": 1.3774533501614563,
+        "PeakHour": 4381,
+        "TieCount": 1,
+        "AllZero": false
+      },
+      "MeterProblem": null
+    }
+  ],
+  "FloorArea": 43.739999999999995,
+  "Volume": 133.40699999999998,
+  "SqlMeters": [
+    {
+      "Name": "DistrictHeatingWater:Facility",
+      "Frequency": "Zone Timestep",
+      "Rows": 52560,
+      "Sum": 5599693253.219481
+    },
+    {
+      "Name": "DistrictCooling:Facility",
+      "Frequency": "Zone Timestep",
+      "Rows": 52560,
+      "Sum": 4109351916.9103966
+    }
+  ],
+  "EsoMeters": [
+    {
+      "Name": "DistrictHeatingWater:Facility",
+      "Frequency": "TimeStep",
+      "Rows": 52560,
+      "Sum": 5599693253.219481
+    },
+    {
+      "Name": "DistrictCooling:Facility",
+      "Frequency": "TimeStep",
+      "Rows": 52560,
+      "Sum": 4109351916.9103966
+    }
+  ],
+  "ZoneSizes": []
+}

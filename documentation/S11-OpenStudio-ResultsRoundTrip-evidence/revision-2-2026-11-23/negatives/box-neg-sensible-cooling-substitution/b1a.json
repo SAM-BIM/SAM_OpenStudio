@@ -1,0 +1,139 @@
+{
+  "schemaVersion": "1.0.0",
+  "provenance": {
+    "sourceModelName": "s08-fix-box",
+    "sourceModelGuid": "eeebda3b1bee4dc1b9169cf176adc1b2",
+    "sourceFileHash": "sha256:45524172b32f85df89511dd344141023de999faa9552a199e6b49062612acd08",
+    "canonicalModelHash": "sha256:f7c302eba3f109421893fd0c4ff5dfb3dbfc10b387193cb9ed0cf437d741a0c1",
+    "canonicalizationVersion": "1.0.0",
+    "samCommit": "f8f8eb6465de4508c37af2d2c94662deee3fb240",
+    "runnerCommit": "bb74882161af1a477e6941e0d58be07e836dd53f",
+    "engine": {
+      "kind": "OpenStudio",
+      "name": "EnergyPlus",
+      "version": "25.1.0",
+      "sdkVersion": "3.10.0"
+    },
+    "route": "Native-OpenStudio",
+    "weather": {
+      "identity": "budapest",
+      "hash": "sha256:472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3"
+    },
+    "designDaySource": "None",
+    "runTimestampUtc": "2026-11-23T12:08:59.1007881Z",
+    "durationSeconds": 5.6005586,
+    "state": "Success",
+    "resultSources": [
+      "SAM.Analytical.OpenStudio"
+    ],
+    "warnings": [],
+    "notes": [
+      "Cooling metrics are EnergyPlus Ideal Loads Supply Air Total cooling (sensible \u002B latent); heating is Total heating.",
+      "[SAM-OS-RUN-002] Information: Annual weather source: explicit EPW (budapest.epw)",
+      "[SAM-OS-RUN-002] Information: Ground temperatures taken from the EPW GROUND TEMPERATURES header (depth 0.5 m set, 12 monthly values)",
+      "[SAM-OS-RUN-002] Information: No design-day source supplied; sizing-period runs stay disabled unless OpenStudioConversionOptions.RunSizingPeriods overrides"
+    ]
+  },
+  "model": {
+    "consumptionHeating": {
+      "value": 2106.6897306469355,
+      "unit": "kWh",
+      "available": true
+    },
+    "consumptionCooling": {
+      "value": 1224.4161522821378,
+      "unit": "kWh",
+      "available": true
+    },
+    "peakHeatingLoad": {
+      "value": 3.4746476441402963,
+      "unit": "kW",
+      "available": true
+    },
+    "peakHeatingHour": {
+      "value": 919,
+      "unit": "hourOfYear",
+      "available": true
+    },
+    "peakCoolingLoad": {
+      "value": 2.0078615819713335,
+      "unit": "kW",
+      "available": true
+    },
+    "peakCoolingHour": {
+      "value": 4382,
+      "unit": "hourOfYear",
+      "available": true
+    },
+    "floorArea": {
+      "value": 26.880000000000003,
+      "unit": "m2",
+      "available": true
+    },
+    "volume": {
+      "value": 76.608,
+      "unit": "m3",
+      "available": true
+    }
+  },
+  "spaces": [
+    {
+      "guid": "5080c00000000000000000000000c001",
+      "name": "FixBox",
+      "area": {
+        "value": 26.880000000000003,
+        "unit": "m2",
+        "available": true
+      },
+      "volume": {
+        "value": 76.608,
+        "unit": "m3",
+        "available": true
+      },
+      "heating": {
+        "designLoad": {
+          "value": null,
+          "unit": "W",
+          "available": false
+        },
+        "peakLoad": {
+          "value": 3474.647644140296,
+          "unit": "W",
+          "available": true
+        },
+        "peakHour": {
+          "value": 919,
+          "unit": "hourOfYear",
+          "available": true
+        },
+        "unmetHours": {
+          "value": 0,
+          "unit": "h",
+          "available": true
+        }
+      },
+      "cooling": {
+        "designLoad": {
+          "value": null,
+          "unit": "W",
+          "available": false
+        },
+        "peakLoad": {
+          "value": 2007.8615819713336,
+          "unit": "W",
+          "available": true
+        },
+        "peakHour": {
+          "value": 4382,
+          "unit": "hourOfYear",
+          "available": true
+        },
+        "unmetHours": {
+          "value": 0,
+          "unit": "h",
+          "available": true
+        }
+      }
+    }
+  ]
+}

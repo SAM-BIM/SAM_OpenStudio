@@ -1,0 +1,169 @@
+﻿{
+    "phase":  "negative",
+    "started":  "2026-11-23T12:10:21.8203007Z",
+    "root":  "C:\\TasOut\\s11\\r2-20261123",
+    "buildReceipt":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\s11-build-receipt.json",
+    "harness":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\os-results-readback.exe",
+    "runs":  [
+                 {
+                     "label":  "box-ctl-unmutated-copy",
+                     "exit":  0,
+                     "required":  0,
+                     "asRequired":  true,
+                     "evidence":  true,
+                     "copyAsDesigned":  true,
+                     "copyProblems":  [
+
+                                      ],
+                     "verdict":  "PASS",
+                     "mutation":  "none (control)",
+                     "f3":  {
+                                "CoolingConsumptionMargin":  148729494.0355796,
+                                "BestSpaceCoolingPeakMargin":  202719250884.12134,
+                                "MeetsOd7":  true,
+                                "Detail":  "Total and Sensible cooling are distinguishable on this run (consumption and at least one space peak \u003e= 1000 x tolerance)"
+                            }
+                 },
+                 {
+                     "label":  "box-neg-delete-hour-both",
+                     "exit":  11,
+                     "required":  11,
+                     "asRequired":  true,
+                     "evidence":  true,
+                     "copyAsDesigned":  true,
+                     "copyProblems":  [
+
+                                      ],
+                     "verdict":  "BLOCKED",
+                     "mutation":  "deleted 7/7 h13 of every S11 series in SQL (6 rows) and ESO (6 lines)",
+                     "f3":  {
+                                "CoolingConsumptionMargin":  null,
+                                "BestSpaceCoolingPeakMargin":  null,
+                                "MeetsOd7":  false,
+                                "Detail":  "Total and Sensible cooling are NOT distinguishable to 1000 x tolerance on this run (consumption margin n/a, best space peak margin n/a)"
+                            }
+                 },
+                 {
+                     "label":  "box-neg-duplicate-hour-both",
+                     "exit":  11,
+                     "required":  11,
+                     "asRequired":  true,
+                     "evidence":  true,
+                     "copyAsDesigned":  true,
+                     "copyProblems":  [
+
+                                      ],
+                     "verdict":  "BLOCKED",
+                     "mutation":  "repeated 7/7 h13 of every S11 series in SQL (6 rows) and ESO (7 lines)",
+                     "f3":  {
+                                "CoolingConsumptionMargin":  null,
+                                "BestSpaceCoolingPeakMargin":  null,
+                                "MeetsOd7":  false,
+                                "Detail":  "Total and Sensible cooling are NOT distinguishable to 1000 x tolerance on this run (consumption margin n/a, best space peak margin n/a)"
+                            }
+                 },
+                 {
+                     "label":  "box-neg-sensible-cooling-substitution",
+                     "exit":  10,
+                     "required":  10,
+                     "asRequired":  true,
+                     "evidence":  true,
+                     "copyAsDesigned":  true,
+                     "copyProblems":  [
+
+                                      ],
+                     "verdict":  "FAIL",
+                     "mutation":  "producer objects and SAM-I carry the reference Sensible cooling (consumption 1224.4161522821378 kWh for Total 1438.51440076482 kWh); B1a re-mapped from the mutated objects",
+                     "f3":  {
+                                "CoolingConsumptionMargin":  148729494.0355796,
+                                "BestSpaceCoolingPeakMargin":  202719250884.12134,
+                                "MeetsOd7":  true,
+                                "Detail":  "Total and Sensible cooling are distinguishable on this run (consumption and at least one space peak \u003e= 1000 x tolerance)"
+                            }
+                 },
+                 {
+                     "label":  "two-ctl-unmutated-copy",
+                     "exit":  0,
+                     "required":  0,
+                     "asRequired":  true,
+                     "evidence":  true,
+                     "copyAsDesigned":  true,
+                     "copyProblems":  [
+
+                                      ],
+                     "verdict":  "PASS",
+                     "mutation":  "none (control)",
+                     "f3":  {
+                                "CoolingConsumptionMargin":  146101830.91618615,
+                                "BestSpaceCoolingPeakMargin":  424922463336.7097,
+                                "MeetsOd7":  true,
+                                "Detail":  "Total and Sensible cooling are distinguishable on this run (consumption and at least one space peak \u003e= 1000 x tolerance)"
+                            }
+                 },
+                 {
+                     "label":  "two-neg-delete-hour-both",
+                     "exit":  11,
+                     "required":  11,
+                     "asRequired":  true,
+                     "evidence":  true,
+                     "copyAsDesigned":  true,
+                     "copyProblems":  [
+
+                                      ],
+                     "verdict":  "BLOCKED",
+                     "mutation":  "deleted 7/7 h13 of every S11 series in SQL (12 rows) and ESO (12 lines)",
+                     "f3":  {
+                                "CoolingConsumptionMargin":  null,
+                                "BestSpaceCoolingPeakMargin":  null,
+                                "MeetsOd7":  false,
+                                "Detail":  "Total and Sensible cooling are NOT distinguishable to 1000 x tolerance on this run (consumption margin n/a, best space peak margin n/a)"
+                            }
+                 },
+                 {
+                     "label":  "two-neg-duplicate-hour-both",
+                     "exit":  11,
+                     "required":  11,
+                     "asRequired":  true,
+                     "evidence":  true,
+                     "copyAsDesigned":  true,
+                     "copyProblems":  [
+
+                                      ],
+                     "verdict":  "BLOCKED",
+                     "mutation":  "repeated 7/7 h13 of every S11 series in SQL (12 rows) and ESO (13 lines)",
+                     "f3":  {
+                                "CoolingConsumptionMargin":  null,
+                                "BestSpaceCoolingPeakMargin":  null,
+                                "MeetsOd7":  false,
+                                "Detail":  "Total and Sensible cooling are NOT distinguishable to 1000 x tolerance on this run (consumption margin n/a, best space peak margin n/a)"
+                            }
+                 },
+                 {
+                     "label":  "two-neg-sensible-cooling-substitution",
+                     "exit":  10,
+                     "required":  10,
+                     "asRequired":  true,
+                     "evidence":  true,
+                     "copyAsDesigned":  true,
+                     "copyProblems":  [
+
+                                      ],
+                     "verdict":  "FAIL",
+                     "mutation":  "producer objects and SAM-I carry the reference Sensible cooling (consumption 974.567253160985 kWh for Total 1141.48664358622 kWh); B1a re-mapped from the mutated objects",
+                     "f3":  {
+                                "CoolingConsumptionMargin":  146101830.91618615,
+                                "BestSpaceCoolingPeakMargin":  424922463336.7097,
+                                "MeetsOd7":  true,
+                                "Detail":  "Total and Sensible cooling are distinguishable on this run (consumption and at least one space peak \u003e= 1000 x tolerance)"
+                            }
+                 }
+             ],
+    "original-unchanged:box":  true,
+    "original-unchanged:two":  true,
+    "failures":  [
+
+                 ],
+    "exit":  0,
+    "result":  "AS REQUIRED",
+    "finished":  "2026-11-23T12:10:56.8762883Z"
+}

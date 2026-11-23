@@ -1,0 +1,10 @@
+2026-11-23T11:50:22.8035640Z [test-readback] dotnet test S:\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack.Tests -c Release -p:Platform=x64 --no-build --logger trx;LogFileName=test-readback.trx --results-directory C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\logs\trx
+2026-11-23T11:59:16.1966395Z [test-readback] exit 0 (533 s)
+2026-11-23T11:59:16.2025912Z [test-producer] dotnet test S:\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.Benchmark.Tests -c Release -p:Platform=x64 --no-build --logger trx;LogFileName=test-producer.trx --results-directory C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\logs\trx --filter TestCategory!=Simulation
+2026-11-23T11:59:17.9735878Z [test-producer] exit 0 (2 s)
+2026-11-23T11:59:17.9755805Z [test-importer] dotnet test S:\SAM_OpenStudio\tests\SAM.Analytical.OpenStudio.Tests -c Release -p:Platform=x64 --no-build --logger trx;LogFileName=test-importer.trx --results-directory C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\logs\trx --filter TestCategory!=Simulation
+2026-11-23T12:07:24.0131035Z [test-importer] exit 0 (486 s)
+2026-11-23T12:07:24.2216275Z [s09-box] "S:\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack.Cli\bin\x64\Release\net8.0\os-input-readback.exe" compare --run C:\TasOut\s09\acc7-u1\box --fixture-id s08-fix-box --rule-set approved --out C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\s09-replay\box
+2026-11-23T12:07:25.1673116Z [s09-box] exit 0; report.txt == committed report-approved.txt (868a5808d4cc1a96513e54b8189e647c8f45f4375b058a940ac1dee719b959fe); saved run unchanged: True
+2026-11-23T12:07:25.3535192Z [s09-two] "S:\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack.Cli\bin\x64\Release\net8.0\os-input-readback.exe" compare --run C:\TasOut\s09\acc7-u1\two --fixture-id s08-fix-two --rule-set approved --out C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\s09-replay\two
+2026-11-23T12:07:26.6563557Z [s09-two] exit 0; report.txt == committed report-approved.txt (9e3a3f0ed0e2fd6d8703154a0cb71a69ffa10344d1e4e253c29886840a6c466d); saved run unchanged: True
