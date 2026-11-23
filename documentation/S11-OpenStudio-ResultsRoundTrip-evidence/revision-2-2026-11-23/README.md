@@ -39,9 +39,9 @@
 - `fail-before-receipt.txt` `3c7378574476f9ea53b4ce918fc46730c6d2f41c7a70787269aac82ce44abce9`
 - `phase-commands.txt` `379d1fe46d4f62333416d5ccda61241d34b804e2346b6237b3b0877fa03cd90c`
 
-**Line endings.** `SHA256SUMS.txt` hashes the files as packed on Windows. Git stores them with LF (no
-`.gitattributes` rule covers `documentation/`) and restores CRLF on a `core.autocrlf=true` Windows checkout, where the
-sums verify. **Paths.** `S:` in the receipt and logs is a temporary `subst` of `SAM-BIM\.s11r3-20261123\ws` (MAX_PATH);
+**Line endings.** `SHA256SUMS.txt` hashes the files as packed on Windows, some with CRLF (PowerShell-written) and some
+with LF (.NET-written). A `.gitattributes` rule (`-text`) stores this folder byte for byte, so the sums verify on any
+checkout: `sha256sum -c SHA256SUMS.txt` from this folder (checked against the committed blobs: 86/86). **Paths.** `S:` in the receipt and logs is a temporary `subst` of `SAM-BIM\.s11r3-20261123\ws` (MAX_PATH);
 `C:\TasOut\...` and `C:\Users\...` paths are machine-local.
 
 ## Provenance

@@ -428,8 +428,9 @@ space peak hour where the Sensible peak hour differs (box FixBox, two FixB; FixA
 so only its peak value FAILs), across SAM-P, SAM-I and B1a, with per-row margins 1.46e8-4.25e11 x tolerance.
 
 **Evidence.**
-- Committed: `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-11-23/` (87 packed files with
-  `SHA256SUMS.txt` written by `Pack-S11-Evidence.ps1 -Root C:\TasOut\s11\r2-20261123 -Label revision-2-2026-11-23
+- Committed: `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-11-23/` (86 packed files plus
+  `SHA256SUMS.txt`, stored byte for byte by a `.gitattributes` `-text` rule so the sums verify on any checkout; 86/86
+  checked against the committed blobs), written by `Pack-S11-Evidence.ps1 -Root C:\TasOut\s11\r2-20261123 -Label revision-2-2026-11-23
   -BuildReceipt <receipt>`; README with all hashes; `offline-validation/` logs).
 - Machine-local (copy before switching computers): `C:\TasOut\s11\r2-20261123\` (SQL, ESO, `in.idf`, work folders,
   mutated copies); `SAM-BIM\.s11r3-20261123\` (`scripts\`, `logs\` incl. TRX, `hashes\inputs.txt`,
@@ -570,7 +571,8 @@ Recommendation: fix both before Revision 2 (real acceptance), each in its own PR
   first, `-GitExe`, `Invoke-Git` exit checks), tests `S11DriverTests.cs` (`RunProcess` timeouts and tree kill, 6 new
   cases).
 - Revision 2 evidence (2026-11-23, documentation only):
-  `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-11-23/`; this record.
+  `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-11-23/`; `.gitattributes` (one `-text` rule
+  for that folder only, so the packed bytes and their `SHA256SUMS.txt` survive checkout); this record.
 - Not changed by this PR: importer, writer, SQL readers, schema, SAM_UI, SAM_Tas, SAM core, S10, fixtures, tolerances,
   metric definitions, comparison gates, production mappings, workflow (beyond the Revision 1 build-check step).
 
