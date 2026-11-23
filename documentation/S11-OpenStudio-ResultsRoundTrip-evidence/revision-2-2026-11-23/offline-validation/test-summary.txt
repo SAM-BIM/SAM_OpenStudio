@@ -1,0 +1,5 @@
+2026-11-23T11:59:16.1966395Z [test-readback] exit 0 (533 s)
+2026-11-23T11:59:17.9735878Z [test-producer] exit 0 (2 s)
+2026-11-23T12:07:24.0131035Z [test-importer] exit 0 (486 s)
+2026-11-23T12:07:25.1673116Z [s09-box] exit 0; report.txt == committed report-approved.txt (868a5808d4cc1a96513e54b8189e647c8f45f4375b058a940ac1dee719b959fe); saved run unchanged: True
+2026-11-23T12:07:26.6563557Z [s09-two] exit 0; report.txt == committed report-approved.txt (9e3a3f0ed0e2fd6d8703154a0cb71a69ffa10344d1e4e253c29886840a6c466d); saved run unchanged: True

@@ -1,0 +1,4 @@
+﻿negative neg-delete-hour-both: deleted 7/7 h13 of every S11 series in SQL (6 rows) and ESO (6 lines); compare must exit 11
+read: C:\TasOut\s11\r2-20261123\negatives\box-neg-delete-hour-both\reference.json (1 spaces, 0 global block(s), 12 series judged)
+subject: C:\TasOut\s11\r2-20261123\negatives\box-neg-delete-hour-both\subject.json (closure identical, 2 SAM-I space results)
+compare: BLOCKED (20 PASS, 0 FAIL, 34 BLOCKED of 54); C:\TasOut\s11\r2-20261123\negatives\box-neg-delete-hour-both\compare\compare.json

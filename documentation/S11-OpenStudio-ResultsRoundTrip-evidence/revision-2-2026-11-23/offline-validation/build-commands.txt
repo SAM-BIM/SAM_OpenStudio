@@ -1,0 +1,13 @@
+2026-11-23T11:48:18.8420378Z [build-sqlite] "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" S:\SAM_SQLite\SAM_SQLite\SAM.Core.SQLite\SAM.Core.SQLite.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=ec2eb86d00cac6e4cadf52b429f9d293eeabbd5e -nr:false -v:m
+2026-11-23T11:48:22.1258901Z [build-sqlite] exit 0
+2026-11-23T11:48:22.1289605Z [build-receipt-offline] "powershell.exe" -NoProfile -ExecutionPolicy Bypass -File S:\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.ResultsReadBack\Build-S11-Receipt.ps1
+2026-11-23T11:49:04.8668759Z [build-receipt-offline] exit 0
+2026-11-23T11:49:04.8728828Z [build-SAM.Analytical.OpenStudio.InputReadBack.Tests] "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" S:\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.InputReadBack.Tests\SAM.Analytical.OpenStudio.InputReadBack.Tests.csproj -restore -t:Rebuild -p:Configuration=Release -p:Platform=x64 -p:UseSharedCompilation=false -p:APPDATA=C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\env\appdata -nr:false -v:m
+2026-11-23T11:49:26.2946267Z [build-SAM.Analytical.OpenStudio.InputReadBack.Tests] exit 0
+2026-11-23T11:49:26.2956228Z [build-SAM.Analytical.OpenStudio.Benchmark.Tests] "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" S:\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.Benchmark.Tests\SAM.Analytical.OpenStudio.Benchmark.Tests.csproj -restore -t:Rebuild -p:Configuration=Release -p:Platform=x64 -p:UseSharedCompilation=false -p:APPDATA=C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\env\appdata -nr:false -v:m
+2026-11-23T11:49:36.4597121Z [build-SAM.Analytical.OpenStudio.Benchmark.Tests] exit 0
+2026-11-23T11:49:36.4607121Z [build-SAM.Analytical.OpenStudio.Tests] "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" S:\SAM_OpenStudio\tests\SAM.Analytical.OpenStudio.Tests\SAM.Analytical.OpenStudio.Tests.csproj -restore -t:Rebuild -p:Configuration=Release -p:Platform=x64 -p:UseSharedCompilation=false -p:APPDATA=C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\env\appdata -nr:false -v:m
+2026-11-23T11:49:45.2472629Z [build-SAM.Analytical.OpenStudio.Tests] exit 0
+offline receipt before: 46f35d74895c4a2ddbcad3e07146acea5012906780f8fe779155a6e2e08123dc
+2026-11-23T12:08:09.0875498Z [build-receipt-run] powershell.exe -NoProfile -ExecutionPolicy Bypass -File S:\SAM_OpenStudio\benchmark\SAM.Analytical.OpenStudio.ResultsReadBack\Build-S11-Receipt.ps1
+2026-11-23T12:08:46.2448951Z [build-receipt-run] exit 0; receipt 72593067a631321ac97d76c142a551efa43cb93cba218eb0305ab44ea61f2ee1

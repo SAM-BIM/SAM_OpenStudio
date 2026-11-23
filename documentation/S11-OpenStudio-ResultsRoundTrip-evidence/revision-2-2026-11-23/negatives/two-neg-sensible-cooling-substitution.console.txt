@@ -1,0 +1,3 @@
+﻿negative neg-sensible-cooling-substitution: producer objects and SAM-I carry the reference Sensible cooling (consumption 974.567253160985 kWh for Total 1141.48664358622 kWh); B1a re-mapped from the mutated objects; compare must exit 10
+read: C:\TasOut\s11\r2-20261123\negatives\two-neg-sensible-cooling-substitution\reference.json (2 spaces, 0 global block(s), 24 series judged)
+compare: FAIL (70 PASS, 15 FAIL, 0 BLOCKED of 85); C:\TasOut\s11\r2-20261123\negatives\two-neg-sensible-cooling-substitution\compare\compare.json

@@ -1,0 +1,4 @@
+﻿negative neg-duplicate-hour-both: repeated 7/7 h13 of every S11 series in SQL (12 rows) and ESO (13 lines); compare must exit 11
+read: C:\TasOut\s11\r2-20261123\negatives\two-neg-duplicate-hour-both\reference.json (2 spaces, 0 global block(s), 24 series judged)
+subject: C:\TasOut\s11\r2-20261123\negatives\two-neg-duplicate-hour-both\subject.json (closure identical, 4 SAM-I space results)
+compare: BLOCKED (29 PASS, 0 FAIL, 56 BLOCKED of 85); C:\TasOut\s11\r2-20261123\negatives\two-neg-duplicate-hour-both\compare\compare.json

@@ -1,0 +1,61 @@
+{
+  "Schema": "s11-subject/1",
+  "ProcessId": 12468,
+  "ProcessStartedUtc": "2026-11-23T12:10:27.6069495Z",
+  "StartedUtc": "2026-11-23T12:10:27.737066Z",
+  "FinishedUtc": "2026-11-23T12:10:29.530201Z",
+  "SubjectAssemblySha256": "866d40bb792d9fa5bf29907720eecbf7bf799c6bdf1eaa8b949d8c228f457559",
+  "ProducerAssemblySha256": "9c0088bfa520cd4cf6d7a210a66b30e6baf27cec5fa93ddf1d617df4d20a9406",
+  "ImporterAssemblySha256": "7936b04b571af56bd2a36b7c5b82894110be9480fe88702cdc73da1fbc087901",
+  "ModelSha256": "45524172b32f85df89511dd344141023de999faa9552a199e6b49062612acd08",
+  "B1aSha256": "7d986d54d998905365f3498dc3763110d5f2072e6d9a36ea57d51a9f8c520ded",
+  "SamResultsSha256": "2a25640ca0c1d951dc2dddc121a4b7de0e6650912d913575839c30c7efa1dffc",
+  "SqlSha256Before": "61a492c77cf55a51994584fbcfd916fa1f33cbfef51b45e3fc5781ffa0922bf9",
+  "SqlSha256After": "61a492c77cf55a51994584fbcfd916fa1f33cbfef51b45e3fc5781ffa0922bf9",
+  "ClosureIdentical": true,
+  "ClosureDetail": "the captured objects re-map to byte-identical B1a model and spaces sections",
+  "ClosureModelSha256Produced": "20bd9da5a8c223079006a9ccab22bf9947e86f0c5966fa862d6aacc9abcd8b10",
+  "ClosureModelSha256Regenerated": "20bd9da5a8c223079006a9ccab22bf9947e86f0c5966fa862d6aacc9abcd8b10",
+  "ClosureSpacesSha256Produced": "b568965af56bb367cd48cdae076bedf6abf0dbde63ccac49f57e00550b743157",
+  "ClosureSpacesSha256Regenerated": "b568965af56bb367cd48cdae076bedf6abf0dbde63ccac49f57e00550b743157",
+  "ProductionKeys": [
+    {
+      "SpaceGuid": "5080c000-0000-0000-0000-00000000c001",
+      "SpaceName": "FixBox",
+      "IdealLoads": "SAM_IdealLoads_FixBox_5080c000",
+      "ThermalZone": "SAM_ThermalZone_FixBox_5080c000"
+    }
+  ],
+  "SamI": [
+    {
+      "ResultGuid": "571cdc3f-1c6d-4b81-92f9-4c5058cf8059",
+      "Name": "FixBox",
+      "Reference": "5080c00000000000000000000000c001",
+      "Source": "SAM.Analytical.OpenStudio",
+      "LoadType": "Heating",
+      "Load": 3474.647644140296,
+      "LoadIndex": 919,
+      "UnmetHours": 0,
+      "DesignLoad": null,
+      "AttachedTo": "5080c000-0000-0000-0000-00000000c001",
+      "IsDesignLoad": false,
+      "IsAnnual": true
+    },
+    {
+      "ResultGuid": "0e85d68f-4ef5-4122-929d-56b661bbc04e",
+      "Name": "FixBox",
+      "Reference": "5080c00000000000000000000000c001",
+      "Source": "SAM.Analytical.OpenStudio",
+      "LoadType": "Cooling",
+      "Load": 2518.387135520196,
+      "LoadIndex": 5030,
+      "UnmetHours": 0,
+      "DesignLoad": null,
+      "AttachedTo": "5080c000-0000-0000-0000-00000000c001",
+      "IsDesignLoad": false,
+      "IsAnnual": true
+    }
+  ],
+  "SamIDiagnostics": [],
+  "Mutation": null
+}

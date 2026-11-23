@@ -1,0 +1,95 @@
+{
+  "Schema": "s11-subject/1",
+  "ProcessId": 25636,
+  "ProcessStartedUtc": "2026-11-23T12:10:38.7374475Z",
+  "StartedUtc": "2026-11-23T12:10:38.8808405Z",
+  "FinishedUtc": "2026-11-23T12:10:41.8890569Z",
+  "SubjectAssemblySha256": "866d40bb792d9fa5bf29907720eecbf7bf799c6bdf1eaa8b949d8c228f457559",
+  "ProducerAssemblySha256": "9c0088bfa520cd4cf6d7a210a66b30e6baf27cec5fa93ddf1d617df4d20a9406",
+  "ImporterAssemblySha256": "7936b04b571af56bd2a36b7c5b82894110be9480fe88702cdc73da1fbc087901",
+  "ModelSha256": "20da9b586345e9fc67dc6308e6da1578b9bc41b3c694dbdab37e9c677959baa0",
+  "B1aSha256": "7319160a864ce3311481df3a4a42e53a44d1b767cb0b3e8627c8e5cbf574b0c1",
+  "SamResultsSha256": "7864ac4498c8a48a436f0839f0dc2e21466ccceb916c702869190a40277d7832",
+  "SqlSha256Before": "feab1b64f59d26facc2d18c37202007c9b019bcd71e631e3966374389c5cddb5",
+  "SqlSha256After": "feab1b64f59d26facc2d18c37202007c9b019bcd71e631e3966374389c5cddb5",
+  "ClosureIdentical": true,
+  "ClosureDetail": "the captured objects re-map to byte-identical B1a model and spaces sections",
+  "ClosureModelSha256Produced": "8cb96c00f920f0963be930a621104e1f071e95fefddd14e4e13c804ca2a68055",
+  "ClosureModelSha256Regenerated": "8cb96c00f920f0963be930a621104e1f071e95fefddd14e4e13c804ca2a68055",
+  "ClosureSpacesSha256Produced": "7333ea68bcc3a6978d4c75fa83a1efdba6855ac164c66f8aa87a4ef4dd0d516f",
+  "ClosureSpacesSha256Regenerated": "7333ea68bcc3a6978d4c75fa83a1efdba6855ac164c66f8aa87a4ef4dd0d516f",
+  "ProductionKeys": [
+    {
+      "SpaceGuid": "5080c000-0000-0000-0000-00000000c0a1",
+      "SpaceName": "FixA",
+      "IdealLoads": "SAM_IdealLoads_FixA_5080c000",
+      "ThermalZone": "SAM_ThermalZone_FixA_5080c000"
+    },
+    {
+      "SpaceGuid": "5080c000-0000-0000-0000-00000000c0b1",
+      "SpaceName": "FixB",
+      "IdealLoads": "SAM_IdealLoads_FixB_5080c000",
+      "ThermalZone": "SAM_ThermalZone_FixB_5080c000"
+    }
+  ],
+  "SamI": [
+    {
+      "ResultGuid": "f781ad7c-2ea5-415c-abc7-c4b4ac429733",
+      "Name": "FixA",
+      "Reference": "5080c00000000000000000000000c0a1",
+      "Source": "SAM.Analytical.OpenStudio",
+      "LoadType": "Heating",
+      "Load": 1758.0652636023904,
+      "LoadIndex": 751,
+      "UnmetHours": 0,
+      "DesignLoad": null,
+      "AttachedTo": "5080c000-0000-0000-0000-00000000c0a1",
+      "IsDesignLoad": false,
+      "IsAnnual": true
+    },
+    {
+      "ResultGuid": "092f416e-8c6d-4cda-823f-8b671c087187",
+      "Name": "FixA",
+      "Reference": "5080c00000000000000000000000c0a1",
+      "Source": "SAM.Analytical.OpenStudio",
+      "LoadType": "Cooling",
+      "Load": 1338.0190901481403,
+      "LoadIndex": 5701,
+      "UnmetHours": 0,
+      "DesignLoad": null,
+      "AttachedTo": "5080c000-0000-0000-0000-00000000c0a1",
+      "IsDesignLoad": false,
+      "IsAnnual": true
+    },
+    {
+      "ResultGuid": "66f4d536-e2ee-4272-a085-e8a80f4e6517",
+      "Name": "FixB",
+      "Reference": "5080c00000000000000000000000c0b1",
+      "Source": "SAM.Analytical.OpenStudio",
+      "LoadType": "Heating",
+      "Load": 852.7295212465667,
+      "LoadIndex": 918,
+      "UnmetHours": 0,
+      "DesignLoad": null,
+      "AttachedTo": "5080c000-0000-0000-0000-00000000c0b1",
+      "IsDesignLoad": false,
+      "IsAnnual": true
+    },
+    {
+      "ResultGuid": "f97f7550-b79c-4484-8d34-19c4fab93378",
+      "Name": "FixB",
+      "Reference": "5080c00000000000000000000000c0b1",
+      "Source": "SAM.Analytical.OpenStudio",
+      "LoadType": "Cooling",
+      "Load": 374.9020383782116,
+      "LoadIndex": 5033,
+      "UnmetHours": 0,
+      "DesignLoad": null,
+      "AttachedTo": "5080c000-0000-0000-0000-00000000c0b1",
+      "IsDesignLoad": false,
+      "IsAnnual": true
+    }
+  ],
+  "SamIDiagnostics": [],
+  "Mutation": null
+}

@@ -1,0 +1,127 @@
+{
+  "schema": "s11-sam-results/1",
+  "heatingConsumptionKeyed": true,
+  "coolingConsumptionKeyed": true,
+  "modelResult": {
+    "_type": "SAM.Analytical.AnalyticalModelSimulationResult,SAM.Analytical",
+    "ParameterSets": [
+      {
+        "_type": "SAM.Core.ParameterSet",
+        "Name": "SAM.Analytical",
+        "Guid": "dca8e646-c481-4fc6-853b-738d7490f494",
+        "Parameters": [
+          {
+            "Name": "Consumption Heating",
+            "Value": 2106.6897306469355
+          },
+          {
+            "Name": "Consumption Cooling",
+            "Value": 1438.514400764822
+          },
+          {
+            "Name": "Peak Heating Load",
+            "Value": 3.4746476441402963
+          },
+          {
+            "Name": "Peak Heating Hour",
+            "Value": 919
+          },
+          {
+            "Name": "Peak Cooling Load",
+            "Value": 2.518387135520196
+          },
+          {
+            "Name": "Peak Cooling Hour",
+            "Value": 5030
+          },
+          {
+            "Name": "Result Units Version",
+            "Value": 1
+          },
+          {
+            "Name": "Floor Area",
+            "Value": 26.880000000000003
+          },
+          {
+            "Name": "Volume",
+            "Value": 76.608
+          }
+        ]
+      }
+    ],
+    "Name": "s08-fix-box",
+    "Guid": "deb0a6ad-1867-4e04-b2bd-3ff6b7ce06b0",
+    "Source": "SAM.Analytical.OpenStudio",
+    "Reference": "eeebda3b1bee4dc1b9169cf176adc1b2",
+    "DateTime": "2026-11-23T13:09:07.1977247\u002B01:00"
+  },
+  "spaceResults": [
+    {
+      "_type": "SAM.Analytical.SpaceSimulationResult,SAM.Analytical",
+      "ParameterSets": [
+        {
+          "_type": "SAM.Core.ParameterSet",
+          "Name": "SAM.Analytical",
+          "Guid": "dca8e646-c481-4fc6-853b-738d7490f494",
+          "Parameters": [
+            {
+              "Name": "Load Type",
+              "Value": "Heating"
+            },
+            {
+              "Name": "Load",
+              "Value": 3474.647644140296
+            },
+            {
+              "Name": "Load Index",
+              "Value": 919
+            },
+            {
+              "Name": "Unmet Hours",
+              "Value": 0.0
+            }
+          ]
+        }
+      ],
+      "Name": "FixBox",
+      "Guid": "99c2f1f6-8b18-4c6c-9cb2-a99dc01cd942",
+      "Source": "SAM.Analytical.OpenStudio",
+      "Reference": "5080c00000000000000000000000c001",
+      "DateTime": "2026-11-23T13:09:07.2079628\u002B01:00"
+    },
+    {
+      "_type": "SAM.Analytical.SpaceSimulationResult,SAM.Analytical",
+      "ParameterSets": [
+        {
+          "_type": "SAM.Core.ParameterSet",
+          "Name": "SAM.Analytical",
+          "Guid": "dca8e646-c481-4fc6-853b-738d7490f494",
+          "Parameters": [
+            {
+              "Name": "Load Type",
+              "Value": "Cooling"
+            },
+            {
+              "Name": "Load",
+              "Value": 2518.387135520196
+            },
+            {
+              "Name": "Load Index",
+              "Value": 5030
+            },
+            {
+              "Name": "Unmet Hours",
+              "Value": 0.0
+            }
+          ]
+        }
+      ],
+      "Name": "FixBox",
+      "Guid": "eed46483-988f-4a46-b2d2-9241aa658ad3",
+      "Source": "SAM.Analytical.OpenStudio",
+      "Reference": "5080c00000000000000000000000c001",
+      "DateTime": "2026-11-23T13:09:07.2104414\u002B01:00"
+    }
+  ],
+  "designLoadResults": []
+}

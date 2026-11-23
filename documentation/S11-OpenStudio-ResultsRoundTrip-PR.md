@@ -11,8 +11,9 @@ independent SQL/ESO read; label total versus sensible cooling (F3).
 - **Revision 1 (code + offline tests) only**, owner-authorised 2026-10-24 together with approval of the revised S11
   plan (local, non-Git: `SAM-BIM\S11_IMPLEMENTATION_PLAN.md`, plan revision 2). Draft PR into `sow/2026-Q4` from
   `feature/s11-openstudio-results-roundtrip`, base `ec204cbb`.
-- Not authorised and not done: EnergyPlus/OpenStudio runs (plan section 9, Revision 2), merge, Ready, any other stage.
-  No simulation, CLI engine run or Tas/COM operation was performed. No S11 acceptance claim exists yet.
+- At Revision 1 (historical): EnergyPlus/OpenStudio runs (plan section 9, Revision 2), merge, Ready and other stages
+  were not authorised. Revision 2 was authorised later and ran on 2026-11-23 (below); merge and Ready still need the
+  owner's approval of the final SHA. No Tas/COM operation was performed.
 - Independent review of Revision 1 (2026-10-24, reviewed head `06084afb`, tested `246c8fed`): **REVISE** with two
   findings, R1 (acceptance driver) and R2 (reporting frequencies / weather-run environments). Both are corrected in
   "Revision 1 correction" below, code and offline tests only, on this same Draft PR.
@@ -29,7 +30,16 @@ independent SQL/ESO read; label total versus sensible cooling (F3).
   but `Run-S11-Results.ps1 -Phase run` stopped in its preflight (exit 70) because the driver's `Git` helper calls itself
   instead of `git.exe`, so no HEAD can be read for a real receipt. **0 of the 2 authorised engine attempts were used**;
   no simulation, readback, compare or negative ran. See "Revision 2 execution (2026-10-26): BLOCKED".
-- Next: owner decision on the bounded driver correction recommended there; Revision 2 is then repeated on a new receipt.
+- **Driver Git correction (2026-10-26, code and offline tests only):** implemented as recommended (`d4052941`). Its
+  review found three gaps (an earlier receipt could survive a refused receipt build; unchecked git exits in the receipt
+  build; ineffective test-process timeouts). **Completed 2026-11-23** in `bb74882`; see "Driver Git correction
+  (2026-10-26, completed 2026-11-23)".
+- **Revision 2 (owner-authorised 2026-11-23): PASS on both signed-off fixtures (local acceptance).** Tested content
+  `bb74882161af1a477e6941e0d58be07e836dd53f` on SAM `f8f8eb64`. **Engine attempts used: 2 of 2** (one per fixture, no
+  retry). readback PASS (box 54/54, two-zone 85/85, 0 FAIL, 0 BLOCKED), complete SQL and ESO coverage, closure PASS,
+  OD-7 met on both, every negative and control as required. See "Revision 2 execution (2026-11-23): PASS".
+  No Ready, merge, SAM_UI run, production mapping change, S12 or Phase B acceptance.
+- Next: owner review of the evidence and the final head; merge only after explicit approval of that SHA.
 
 ## Owner directions applied (2026-10-24)
 
@@ -239,7 +249,8 @@ These differ from historical builds, which is expected for a new build path; the
 - `Build-S11-Receipt.ps1:61-66` is not affected while `C:\Program Files\Git\cmd\git.exe` exists, because it calls `& $git`
   with that full path. Its fallback `$git = 'git'` would recurse the same way.
 
-**Bounded correction recommended (not implemented here; it needs an owner decision and the usual review).**
+**Bounded correction recommended (not implemented here; it needs an owner decision and the usual review).** Implemented
+afterwards: see "Driver Git correction (2026-10-26)".
 - **Driver:** in `Run-S11-Results.ps1`, resolve git as an application, e.g.
   `$gitExe = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source`, and call
   `& $gitExe`. Alternatively rename the helper (e.g. `Invoke-Git`). Fail closed when git exits non-zero or prints no
@@ -261,6 +272,168 @@ These differ from historical builds, which is expected for a new build path; the
   - `C:\TasOut\s11\r2-20261026\summary-run.json` (`192ec65f…`);
   - `SAM-BIM\.s11r2-20261026\` (`scripts\`, `logs\`: build logs, `phase-run.log`, `phase-commands.txt`,
     `diag-receipt-1.txt`, `proof-git-recursion.txt`, `engine-check.txt`; `hashes\`; `weather\`; `ws\` clones and builds).
+
+## Driver Git correction (2026-10-26, completed 2026-11-23)
+
+Code and offline tests only; no fixture, tolerance, gate, metric or production change.
+
+**`d4052941` (2026-10-26).**
+- `Run-S11-Results.ps1`: `Invoke-Git` resolves git as an application (`Get-Command -CommandType Application`); a
+  missing git or a nonzero exit stops the phase (70). `Get-Head` also stops on a HEAD that is not 40 lowercase hex.
+  Used by `Test-Receipt` and for the run phase's `runnerCommit`/`samCommit`.
+- `Build-S11-Receipt.ps1`: the fallback when `C:\Program Files\Git\cmd\git.exe` is absent resolves git the same way.
+- `S11DriverTests` (12 cases): receipts listing real temporary Git checkouts; clean at the recorded commit passes;
+  modified, untracked, another commit or missing stops with 70 before any step (readback and negative); the run phase
+  on inert stand-ins records both HEADs, and stops with 70 before the producer without a SAM checkout.
+
+**`bb74882` (2026-11-23), the review's remaining points.**
+- `Build-S11-Receipt.ps1`:
+  - any earlier receipt is removed **before** git discovery or any other check (it was removed only after git
+    discovery, so a missing git refused with "no receipt written" while the old receipt survived);
+  - git comes from `-GitExe` (default `C:\Program Files\Git\cmd\git.exe`), else PATH as an application, else exit 3;
+  - every git call goes through `Invoke-Git`, which refuses (exit 3) unless git exits 0 (`rev-parse HEAD` and the
+    branch lookup were unchecked).
+- `S11DriverTests`:
+  - `RunProcess` drains stdout and stderr concurrently while waiting, so the 120 s driver and 60 s git timeouts are
+    effective (before, a synchronous `ReadToEnd` blocked until exit, so `WaitForExit(timeout)` never applied); on a
+    timeout it kills the spawned process tree (`Process.Kill(true)`) and the test fails;
+  - 6 new cases: `ProcessThatOutlivesItsTimeout_IsTerminatedWithItsChildren` (never-ending PowerShell with a
+    pipe-inheriting child, 200 kB on each stream: timed out, both processes gone); `Receipt_GitMissing_Exits3AndNoReceiptRemains`
+    (PATH without git, `-GitExe` absent); `Receipt_GitExitsNonzero_Exits3AndNoReceiptRemains` x2 (a `git.cmd` stand-in:
+    `rev-parse` prints a full SHA and exits 1; `status` exits 128); `Receipt_CheckoutNotClean_Exits3AndNoReceiptRemains`;
+    `Receipt_CleanCheckouts_PassTheGitChecks_LaterRefusalStillLeavesNoReceipt` (positive control on real checkouts,
+    refused later at the absent MSBuild). Each starts with an earlier receipt in place and requires it gone.
+- Fail-before controls (`d4052941`'s `Build-S11-Receipt.ps1` with only its hard-coded git path replaced; committed log
+  `S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-11-23/offline-validation/fail-before-receipt.txt`):
+  git missing -> exit 3 but **the earlier receipt remained**; `rev-parse` exiting 1 -> accepted, refused only later
+  at MSBuild. The corrected script: exit 3, receipt gone, and "rev-parse HEAD exited 1" respectively.
+
+## Revision 2 execution (2026-11-23): PASS
+
+**Authorisation (owner, 2026-11-23).** Finish the bounded driver correction; isolated rebuild and offline suites
+against fresh Q4 pins; then one OpenStudio attempt per signed-off fixture with a fresh controlled receipt, empty output
+folders, the pinned Budapest EPW and portable OpenStudio `3.10.0+86d7e215a1`; readback, compare, negative and packing;
+no retry. Excluded: production mappings, other repositories, deployment, Ready, merge (until the owner approves the
+SHA), S12 and Phase B acceptance.
+
+**Result: PASS on both fixtures (local acceptance). Engine attempts used: 2 of 2.** Hosted CI runs only the offline
+tests; the real-run acceptance is local and labelled so.
+
+**Workspace (machine-local).**
+- `SAM-BIM\.s11r3-20261123\ws`, mapped temporarily as `S:` (`subst`, MAX_PATH). Fresh `git clone` from
+  `https://github.com/SAM-BIM/<repo>.git` (fetch and push URLs verified; objects borrowed from the local checkouts
+  with `--reference-if-able --dissociate`), each verified at its pin. SAM_OpenStudio was cloned at the remote head
+  `9d2af1af` and fast-forwarded to the local commit `bb74882` (`logs\clone.txt`).
+- Redirected for every build, test and phase: `APPDATA`, `LOCALAPPDATA`, `TEMP`/`TMP`, `DOTNET_CLI_HOME`, NuGet
+  caches (`scripts\env.ps1`). No Grasshopper project was built; nothing written to `%APPDATA%\SAM`.
+- Existing checkouts, their `build/` folders, earlier workspaces and historical `C:\TasOut` evidence were not changed
+  (the S09 saved runs were hashed before and after their replay: unchanged).
+
+**Pinned dependencies** (remote `sow/2026-Q4` on 2026-11-23; SAM had advanced from `457defbb` to `f8f8eb64` with
+SAM#228-#232 geometry/analytical fixes, so every result here is fresh against it):
+
+| Repository | Commit |
+|---|---|
+| SAM_OpenStudio (tested content) | `bb74882161af1a477e6941e0d58be07e836dd53f` (contains base `sow/2026-Q4` `194ee1e6`) |
+| SAM | `f8f8eb6465de4508c37af2d2c94662deee3fb240` |
+| SAM_Validation | `2a3acfafb3919b4a0b81d67ef16a4b9d1e222f5d` |
+| SAM_Tas | `922044fa9ca35062979689f4e359ea85bee577dd` |
+| SAM_SQLite | `ec2eb86d00cac6e4cadf52b429f9d293eeabbd5e` |
+
+**Offline validation (local, Release x64, tested content `bb74882`).** Commands in `scripts\build-offline.ps1` and
+`scripts\test-offline.ps1`; logs committed under the evidence folder's `offline-validation/`.
+
+| Check | Command | Result |
+|---|---|---|
+| SAM_SQLite | `MSBuild.exe S:\SAM_SQLite\SAM_SQLite\SAM.Core.SQLite\SAM.Core.SQLite.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=ec2eb86d… -nr:false -v:m` | exit 0 |
+| Receipt build (SAM core, schema, producer, harness) | `Build-S11-Receipt.ps1` (defaults) | exit 0, 51 files; CS warnings only in SAM core (Core 618, Geometry 3, Analytical 2; existing) |
+| Test projects | `MSBuild.exe <InputReadBack.Tests \| Benchmark.Tests \| tests/SAM.Analytical.OpenStudio.Tests csproj> -restore -t:Rebuild -p:Configuration=Release -p:Platform=x64 -p:UseSharedCompilation=false -p:APPDATA=<redirected> -nr:false -v:m` | exit 0 each, 0 errors, 0 CS warnings |
+| Read-back tests (S09 + S11, incl. driver, receipt and timeout regressions) | `dotnet test benchmark/SAM.Analytical.OpenStudio.InputReadBack.Tests -c Release -p:Platform=x64 --no-build` | **260 passed, 0 failed, 0 skipped**, 8 min 51 s (120 S09 + 140 S11) |
+| Producer tests | `dotnet test benchmark/SAM.Analytical.OpenStudio.Benchmark.Tests -c Release -p:Platform=x64 --no-build --filter "TestCategory!=Simulation"` | 58 passed, 0 failed |
+| Importer offline tests | `dotnet test tests/SAM.Analytical.OpenStudio.Tests -c Release -p:Platform=x64 --no-build --filter "TestCategory!=Simulation"` | 488 passed, 0 failed, 2 skipped (real-SQL reproduction fixtures not committed), 8 min 4 s |
+| S09 saved-run replays | `os-input-readback compare --run C:\TasOut\s09\acc7-u1\<box\|two> --fixture-id s08-fix-<box\|two> --rule-set approved --out <scratch>` | exit 0 both; `report.txt` byte-identical to committed `acceptance-2026-10-23/runs/<box\|two>/report-approved.txt` (`868a5808…`, `9e3a3f0e…`); saved runs unchanged |
+| Receipt fail-before controls | `offline-validation/fail-before-receipt.txt` | as in the correction section |
+
+**Run receipt.** A fresh `Build-S11-Receipt.ps1` after the offline tests (which rebuild the producer and harness)
+invalidated the offline receipt (`46f35d74…`) and wrote `72593067a631321ac97d76c142a551efa43cb93cba218eb0305ab44ea61f2ee1`
+(51 files; commits SAM `f8f8eb64`, SAM_Validation `2a3acfaf`, SAM_Tas `922044fa`, SAM_OpenStudio `bb74882`). All five
+clones were clean at their pins before and after.
+
+| Assembly (receipt; identical in the producer and harness folders) | SHA-256 |
+|---|---|
+| `SAM.Analytical.dll` (SAM `f8f8eb64`) | `3a8df62f2396806aaced53389ee053f800c88f12395956adeac5bacc48374def` |
+| `SAM.Core.dll` | `d9e9f3253ccbf80f69ce9d334abdfa03970ea4e845b5aee02fede9be5eb1d62f` |
+| `SAM.Geometry.dll` | `ab7724e625e88a2299fc016d9206851070947cc9ba7c1cfac618012aaf32f2fc` |
+| `SAM.Analytical.OpenStudio.dll` | `7936b04b571af56bd2a36b7c5b82894110be9480fe88702cdc73da1fbc087901` |
+| `SAM.Analytical.Benchmark.dll` (SAM_Validation `2a3acfaf`) | `7a1d77029f19450563e7756432db907cc8376d715a746f6872ba1663a1c8fd2b` |
+| `SAM.Core.SQLite.dll` (SAM_SQLite `ec2eb86d`) | `fcbd68b79a79ca43758c88409e19f37c2ac005916bc5cc9cad9f6d8c91e0223c` |
+| `benchmark-openstudio.dll` (producer) | `9c0088bfa520cd4cf6d7a210a66b30e6baf27cec5fa93ddf1d617df4d20a9406` |
+| `os-results-readback.dll` (harness) | `866d40bb792d9fa5bf29907720eecbf7bf799c6bdf1eaa8b949d8c228f457559` |
+| `SAM.Analytical.OpenStudio.ResultsReadBack.dll` (reference) | `eb64b2a81b85ed2bf8a518f8d051df3f7f57a617ba4ecbb4baa8967533534ab2` |
+| `SAM.Analytical.OpenStudio.InputReadBack.dll` (S09 reader) | `64e244cd6055cd61f0b1b8d210def9343e29d8358990e785b54593ee7ca7ef99` |
+| `SAM.Analytical.InputEquivalence.dll` (SAM_Tas core) | `6c36d2dc9ce7e3aee7dc79209e36992622a3c61cd65f5231286cb3bc1a99aed6` |
+
+**Inputs.** Fixtures `s08-fix-box.json` `45524172…acd08`, `s08-fix-two.json` `20da9b58…9baa0` (equal to
+`SHA256SUMS.txt`, checked by the driver). EPW from SAM `f8f8eb64` (`.gz` `24b14f83…`, unchanged since `457defbb`)
+decompressed to `472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3`. CLI `--version`
+`3.10.0+86d7e215a1`. Root `C:\TasOut\s11\r2-20261123` did not exist; no EnergyPlus/OpenStudio process was running.
+
+**Phases** (`scripts\phase.ps1` calls `Run-S11-Results.ps1 -Phase <run|readback|negative> -Root C:\TasOut\s11\r2-20261123
+-WeatherEpw <budapest.epw> -WeatherEpwSha256 472ffb4e… -OpenStudioCli <portable 3.10.0 openstudio.exe>
+-OpenStudioCliVersion 3.10.0+86d7e215a1 -BuildReceipt <S: receipt> -BenchmarkExe <S: benchmark-openstudio.exe>
+-HarnessExe <S: os-results-readback.exe>`, plus `-ConfirmEngineRuns` for run):
+
+| Phase | Result |
+|---|---|
+| run (12:08:57Z-12:09:18Z) | exit 0 `SIMULATED`; both runs record `runnerCommit` `bb74882…`, `samCommit` `f8f8eb64…`, receipt `72593067…`. EnergyPlus `25.1.0-1c11a3d85f` Completed Successfully, 10 warnings, 0 severe, each. |
+| readback | exit 0 **PASS**. box 54/54, two-zone 85/85; 0 FAIL, 0 BLOCKED, 0 informational, 0 global blocks; SQL/ESO/IDF hashes unchanged by every read |
+| negative | exit 0, every case as required (table below); originals unchanged after each case |
+
+**Readback detail.**
+- Rows by layer, all PASS. box: reference 1, identity 5, closure 1, SAM-P 18, SAM-I 11, B1a 18. Two-zone: reference
+  1, identity 8, closure 1, SAM-P 28, SAM-I 21, B1a 26.
+- Completeness (S11-C1/C1b): calendar from `RunPeriod 'SAM_RunPeriod'` 1/1-12/31/2006, 8760 hours. Every (zone x
+  {Total, Sensible} x {heating, cooling} energy, heating/cooling not-met time) has one Hourly dictionary entry and
+  exactly the 8760 calendar hours in each file: box 6 SQL + 6 ESO series, two-zone 12 + 12, 0 missing, duplicated or
+  extra. One SQL environment, one ESO RunPeriod block, 0 other-environment rows.
+- C5: FixBox, FixA and FixB each matched to their native Space by 6 surfaces one to one, own Zone and Ideal Loads;
+  every SQL/ESO key identified; the production keys equal the native keys (identity rows PASS). C6 Total >= Sensible
+  every hour. C7 facility meters equal the zone Total sums in both files (|delta| <= 4.8e-5 J on ~5.6e9 J). C8 no
+  ZoneSizes (no design days). C9 EnergyPlus 25.1 in SQL and ESO.
+- Closure: the captured SAM-P objects re-map to byte-identical B1a `model` and `spaces` on both fixtures.
+- F3 / OD-7 (approved requirement: on at least one fixture, cooling consumption and one space cooling peak
+  discriminate Total from Sensible by >= 1000 x tolerance): **met on both.** Cooling-consumption margin 1.487e8 (box),
+  1.461e8 (two); best space cooling-peak margin 2.027e11 (box), 4.249e11 (two, FixB). The B1a note states the Total basis.
+
+| B1a value (= reference = SAM-P/SAM-I) | box | two-zone |
+|---|---|---|
+| Heating / cooling consumption (kWh) | 2106.690 / 1438.514 | 1555.470 / 1141.487 |
+| Coincident heating peak kW @ hour | 3.4746 @ 919 | 2.4878 @ 775 |
+| Coincident cooling peak kW @ hour | 2.5184 @ 5030 | 1.4971 @ 5701 |
+| Space peaks W @ hour (heating; cooling) | FixBox 3474.6 @ 919; 2518.4 @ 5030 | FixA 1758.1 @ 751; 1338.0 @ 5701 / FixB 852.7 @ 918; 374.9 @ 5033 |
+| Space unmet hours (heating / cooling) | 0 / 0 | 0 / 0 each |
+| Design load | unavailable (no sizing) | unavailable |
+
+**Negatives** (on copies; required exits owned by the driver):
+
+| Case | box | two-zone |
+|---|---|---|
+| `ctl-unmutated-copy` (required 0) | 0, PASS 54/54 | 0, PASS 85/85 |
+| `neg-delete-hour-both`: 7/7 h13 deleted in SQL and ESO (required 11) | 11, BLOCKED 34 (S11-C1 "missing 1" in both files) | 11, BLOCKED 56 |
+| `neg-duplicate-hour-both`: 7/7 h13 repeated in both (required 11) | 11, BLOCKED 34 | 11, BLOCKED 56 |
+| `neg-sensible-cooling-substitution`: reference Sensible cooling in SAM-P, SAM-I, B1a (required 10) | 10, FAIL 12 rows, 0 BLOCKED | 10, FAIL 15 rows, 0 BLOCKED |
+
+The substitution FAILs every targeted cooling row: model consumption, model peak and hour, each space peak, and each
+space peak hour where the Sensible peak hour differs (box FixBox, two FixB; FixA's Sensible peak is at the same hour,
+so only its peak value FAILs), across SAM-P, SAM-I and B1a, with per-row margins 1.46e8-4.25e11 x tolerance.
+
+**Evidence.**
+- Committed: `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-11-23/` (87 packed files with
+  `SHA256SUMS.txt` written by `Pack-S11-Evidence.ps1 -Root C:\TasOut\s11\r2-20261123 -Label revision-2-2026-11-23
+  -BuildReceipt <receipt>`; README with all hashes; `offline-validation/` logs).
+- Machine-local (copy before switching computers): `C:\TasOut\s11\r2-20261123\` (SQL, ESO, `in.idf`, work folders,
+  mutated copies); `SAM-BIM\.s11r3-20261123\` (`scripts\`, `logs\` incl. TRX, `hashes\inputs.txt`,
+  `weather\budapest.epw`, `s09-replay\`, `control\`, `ws\` clones and builds). The `S:` mapping is temporary.
 
 ## Work completed
 
@@ -391,8 +564,15 @@ Recommendation: fix both before Revision 2 (real acceptance), each in its own PR
   `S11NegativeTests.cs` (signed-off fixture), `S11IdentityTests.cs` (comments); this record.
 - Revision 2 attempt (2026-10-26, documentation only): `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-10-26/`
   (stopped `summary-run.json`, receipt, `SHA256SUMS.txt`, README); this record. No code, test or script change.
+- Driver Git correction (2026-10-26): `ResultsReadBack/Run-S11-Results.ps1` (`Invoke-Git`, `Get-Head`),
+  `ResultsReadBack/Build-S11-Receipt.ps1` (git fallback), tests `S11DriverTests.cs` (12 new cases); this record.
+- Driver correction completed (2026-11-23, `bb74882`): `ResultsReadBack/Build-S11-Receipt.ps1` (receipt removed
+  first, `-GitExe`, `Invoke-Git` exit checks), tests `S11DriverTests.cs` (`RunProcess` timeouts and tree kill, 6 new
+  cases).
+- Revision 2 evidence (2026-11-23, documentation only):
+  `documentation/S11-OpenStudio-ResultsRoundTrip-evidence/revision-2-2026-11-23/`; this record.
 - Not changed by this PR: importer, writer, SQL readers, schema, SAM_UI, SAM_Tas, SAM core, S10, fixtures, tolerances,
-  metric definitions, comparison gates, scripts, workflow.
+  metric definitions, comparison gates, production mappings, workflow (beyond the Revision 1 build-check step).
 
 ## Tests and validation (local, Release x64)
 
@@ -442,6 +622,16 @@ No EnergyPlus or OpenStudio run, no acceptance phase and no Grasshopper deployme
 
 ## Remaining limitations and risks
 
+- **Superseded by Revision 2 (2026-11-23), kept as history:** the first three bullets below describe the state
+  before the real runs. The real runs now PASS on both fixtures; see "Revision 2 execution (2026-11-23): PASS".
+- **Phase B remains subject to S10's declared validation limitation** (`SAM|FixB|Heating|designDayPeak.hourOfDay`
+  BLOCKED on `s08-fix-two`, S10-C9 unresolved for heating); this S11 PASS is not a Phase B PASS. OpenStudio has no
+  design-day peak hour on these fixtures (no design days, no sizing), so S11 adds no analogous row; the design-load
+  path is declared scope (OD-4: unavailable on both fixtures; `CalcDesLoad` mapping covered by offline tests only).
+- Real not-met totals are 0 h for every space and load type on both fixtures, so the fractional-hours (F-S11-2) and
+  shared-prefix not-met (F-S11-1) regressions are exercised only offline; on real data the unmet rows PASS at 0. The
+  shared-prefix identity itself (FixA/FixB, `5080c000`) is exercised on real data by the load rows and identity rows.
+- The acceptance is local (Windows, machine-local SQL/ESO); hosted CI runs only the offline tests.
 - No S11 run exists. The channel readers were exercised on synthetic files and, as a development probe only (not
   evidence; older content, one zone, no SAM model match), read-only on the S05 output
   `C:\TasOut\s05\runs\c2-openstudio-explicit\000000_…_275dbafb\run` (EnergyPlus `25.1.0-1c11a3d85f`, SQL `32b5dcc8…`,
@@ -458,21 +648,26 @@ No EnergyPlus or OpenStudio run, no acceptance phase and no Grasshopper deployme
 - `Build-S11-Receipt.ps1` has now run successfully on clean clones (2026-10-26). **Revision 2 is BLOCKED by a driver
   defect:** `Run-S11-Results.ps1`'s `Git` helper recurses into itself (`:103-106`), so `Test-Receipt` stops every phase
   with exit 70 on a real receipt. The offline driver tests never listed a receipt commit (`S11DriverTests.cs:102`), so
-  they could not catch it. The bounded correction is recommended in "Revision 2 execution"; it is not implemented here.
-  The run, readback and negative phases have still not processed a real run.
+  they could not catch it. The correction is implemented (`d4052941`, completed in `bb74882`) and the corrected
+  driver processed the real runs of 2026-11-23.
+- The driver tests' Git checkouts live under the system temp path (MAX_PATH) and are removed after each test. The S11
+  negative tests still need a short checkout path: from a workspace root 9 characters longer than `SAM-BIM\.s11i\ws`,
+  4 existing negative tests and one new negative case failed with "Could not find a part of the path" (pre-existing,
+  not caused by this correction; CI's path is shorter). On 2026-11-23 the suite ran from `S:\SAM_OpenStudio`
+  (mapped short root) with 0 failures.
 - The full-solution local build redirects `APPDATA` because the Grasshopper post-build deploys into `%APPDATA%\SAM`.
 
 ## Recommended next step
 
-1. **Owner decision** on the bounded driver correction ("Revision 2 execution", "Bounded correction recommended").
-   - Scope: `Run-S11-Results.ps1` git resolution, the same hardening of the `Build-S11-Receipt.ps1` fallback, and
-     `S11DriverTests` with a real Git commit in the receipt.
-   - Code and offline tests only, on this Draft PR; no engine run.
-   - Recommended executor: Claude Code / Claude Opus 5.5 / High / new session / Build mode. It is a small, test-first
-     script fix.
-2. **Independent review** of that correction.
-3. **Revision 2 repeated** under a fresh owner instruction: a new receipt build at the corrected head, then exactly 2
-   `benchmark-openstudio` runs (the allowance is still unused), readback/compare/negative and packing.
-4. **Independent review of the real-run evidence.**
+1. **Owner review** of the final PR head (in the PR description) with Windows Build and SPDX passing on it, the
+   driver correction (`d4052941` + `bb74882`) and the real-run evidence (`revision-2-2026-11-23/`). An independent
+   read-only review of the evidence first is recommended: Claude Code / Claude Opus 5.5 / High / new session / Plan
+   mode, reading the evidence and code, not this record's conclusion.
+2. **After explicit owner approval of that SHA:** mark Ready, merge into `sow/2026-Q4`, clean up the task branch per
+   AGENTS.md, then the known-merge-SHA `[skip ci]` closeout in `PROJECT_PROGRESS.md` on `sow/2026-Q4` carrying the S10
+   limitation sentence, and confirm the SAM_OpenStudio open-PR count.
+   - Executor: Claude Code / Claude Opus 5.5 / Medium / existing session / Build mode (procedural, evidence in hand).
+3. Separately, per plan section 11: SAM roadmap S11 row and handoff under the owner's narrow exception; OD-5
+   METRICS.md docs PR; the listed follow-ups.
 
-None of this is authorised by this record.
+Merge, Ready and steps 2-3 are not authorised by this record.

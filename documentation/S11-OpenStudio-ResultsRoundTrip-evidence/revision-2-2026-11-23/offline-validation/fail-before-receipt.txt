@@ -1,0 +1,5 @@
+Fail-before controls, 2026-11-23T12:07:54.6478481Z. old = Build-S11-Receipt.ps1 at d405294 with only its hard-coded git path replaced; new = bb74882. Earlier receipt present before each run; MSBuild path absent.
+old, git missing (PATH without git) : exit 3; earlier receipt remains: True; output: REFUSED (no receipt written): git.exe not found
+new, git missing (PATH without git) : exit 3; earlier receipt remains: False; output: REFUSED (no receipt written): git.exe not found ('C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\control\no-such-git.exe' does not exist and PATH has no git application)
+old, git rev-parse prints a SHA and exits 1 : exit 3; earlier receipt remains: False; output: REFUSED (no receipt written): MSBuild not found: C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\control\no-msbuild.exe
+new, git rev-parse prints a SHA and exits 1 : exit 3; earlier receipt remains: False; output: REFUSED (no receipt written): git -C C:\Users\michal\Documents\GitHub\SAM-BIM\.s11r3-20261123\control\ws\SAM rev-parse HEAD exited 1

@@ -1,0 +1,348 @@
+﻿{
+    "schema":  "s11-build-receipt/1",
+    "note":  "Written by Build-S11-Receipt.ps1 after a successful controlled build of clean checkouts; Run-S11-Results.ps1 verifies it and never writes it.",
+    "startedUtc":  "2026-11-23T12:08:10.0479094Z",
+    "completedUtc":  "2026-11-23T12:08:45.8924395Z",
+    "machine":  "LEGION5MD",
+    "msbuild":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+    "commands":  [
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM\\SAM\\SAM.Core\\SAM.Core.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=f8f8eb6465de4508c37af2d2c94662deee3fb240 -nr:false -v:m",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM\\SAM\\SAM.Math\\SAM.Math.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=f8f8eb6465de4508c37af2d2c94662deee3fb240 -nr:false -v:m",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM\\SAM\\SAM.Units\\SAM.Units.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=f8f8eb6465de4508c37af2d2c94662deee3fb240 -nr:false -v:m",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM\\SAM\\SAM.Geometry\\SAM.Geometry.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=f8f8eb6465de4508c37af2d2c94662deee3fb240 -nr:false -v:m",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM\\SAM\\SAM.Weather\\SAM.Weather.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=f8f8eb6465de4508c37af2d2c94662deee3fb240 -nr:false -v:m",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM\\SAM\\SAM.Architectural\\SAM.Architectural.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=f8f8eb6465de4508c37af2d2c94662deee3fb240 -nr:false -v:m",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM\\SAM\\SAM.Analytical\\SAM.Analytical.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=f8f8eb6465de4508c37af2d2c94662deee3fb240 -nr:false -v:m",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM_Validation\\SAM.Analytical.Benchmark\\SAM.Analytical.Benchmark.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=2a3acfafb3919b4a0b81d67ef16a4b9d1e222f5d -nr:false -v:m",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\SAM.Analytical.OpenStudio.Benchmark.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=bb74882161af1a477e6941e0d58be07e836dd53f -nr:false -v:m -p:Platform=x64",
+                         "exitCode":  0
+                     },
+                     {
+                         "file":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                         "arguments":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli.csproj -restore -t:Rebuild -p:Configuration=Release -p:SAMSourceRevision=bb74882161af1a477e6941e0d58be07e836dd53f -nr:false -v:m -p:Platform=x64",
+                         "exitCode":  0
+                     }
+                 ],
+    "commits":  [
+                    {
+                        "repository":  "S:\\SAM",
+                        "commit":  "f8f8eb6465de4508c37af2d2c94662deee3fb240",
+                        "branch":  "sow/2026-Q4"
+                    },
+                    {
+                        "repository":  "S:\\SAM_Validation",
+                        "commit":  "2a3acfafb3919b4a0b81d67ef16a4b9d1e222f5d",
+                        "branch":  "sow/2026-Q4"
+                    },
+                    {
+                        "repository":  "S:\\SAM_Tas",
+                        "commit":  "922044fa9ca35062979689f4e359ea85bee577dd",
+                        "branch":  "sow/2026-Q4"
+                    },
+                    {
+                        "repository":  "S:\\SAM_OpenStudio",
+                        "commit":  "bb74882161af1a477e6941e0d58be07e836dd53f",
+                        "branch":  "feature/s11-openstudio-results-roundtrip"
+                    }
+                ],
+    "benchmarkExe":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\benchmark-openstudio.exe",
+    "harnessExe":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\os-results-readback.exe",
+    "stamped":  [
+                    {
+                        "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\benchmark-openstudio.dll",
+                        "commit":  "bb74882161af1a477e6941e0d58be07e836dd53f"
+                    },
+                    {
+                        "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\os-results-readback.dll",
+                        "commit":  "bb74882161af1a477e6941e0d58be07e836dd53f"
+                    },
+                    {
+                        "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.OpenStudio.ResultsReadBack.dll",
+                        "commit":  "bb74882161af1a477e6941e0d58be07e836dd53f"
+                    },
+                    {
+                        "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.OpenStudio.InputReadBack.dll",
+                        "commit":  "bb74882161af1a477e6941e0d58be07e836dd53f"
+                    },
+                    {
+                        "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.OpenStudio.dll",
+                        "commit":  "bb74882161af1a477e6941e0d58be07e836dd53f"
+                    },
+                    {
+                        "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.InputEquivalence.dll",
+                        "commit":  "bb74882161af1a477e6941e0d58be07e836dd53f"
+                    },
+                    {
+                        "path":  "S:\\SAM_Validation\\build\\SAM.Analytical.Benchmark.dll",
+                        "commit":  "2a3acfafb3919b4a0b81d67ef16a4b9d1e222f5d"
+                    },
+                    {
+                        "path":  "S:\\SAM\\build\\SAM.Core.dll",
+                        "commit":  "f8f8eb6465de4508c37af2d2c94662deee3fb240"
+                    },
+                    {
+                        "path":  "S:\\SAM\\build\\SAM.Math.dll",
+                        "commit":  "f8f8eb6465de4508c37af2d2c94662deee3fb240"
+                    },
+                    {
+                        "path":  "S:\\SAM\\build\\SAM.Units.dll",
+                        "commit":  "f8f8eb6465de4508c37af2d2c94662deee3fb240"
+                    },
+                    {
+                        "path":  "S:\\SAM\\build\\SAM.Geometry.dll",
+                        "commit":  "f8f8eb6465de4508c37af2d2c94662deee3fb240"
+                    },
+                    {
+                        "path":  "S:\\SAM\\build\\SAM.Weather.dll",
+                        "commit":  "f8f8eb6465de4508c37af2d2c94662deee3fb240"
+                    },
+                    {
+                        "path":  "S:\\SAM\\build\\SAM.Architectural.dll",
+                        "commit":  "f8f8eb6465de4508c37af2d2c94662deee3fb240"
+                    },
+                    {
+                        "path":  "S:\\SAM\\build\\SAM.Analytical.dll",
+                        "commit":  "f8f8eb6465de4508c37af2d2c94662deee3fb240"
+                    }
+                ],
+    "files":  [
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\benchmark-openstudio.dll",
+                      "sha256":  "9c0088bfa520cd4cf6d7a210a66b30e6baf27cec5fa93ddf1d617df4d20a9406"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\benchmark-openstudio.exe",
+                      "sha256":  "d2ed3ec7c19984b71543ab448f097689e6434961510b69838e6ee70a01536f3d"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\MathNet.Numerics.dll",
+                      "sha256":  "8f4b1b9c35726b9bf3d51f0e806e12996a849d547b5321690abad66fb0e04e6d"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\NetTopologySuite.dll",
+                      "sha256":  "55288513bdd9a834098fc4a995f5f96d99b9456f1a26c134fe0051084983e134"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\OpenStudio.dll",
+                      "sha256":  "678bdace11401e751fd661d9638944613b8802e6e8dc01809d1dbfa7fbede499"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\openstudio_csharp.dll",
+                      "sha256":  "6d79e1e6e5b4fd0e25ed14293a4a1f5823eb670ce6307ac629bcd176524f73bc"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\openstudio_model_csharp.dll",
+                      "sha256":  "8ffdb629129b4a3995805100bf4817076a363a656d613df14bc15f0c79a98f5b"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\openstudio_translators_csharp.dll",
+                      "sha256":  "973b2b49afb6cb32be8efd3f11f99834e5fc72d8236b35927dca7bcc5045c834"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\openstudiolib.dll",
+                      "sha256":  "549eb1a7492b86adcf87ba7015579370acb1738d995f53e0ae551b85af3e1451"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\QuickGraph.NETStandard.dll",
+                      "sha256":  "50eeead03278bdf43bf0a9ad0d2348bc977f882ecd0bfe50527602446002af88"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Analytical.Benchmark.dll",
+                      "sha256":  "7a1d77029f19450563e7756432db907cc8376d715a746f6872ba1663a1c8fd2b"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Analytical.dll",
+                      "sha256":  "3a8df62f2396806aaced53389ee053f800c88f12395956adeac5bacc48374def"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Analytical.OpenStudio.dll",
+                      "sha256":  "7936b04b571af56bd2a36b7c5b82894110be9480fe88702cdc73da1fbc087901"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Architectural.dll",
+                      "sha256":  "20f9db0987ac9336cf1016fcc8970a22dacce9c483f0abc9d53fb59148172e86"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Core.dll",
+                      "sha256":  "d9e9f3253ccbf80f69ce9d334abdfa03970ea4e845b5aee02fede9be5eb1d62f"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Core.OpenStudio.dll",
+                      "sha256":  "fade6445259b22c1e8c74654f01c4efdf6c2f2990a1695832959657a4bf4bace"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Core.SQLite.dll",
+                      "sha256":  "fcbd68b79a79ca43758c88409e19f37c2ac005916bc5cc9cad9f6d8c91e0223c"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Geometry.dll",
+                      "sha256":  "ab7724e625e88a2299fc016d9206851070947cc9ba7c1cfac618012aaf32f2fc"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Geometry.OpenStudio.dll",
+                      "sha256":  "d036d2a0dab9a6aa24cf947f77f61bbeb1d6a12da9c480c6ed0c70a4da51d9ad"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Math.dll",
+                      "sha256":  "3e416a76f606b4e0cd6f259ef5519b510657ac0500499d02e57de2dd7f4e5122"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\SAM.Weather.dll",
+                      "sha256":  "9495044a181d02ff596128c484ca0947d272da73c84f1f30cc3c87140b5bc4fd"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\System.Data.SQLite.dll",
+                      "sha256":  "fa3d7678272b10dfa0be3d959f0aea38a58b75caf1bba06d6781218ced489620"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.Benchmark\\bin\\x64\\Release\\net8.0\\System.Drawing.Common.dll",
+                      "sha256":  "b6ac309471f2ba20e84a67bbd20d49bf2025ddb4e12219344ef4be97c549fb3c"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\benchmark-openstudio.dll",
+                      "sha256":  "9c0088bfa520cd4cf6d7a210a66b30e6baf27cec5fa93ddf1d617df4d20a9406"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\benchmark-openstudio.exe",
+                      "sha256":  "d2ed3ec7c19984b71543ab448f097689e6434961510b69838e6ee70a01536f3d"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\MathNet.Numerics.dll",
+                      "sha256":  "8f4b1b9c35726b9bf3d51f0e806e12996a849d547b5321690abad66fb0e04e6d"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\NetTopologySuite.dll",
+                      "sha256":  "55288513bdd9a834098fc4a995f5f96d99b9456f1a26c134fe0051084983e134"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\OpenStudio.dll",
+                      "sha256":  "678bdace11401e751fd661d9638944613b8802e6e8dc01809d1dbfa7fbede499"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\openstudio_csharp.dll",
+                      "sha256":  "6d79e1e6e5b4fd0e25ed14293a4a1f5823eb670ce6307ac629bcd176524f73bc"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\openstudio_model_csharp.dll",
+                      "sha256":  "8ffdb629129b4a3995805100bf4817076a363a656d613df14bc15f0c79a98f5b"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\openstudio_translators_csharp.dll",
+                      "sha256":  "973b2b49afb6cb32be8efd3f11f99834e5fc72d8236b35927dca7bcc5045c834"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\openstudiolib.dll",
+                      "sha256":  "549eb1a7492b86adcf87ba7015579370acb1738d995f53e0ae551b85af3e1451"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\os-results-readback.dll",
+                      "sha256":  "866d40bb792d9fa5bf29907720eecbf7bf799c6bdf1eaa8b949d8c228f457559"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\os-results-readback.exe",
+                      "sha256":  "6df8d1626c0ce5fd437fde40eed49a6f7c2d14d84672a9834cfda6b53fd08aea"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\QuickGraph.NETStandard.dll",
+                      "sha256":  "50eeead03278bdf43bf0a9ad0d2348bc977f882ecd0bfe50527602446002af88"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.Benchmark.dll",
+                      "sha256":  "7a1d77029f19450563e7756432db907cc8376d715a746f6872ba1663a1c8fd2b"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.dll",
+                      "sha256":  "3a8df62f2396806aaced53389ee053f800c88f12395956adeac5bacc48374def"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.InputEquivalence.dll",
+                      "sha256":  "6c36d2dc9ce7e3aee7dc79209e36992622a3c61cd65f5231286cb3bc1a99aed6"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.OpenStudio.dll",
+                      "sha256":  "7936b04b571af56bd2a36b7c5b82894110be9480fe88702cdc73da1fbc087901"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.OpenStudio.InputReadBack.dll",
+                      "sha256":  "64e244cd6055cd61f0b1b8d210def9343e29d8358990e785b54593ee7ca7ef99"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Analytical.OpenStudio.ResultsReadBack.dll",
+                      "sha256":  "eb64b2a81b85ed2bf8a518f8d051df3f7f57a617ba4ecbb4baa8967533534ab2"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Architectural.dll",
+                      "sha256":  "20f9db0987ac9336cf1016fcc8970a22dacce9c483f0abc9d53fb59148172e86"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Core.dll",
+                      "sha256":  "d9e9f3253ccbf80f69ce9d334abdfa03970ea4e845b5aee02fede9be5eb1d62f"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Core.OpenStudio.dll",
+                      "sha256":  "fade6445259b22c1e8c74654f01c4efdf6c2f2990a1695832959657a4bf4bace"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Core.SQLite.dll",
+                      "sha256":  "fcbd68b79a79ca43758c88409e19f37c2ac005916bc5cc9cad9f6d8c91e0223c"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Geometry.dll",
+                      "sha256":  "ab7724e625e88a2299fc016d9206851070947cc9ba7c1cfac618012aaf32f2fc"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Geometry.OpenStudio.dll",
+                      "sha256":  "d036d2a0dab9a6aa24cf947f77f61bbeb1d6a12da9c480c6ed0c70a4da51d9ad"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Math.dll",
+                      "sha256":  "3e416a76f606b4e0cd6f259ef5519b510657ac0500499d02e57de2dd7f4e5122"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\SAM.Weather.dll",
+                      "sha256":  "9495044a181d02ff596128c484ca0947d272da73c84f1f30cc3c87140b5bc4fd"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\System.Data.SQLite.dll",
+                      "sha256":  "fa3d7678272b10dfa0be3d959f0aea38a58b75caf1bba06d6781218ced489620"
+                  },
+                  {
+                      "path":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\System.Drawing.Common.dll",
+                      "sha256":  "b6ac309471f2ba20e84a67bbd20d49bf2025ddb4e12219344ef4be97c549fb3c"
+                  }
+              ]
+}

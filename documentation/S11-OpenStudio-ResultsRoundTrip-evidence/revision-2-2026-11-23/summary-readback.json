@@ -1,0 +1,52 @@
+﻿{
+    "phase":  "readback",
+    "started":  "2026-11-23T12:09:35.9171914Z",
+    "root":  "C:\\TasOut\\s11\\r2-20261123",
+    "buildReceipt":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\s11-build-receipt.json",
+    "harness":  "S:\\SAM_OpenStudio\\benchmark\\SAM.Analytical.OpenStudio.ResultsReadBack.Cli\\bin\\x64\\Release\\net8.0\\os-results-readback.exe",
+    "runs":  [
+                 {
+                     "label":  "box",
+                     "fixture":  "s08-fix-box",
+                     "exit":  0,
+                     "verdict":  "PASS",
+                     "required":  54,
+                     "passed":  54,
+                     "failed":  0,
+                     "blocked":  0,
+                     "f3":  {
+                                "CoolingConsumptionMargin":  148729494.0355796,
+                                "BestSpaceCoolingPeakMargin":  202719250884.12134,
+                                "MeetsOd7":  true,
+                                "Detail":  "Total and Sensible cooling are distinguishable on this run (consumption and at least one space peak \u003e= 1000 x tolerance)"
+                            },
+                     "compareSha256":  "69393a3ff25ed92094221a60b7d9d5b2fb1ac81951081ab253bbb64d64199595"
+                 },
+                 {
+                     "label":  "two",
+                     "fixture":  "s08-fix-two",
+                     "exit":  0,
+                     "verdict":  "PASS",
+                     "required":  85,
+                     "passed":  85,
+                     "failed":  0,
+                     "blocked":  0,
+                     "f3":  {
+                                "CoolingConsumptionMargin":  146101830.91618615,
+                                "BestSpaceCoolingPeakMargin":  424922463336.7097,
+                                "MeetsOd7":  true,
+                                "Detail":  "Total and Sensible cooling are distinguishable on this run (consumption and at least one space peak \u003e= 1000 x tolerance)"
+                            },
+                     "compareSha256":  "e75541d449602128eb9626d49ef364325004ad789dd33ff2b98ca5cba52de040"
+                 }
+             ],
+    "original-unchanged:box":  true,
+    "original-unchanged:two":  true,
+    "od7":  {
+                "anyFixtureMeets":  true,
+                "note":  "OD-7: on at least one fixture, cooling consumption and one space cooling peak discriminate Total from Sensible by \u003e= 1000 x tolerance (required for PASS)"
+            },
+    "exit":  0,
+    "result":  "PASS",
+    "finished":  "2026-11-23T12:09:45.0091262Z"
+}

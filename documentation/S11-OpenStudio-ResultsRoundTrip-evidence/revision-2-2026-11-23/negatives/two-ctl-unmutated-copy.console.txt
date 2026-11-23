@@ -1,0 +1,4 @@
+﻿negative ctl-unmutated-copy: none (control); compare must exit 0
+read: C:\TasOut\s11\r2-20261123\negatives\two-ctl-unmutated-copy\reference.json (2 spaces, 0 global block(s), 24 series judged)
+subject: C:\TasOut\s11\r2-20261123\negatives\two-ctl-unmutated-copy\subject.json (closure identical, 4 SAM-I space results)
+compare: PASS (85 PASS, 0 FAIL, 0 BLOCKED of 85); C:\TasOut\s11\r2-20261123\negatives\two-ctl-unmutated-copy\compare\compare.json

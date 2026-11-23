@@ -1,0 +1,4 @@
+﻿[openstudio.EpwFile] <0> Appears there are no design condition fields in the EPW file 'C:/Users/michal/Documents/GitHub/SAM-BIM/.s11r3-20261123/weather/budapest.epw'
+[openstudio.EpwFile] <0> Appears there are no design condition fields in the EPW file 'C:/Users/michal/Documents/GitHub/SAM-BIM/.s11r3-20261123/weather/budapest.epw'
+Wrote C:\TasOut\s11\r2-20261123\box\b1a.json (state=Success, route=Native-OpenStudio).
+Wrote C:\TasOut\s11\r2-20261123\box\sam.json (sha256:2a25640ca0c1d951dc2dddc121a4b7de0e6650912d913575839c30c7efa1dffc, the SAM result objects of the document).

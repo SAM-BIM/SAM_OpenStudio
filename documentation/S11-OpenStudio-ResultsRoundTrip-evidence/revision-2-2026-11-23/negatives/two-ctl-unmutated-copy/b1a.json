@@ -1,0 +1,197 @@
+{
+  "schemaVersion": "1.0.0",
+  "provenance": {
+    "sourceModelName": "s08-fix-two",
+    "sourceModelGuid": "cf75fa356bcf4418b060a342d99b533f",
+    "sourceFileHash": "sha256:20da9b586345e9fc67dc6308e6da1578b9bc41b3c694dbdab37e9c677959baa0",
+    "canonicalModelHash": "sha256:df4cd812b38af13948c5c0de78b3102821880d5d5316dd6a0eacd0949093e14c",
+    "canonicalizationVersion": "1.0.0",
+    "samCommit": "f8f8eb6465de4508c37af2d2c94662deee3fb240",
+    "runnerCommit": "bb74882161af1a477e6941e0d58be07e836dd53f",
+    "engine": {
+      "kind": "OpenStudio",
+      "name": "EnergyPlus",
+      "version": "25.1.0",
+      "sdkVersion": "3.10.0"
+    },
+    "route": "Native-OpenStudio",
+    "weather": {
+      "identity": "budapest",
+      "hash": "sha256:472ffb4e2f10867600949a392ce46891fc1bd05f2fc8d8917a99bca7d26209c3"
+    },
+    "designDaySource": "None",
+    "runTimestampUtc": "2026-11-23T12:09:07.818348Z",
+    "durationSeconds": 6.4522188,
+    "state": "Success",
+    "resultSources": [
+      "SAM.Analytical.OpenStudio"
+    ],
+    "warnings": [],
+    "notes": [
+      "Cooling metrics are EnergyPlus Ideal Loads Supply Air Total cooling (sensible \u002B latent); heating is Total heating.",
+      "[SAM-OS-RUN-002] Information: Annual weather source: explicit EPW (budapest.epw)",
+      "[SAM-OS-RUN-002] Information: Ground temperatures taken from the EPW GROUND TEMPERATURES header (depth 0.5 m set, 12 monthly values)",
+      "[SAM-OS-RUN-002] Information: No design-day source supplied; sizing-period runs stay disabled unless OpenStudioConversionOptions.RunSizingPeriods overrides"
+    ]
+  },
+  "model": {
+    "consumptionHeating": {
+      "value": 1555.470348116533,
+      "unit": "kWh",
+      "available": true
+    },
+    "consumptionCooling": {
+      "value": 1141.4866435862227,
+      "unit": "kWh",
+      "available": true
+    },
+    "peakHeatingLoad": {
+      "value": 2.487849842801424,
+      "unit": "kW",
+      "available": true
+    },
+    "peakHeatingHour": {
+      "value": 775,
+      "unit": "hourOfYear",
+      "available": true
+    },
+    "peakCoolingLoad": {
+      "value": 1.497093318807568,
+      "unit": "kW",
+      "available": true
+    },
+    "peakCoolingHour": {
+      "value": 5701,
+      "unit": "hourOfYear",
+      "available": true
+    },
+    "floorArea": {
+      "value": 43.739999999999995,
+      "unit": "m2",
+      "available": true
+    },
+    "volume": {
+      "value": 133.40699999999998,
+      "unit": "m3",
+      "available": true
+    }
+  },
+  "spaces": [
+    {
+      "guid": "5080c00000000000000000000000c0a1",
+      "name": "FixA",
+      "area": {
+        "value": 24.3,
+        "unit": "m2",
+        "available": true
+      },
+      "volume": {
+        "value": 74.115,
+        "unit": "m3",
+        "available": true
+      },
+      "heating": {
+        "designLoad": {
+          "value": null,
+          "unit": "W",
+          "available": false
+        },
+        "peakLoad": {
+          "value": 1758.0652636023904,
+          "unit": "W",
+          "available": true
+        },
+        "peakHour": {
+          "value": 751,
+          "unit": "hourOfYear",
+          "available": true
+        },
+        "unmetHours": {
+          "value": 0,
+          "unit": "h",
+          "available": true
+        }
+      },
+      "cooling": {
+        "designLoad": {
+          "value": null,
+          "unit": "W",
+          "available": false
+        },
+        "peakLoad": {
+          "value": 1338.0190901481403,
+          "unit": "W",
+          "available": true
+        },
+        "peakHour": {
+          "value": 5701,
+          "unit": "hourOfYear",
+          "available": true
+        },
+        "unmetHours": {
+          "value": 0,
+          "unit": "h",
+          "available": true
+        }
+      }
+    },
+    {
+      "guid": "5080c00000000000000000000000c0b1",
+      "name": "FixB",
+      "area": {
+        "value": 19.439999999999998,
+        "unit": "m2",
+        "available": true
+      },
+      "volume": {
+        "value": 59.29199999999999,
+        "unit": "m3",
+        "available": true
+      },
+      "heating": {
+        "designLoad": {
+          "value": null,
+          "unit": "W",
+          "available": false
+        },
+        "peakLoad": {
+          "value": 852.7295212465667,
+          "unit": "W",
+          "available": true
+        },
+        "peakHour": {
+          "value": 918,
+          "unit": "hourOfYear",
+          "available": true
+        },
+        "unmetHours": {
+          "value": 0,
+          "unit": "h",
+          "available": true
+        }
+      },
+      "cooling": {
+        "designLoad": {
+          "value": null,
+          "unit": "W",
+          "available": false
+        },
+        "peakLoad": {
+          "value": 374.9020383782116,
+          "unit": "W",
+          "available": true
+        },
+        "peakHour": {
+          "value": 5033,
+          "unit": "hourOfYear",
+          "available": true
+        },
+        "unmetHours": {
+          "value": 0,
+          "unit": "h",
+          "available": true
+        }
+      }
+    }
+  ]
+}
